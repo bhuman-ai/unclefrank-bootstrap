@@ -25,7 +25,7 @@ class TerragonExecutor {
         timestamp: new Date().toISOString()
       },
       githubRepoFullName: githubRepo,
-      repoBaseBranchName: 'main',
+      repoBaseBranchName: 'master',
       saveAsDraft: false
     }]);
 
@@ -36,9 +36,11 @@ class TerragonExecutor {
         {
           headers: {
             'accept': 'text/x-component',
+            'accept-language': 'en-US,en;q=0.9',
             'content-type': 'text/plain;charset=UTF-8',
             'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
             'next-action': '7f7cba8a674421dfd9e9da7470ee4d79875a158bc9',
+            'next-router-state-tree': '%5B%22%22%2C%7B%22children%22%3A%5B%22(sidebar)%22%2C%7B%22children%22%3A%5B%22(site-header)%22%2C%7B%22children%22%3A%5B%22dashboard%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%2Ctrue%5D',
             'origin': 'https://www.terragonlabs.com',
             'referer': 'https://www.terragonlabs.com/dashboard',
             'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
@@ -48,11 +50,14 @@ class TerragonExecutor {
       );
 
       // Terragon returns React Server Components, not JSON
-      // Check if response indicates success
-      if (response.data && typeof response.data === 'string' && response.data.includes('digest')) {
+      // Look for task ID in response
+      const responseText = response.data;
+      const idMatch = responseText.match(/"id":"([^"]+)"/);
+      
+      if (idMatch) {
         return {
           success: true,
-          data: 'Task created in Terragon successfully'
+          data: `Task created in Terragon with ID: ${idMatch[1]}`
         };
       }
       
@@ -61,13 +66,18 @@ class TerragonExecutor {
         data: 'Message sent to Terragon'
       };
     } catch (error) {
-      // Terragon returns 500 with digest when task is created successfully
-      if (error.response?.status === 500 && error.response?.data?.includes('digest')) {
-        console.log('Task created in Terragon (500 response is expected)');
-        return {
-          success: true,
-          data: 'Task created in Terragon successfully'
-        };
+      // Terragon returns 500 but still creates the task
+      if (error.response?.status === 500 && error.response?.data) {
+        const responseText = error.response.data;
+        const idMatch = responseText.match(/"id":"([^"]+)"/);
+        
+        if (idMatch) {
+          console.log(`Task created in Terragon with ID: ${idMatch[1]}`);
+          return {
+            success: true,
+            data: `Task created in Terragon with ID: ${idMatch[1]}`
+          };
+        }
       }
       
       console.error('Terragon API Error:', error.response?.data || error.message);
