@@ -23,5 +23,8 @@
     "@vercel/node": "^5.3.10",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
