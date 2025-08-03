@@ -23,7 +23,11 @@
             checkpoints: [],
             executionStatus: {},
             sessionId: null,
-            logs: []
+            logs: [],
+            chatMessages: [],
+            chatInput: '',
+            chatThreadId: null,
+            chatVisible: false
         };
 
         function App() {
@@ -184,7 +188,8 @@
                     const execData = await execResponse.json();
                     if (!execResponse.ok) throw new Error(execData.error);
                     
-                    addLog(`${checkpoint.name}: Task created in Terragon`, 'success');
+                    const threadUrl = `https://www.terragonlabs.com/task/${execData.threadId}`;
+                    addLog(`${checkpoint.name}: Created in thread ${execData.threadId}`, 'success');
                     
                     // Update status to show execution was sent to Terragon
                     setState(prev => ({
@@ -193,7 +198,11 @@
                             ...prev.executionStatus,
                             [checkpoint.id]: {
                                 status: 'sent',
-                                logs: [{ message: 'Task sent to Terragon. Check your Terragon dashboard.' }]
+                                threadId: execData.threadId,
+                                logs: [{ 
+                                    message: `Executing in Terragon thread: ${execData.threadId}`,
+                                    url: threadUrl
+                                }]
                             }
                         }
                     }));
@@ -228,6 +237,69 @@
                         {status}
                     </span>
                 );
+            };
+
+            // Chat functions
+            const sendChatMessage = async () => {
+                if (!state.chatInput.trim() || !state.chatThreadId) return;
+                
+                const message = state.chatInput;
+                setState(prev => ({
+                    ...prev,
+                    chatMessages: [...prev.chatMessages, { 
+                        type: 'user', 
+                        text: message, 
+                        timestamp: new Date().toLocaleTimeString() 
+                    }],
+                    chatInput: ''
+                }));
+                
+                try {
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            threadId: state.chatThreadId, 
+                            message 
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.responses) {
+                        data.responses.forEach(resp => {
+                            setState(prev => ({
+                                ...prev,
+                                chatMessages: [...prev.chatMessages, { 
+                                    type: 'assistant', 
+                                    text: resp.text, 
+                                    timestamp: resp.timestamp 
+                                }]
+                            }));
+                        });
+                    }
+                } catch (error) {
+                    addLog(`Chat error: ${error.message}`, 'error');
+                }
+            };
+
+            const startChatSession = async () => {
+                const threadId = `chat-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+                setState(prev => ({
+                    ...prev,
+                    chatThreadId: threadId,
+                    chatVisible: true,
+                    chatMessages: [{
+                        type: 'system',
+                        text: 'Chat connected to UncleFrank system. You can create tasks by describing what you want.',
+                        timestamp: new Date().toLocaleTimeString()
+                    }]
+                }));
+                addLog(`Chat session started: ${threadId}`, 'success');
+            };
+
+            const createTaskFromChat = (message) => {
+                setState(prev => ({ ...prev, request: message }));
+                addLog('Task request populated from chat', 'info');
             };
 
             return (
@@ -325,8 +397,17 @@
                                                 {state.executionStatus[cp.id]?.logs?.length > 0 && (
                                                     <div className="mt-2 text-xs">
                                                         {state.executionStatus[cp.id].logs.map((log, idx) => (
-                                                            <div key={idx} className={`${log.passed ? 'text-green-400' : 'text-red-400'}`}>
-                                                                {log.passed ? '✓' : '✗'} {log.description}
+                                                            <div key={idx} className="text-gray-300">
+                                                                {log.message}
+                                                                {log.url && (
+                                                                    <a 
+                                                                        href={log.url} 
+                                                                        target="_blank" 
+                                                                        className="text-blue-400 hover:underline ml-2"
+                                                                    >
+                                                                        Open in Terragon →
+                                                                    </a>
+                                                                )}
                                                             </div>
                                                         ))}
                                                     </div>
@@ -357,6 +438,80 @@
                             </div>
                         </div>
                     </div>
+                    {/* Chat Interface - Fixed on right side */}
+                    {state.chatVisible && (
+                        <div className="fixed right-0 top-0 h-full w-96 bg-gray-800 shadow-2xl border-l border-gray-700 flex flex-col z-50">
+                            <div className="p-4 border-b border-gray-700">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="text-lg font-semibold">💬 Uncle Frank Chat</h3>
+                                    <button 
+                                        onClick={() => setState(prev => ({ ...prev, chatVisible: false }))}
+                                        className="text-gray-400 hover:text-white"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-1">Thread: {state.chatThreadId}</p>
+                            </div>
+                            
+                            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                {state.chatMessages.map((msg, i) => (
+                                    <div key={i} className={`${
+                                        msg.type === 'user' ? 'text-right' : 'text-left'
+                                    }`}>
+                                        <div className={`inline-block p-3 rounded-lg max-w-xs ${
+                                            msg.type === 'user' 
+                                                ? 'bg-blue-600 text-white' 
+                                                : msg.type === 'system'
+                                                ? 'bg-gray-700 text-gray-300'
+                                                : 'bg-gray-700 text-gray-100'
+                                        }`}>
+                                            <p className="text-sm">{msg.text}</p>
+                                            {msg.type === 'assistant' && msg.text.includes('Implement') && (
+                                                <button 
+                                                    onClick={() => createTaskFromChat(msg.text)}
+                                                    className="mt-2 text-xs underline"
+                                                >
+                                                    Create Task
+                                                </button>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1">{msg.timestamp}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            <div className="p-4 border-t border-gray-700">
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={state.chatInput}
+                                        onChange={(e) => setState(prev => ({ ...prev, chatInput: e.target.value }))}
+                                        onKeyPress={(e) => e.key === 'Enter' && sendChatMessage()}
+                                        className="flex-1 px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                                        placeholder="Type a message..."
+                                    />
+                                    <button 
+                                        onClick={sendChatMessage}
+                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition"
+                                    >
+                                        Send
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Chat Toggle Button */}
+                    {!state.chatVisible && (
+                        <button 
+                            onClick={startChatSession}
+                            className="fixed bottom-4 right-4 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg z-40"
+                            title="Open Chat"
+                        >
+                            💬
+                        </button>
+                    )}
                 </div>
             );
         }

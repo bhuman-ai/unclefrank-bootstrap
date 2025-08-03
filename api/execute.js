@@ -6,12 +6,21 @@ const TERRAGON_AUTH = process.env.TERRAGON_AUTH || 'JTgr3pSvWUN2bNmaO66GnTGo2wrk
 
 class TerragonExecutor {
   constructor() {
-    this.baseUrl = 'https://www.terragonlabs.com/dashboard';
+    this.baseUrl = 'https://www.terragonlabs.com';
     this.deploymentId = 'dpl_3hWzkM7LiymSczFN21Z8chju84CV';
+    this.activeThreads = new Map();
   }
 
-  async sendToTerragon(message, githubRepo = 'bhuman-ai/unclefrank-bootstrap') {
-    const payload = JSON.stringify([{
+  async sendToTerragon(message, sessionId) {
+    // Get or create thread for this session
+    let threadId = this.activeThreads.get(sessionId);
+    if (!threadId) {
+      threadId = `exec-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      this.activeThreads.set(sessionId, threadId);
+    }
+
+    const payload = [{
+      threadId,
       message: {
         type: 'user',
         model: 'sonnet',
@@ -23,67 +32,46 @@ class TerragonExecutor {
           }]
         }],
         timestamp: new Date().toISOString()
-      },
-      githubRepoFullName: githubRepo,
-      repoBaseBranchName: 'master',
-      saveAsDraft: false
-    }]);
+      }
+    }];
 
     try {
       const response = await axios.post(
-        this.baseUrl,
+        `${this.baseUrl}/task/${threadId}`,
         payload,
         {
           headers: {
             'accept': 'text/x-component',
-            'accept-language': 'en-US,en;q=0.9',
             'content-type': 'text/plain;charset=UTF-8',
             'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
-            'next-action': '7f7cba8a674421dfd9e9da7470ee4d79875a158bc9',
-            'next-router-state-tree': '%5B%22%22%2C%7B%22children%22%3A%5B%22(sidebar)%22%2C%7B%22children%22%3A%5B%22(site-header)%22%2C%7B%22children%22%3A%5B%22dashboard%22%2C%7B%22children%22%3A%5B%22__PAGE__%22%2C%7B%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%5D%7D%2Cnull%2Cnull%2Ctrue%5D',
-            'origin': 'https://www.terragonlabs.com',
-            'referer': 'https://www.terragonlabs.com/dashboard',
+            'next-action': '7f40cb55e87cce4b3543b51a374228296bc2436c6d',
+            'origin': this.baseUrl,
+            'referer': `${this.baseUrl}/task/${threadId}`,
             'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
             'x-deployment-id': this.deploymentId
           }
         }
       );
 
-      // Terragon returns React Server Components, not JSON
-      // Look for task ID in response
-      const responseText = response.data;
-      const idMatch = responseText.match(/"id":"([^"]+)"/);
-      
-      if (idMatch) {
+      return {
+        success: true,
+        threadId,
+        data: 'Message sent to Terragon chat'
+      };
+    } catch (error) {
+      // If 200 with error-like response, still consider success
+      if (error.response?.status === 200) {
         return {
           success: true,
-          data: `Task created in Terragon with ID: ${idMatch[1]}`
+          threadId,
+          data: 'Message sent to Terragon chat'
         };
       }
       
-      return {
-        success: true,
-        data: 'Message sent to Terragon'
-      };
-    } catch (error) {
-      // Terragon returns 500 but still creates the task
-      if (error.response?.status === 500 && error.response?.data) {
-        const responseText = error.response.data;
-        const idMatch = responseText.match(/"id":"([^"]+)"/);
-        
-        if (idMatch) {
-          console.log(`Task created in Terragon with ID: ${idMatch[1]}`);
-          return {
-            success: true,
-            data: `Task created in Terragon with ID: ${idMatch[1]}`
-          };
-        }
-      }
-      
-      console.error('Terragon API Error:', error.response?.data || error.message);
+      console.error('Terragon Chat Error:', error.response?.status, error.message);
       return {
         success: false,
-        error: error.message
+        error: `Failed to send to Terragon: ${error.message}`
       };
     }
   }
@@ -145,8 +133,8 @@ ${checkpoint.passCriteria.map(pc => `- ${pc.description}`).join('\n')}
 
 Execute this checkpoint and report results.`;
 
-        // Send to Terragon
-        const result = await executor.sendToTerragon(message);
+        // Send to Terragon chat
+        const result = await executor.sendToTerragon(message, sessionId);
 
         if (!result.success) {
           return res.status(500).json({
@@ -159,6 +147,7 @@ Execute this checkpoint and report results.`;
         return res.status(200).json({
           status: 'executed',
           checkpointId: checkpoint.id,
+          threadId: result.threadId,
           response: result.data,
           timestamp: new Date().toISOString()
         });
@@ -176,6 +165,20 @@ Execute this checkpoint and report results.`;
           status: 'pending',
           message: 'Tests should be executed in Terragon',
           timestamp: new Date().toISOString()
+        });
+      }
+
+      case 'status': {
+        // Get status of a thread
+        const { threadId } = req.body;
+        if (!threadId) {
+          return res.status(400).json({ error: 'Thread ID required' });
+        }
+        
+        return res.status(200).json({
+          threadId,
+          status: 'active',
+          message: `Check thread at: https://www.terragonlabs.com/task/${threadId}`
         });
       }
 

@@ -197,6 +197,73 @@ class UncleFrankBootstrap {
     
     return true;
   }
+
+  async startChatMode(threadId?: string): Promise<void> {
+    console.log(chalk.bold.cyan('\n💬 Uncle Frank Chat Mode\n'));
+    
+    const activeThreadId = threadId || await this.terragonProxy.createChatThread('Uncle Frank Chat');
+    console.log(chalk.gray(`Thread ID: ${activeThreadId}`));
+    console.log(chalk.gray('Type your messages, or use commands:'));
+    console.log(chalk.gray('  /quit - Exit chat mode'));
+    console.log(chalk.gray('  /clear - Clear message history\n'));
+
+    let isListening = false;
+    
+    // Set up message listener
+    const startListening = async () => {
+      if (!isListening) {
+        isListening = true;
+        await this.terragonProxy.startListening(
+          activeThreadId,
+          (message) => {
+            console.log(chalk.cyan(`\n[Terragon] ${message.text}`));
+            process.stdout.write(chalk.yellow('\n> '));
+          },
+          (error) => {
+            console.error(chalk.red('\n[Error]'), error.message);
+            process.stdout.write(chalk.yellow('\n> '));
+          }
+        );
+      }
+    };
+
+    await startListening();
+
+    // Interactive chat loop
+    process.stdout.write(chalk.yellow('> '));
+    
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', async (data) => {
+      const input = data.toString().trim();
+      
+      if (input === '/quit') {
+        console.log(chalk.yellow('\nExiting chat mode...'));
+        this.terragonProxy.stopListening(activeThreadId);
+        cleanup();
+        process.exit(0);
+      } else if (input === '/clear') {
+        console.clear();
+        console.log(chalk.bold.cyan('💬 Uncle Frank Chat Mode\n'));
+        console.log(chalk.gray(`Thread ID: ${activeThreadId}\n`));
+      } else if (input) {
+        try {
+          await this.terragonProxy.sendChatMessage(activeThreadId, input);
+        } catch (error) {
+          console.error(chalk.red('Failed to send message:'), error);
+        }
+      }
+      
+      process.stdout.write(chalk.yellow('\n> '));
+    });
+
+    // Handle graceful shutdown
+    process.on('SIGINT', () => {
+      console.log(chalk.yellow('\n\nShutting down...'));
+      this.terragonProxy.stopAllListeners();
+      cleanup();
+      process.exit(0);
+    });
+  }
 }
 
 // CLI setup
@@ -224,6 +291,15 @@ program
     console.log(chalk.cyan('Initializing Uncle Frank project...'));
     console.log('Copy CLAUDE.md and other sacred documents to this directory.');
     console.log('Then run: uncle-frank task "your first task"');
+  });
+
+program
+  .command('chat [threadId]')
+  .description('Start interactive chat mode with Terragon')
+  .action(async (threadId?: string) => {
+    const bootstrap = new UncleFrankBootstrap();
+    await bootstrap.initialize();
+    await bootstrap.startChatMode(threadId);
   });
 
 program.parse();
