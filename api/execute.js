@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk';
-import axios from 'axios';
 
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || '';
 const TERRAGON_AUTH = process.env.TERRAGON_AUTH || 'JTgr3pSvWUN2bNmaO66GnTGo2wrk1zFf.fW4Qo8gvM1lTf%2Fis9Ss%2FJOdlSKJrnLR0CapMdm%2Bcy0U%3D';
@@ -36,10 +35,10 @@ class TerragonExecutor {
     }];
 
     try {
-      const response = await axios.post(
+      const response = await fetch(
         `${this.baseUrl}/task/${threadId}`,
-        payload,
         {
+          method: 'POST',
           headers: {
             'accept': 'text/x-component',
             'content-type': 'text/plain;charset=UTF-8',
@@ -49,7 +48,8 @@ class TerragonExecutor {
             'referer': `${this.baseUrl}/task/${threadId}`,
             'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
             'x-deployment-id': this.deploymentId
-          }
+          },
+          body: JSON.stringify(payload)
         }
       );
 
@@ -59,16 +59,7 @@ class TerragonExecutor {
         data: 'Message sent to Terragon chat'
       };
     } catch (error) {
-      // If 200 with error-like response, still consider success
-      if (error.response?.status === 200) {
-        return {
-          success: true,
-          threadId,
-          data: 'Message sent to Terragon chat'
-        };
-      }
-      
-      console.error('Terragon Chat Error:', error.response?.status, error.message);
+      console.error('Terragon Chat Error:', error.message);
       return {
         success: false,
         error: `Failed to send to Terragon: ${error.message}`
