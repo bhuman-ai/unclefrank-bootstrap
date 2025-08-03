@@ -4,9 +4,8 @@
   "framework": null,
   "installCommand": "npm install",
   "functions": {
-    "api/task.ts": {
+    "api/task.js": {
       "runtime": "@vercel/node@3.0.0",
-      "includeFiles": "src/**",
       "maxDuration": 30
     }
   }
