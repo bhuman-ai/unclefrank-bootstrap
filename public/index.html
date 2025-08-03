@@ -5,168 +5,379 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Uncle Frank's Bootstrap Core</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100">
-    <div class="container mx-auto px-4 py-8 max-w-4xl">
-        <h1 class="text-4xl font-bold mb-2">🔨 Uncle Frank's Bootstrap Core</h1>
-        <p class="text-gray-400 mb-8">No BS Autonomous LLM Development Platform</p>
+    <div id="root"></div>
 
-        <div class="bg-gray-800 rounded-lg p-6 mb-6">
-            <h2 class="text-2xl font-semibold mb-4">Create New Task</h2>
-            
-            <div class="mb-4">
-                <label class="block text-sm font-medium mb-2">Request</label>
-                <textarea 
-                    id="request" 
-                    class="w-full px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-                    rows="3"
-                    placeholder="e.g., Add Discord bot integration"
-                ></textarea>
-            </div>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
 
-            <div class="mb-4">
-                <label class="block text-sm font-medium mb-2">Project Context (optional)</label>
-                <textarea 
-                    id="context" 
-                    class="w-full px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-                    rows="3"
-                    placeholder="Paste your Project.md content here..."
-                ></textarea>
-            </div>
+        // State management
+        const initialState = {
+            request: '',
+            projectContext: '',
+            task: null,
+            checkpoints: [],
+            executionStatus: {},
+            sessionId: null,
+            logs: []
+        };
 
-            <div class="flex gap-2">
-                <button 
-                    onclick="classifyRequest()"
-                    class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded transition"
-                >
-                    Classify
-                </button>
-                <button 
-                    onclick="decomposeTask()"
-                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition"
-                >
-                    Decompose Task
-                </button>
-            </div>
-        </div>
+        function App() {
+            const [state, setState] = useState(initialState);
+            const [loading, setLoading] = useState(false);
+            const [executing, setExecuting] = useState(false);
+            const executionInterval = useRef(null);
 
-        <div id="results" class="space-y-4"></div>
-    </div>
+            const API_URL = '/api/task';
+            const EXECUTE_URL = '/api/execute';
 
-    <script>
-        const API_URL = '/api/task';
+            // Add log entry
+            const addLog = (message, level = 'info') => {
+                setState(prev => ({
+                    ...prev,
+                    logs: [...prev.logs, {
+                        timestamp: new Date().toLocaleTimeString(),
+                        message,
+                        level
+                    }]
+                }));
+            };
 
-        async function classifyRequest() {
-            const request = document.getElementById('request').value;
-            if (!request) {
-                alert('Please enter a request');
-                return;
-            }
-
-            showLoading('Classifying request...');
-            
-            try {
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'classify', request })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    showResult('Classification Result', `
-                        <p><strong>Type:</strong> ${data.classification.type}</p>
-                        <p><strong>Confidence:</strong> ${(data.classification.confidence * 100).toFixed(0)}%</p>
-                        <p><strong>Reasoning:</strong> ${data.classification.reasoning}</p>
-                    `);
-                } else {
-                    showError(data);
+            // Classify request
+            const classifyRequest = async () => {
+                if (!state.request) {
+                    alert('Please enter a request');
+                    return;
                 }
-            } catch (error) {
-                showError(error.message);
-            }
-        }
-
-        async function decomposeTask() {
-            const request = document.getElementById('request').value;
-            const projectContext = document.getElementById('context').value;
-            
-            if (!request) {
-                alert('Please enter a request');
-                return;
-            }
-
-            showLoading('Decomposing task...');
-            
-            try {
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'decompose', request, projectContext })
-                });
+                setLoading(true);
+                addLog('Classifying request...', 'info');
                 
-                const data = await response.json();
-                
-                if (response.ok) {
-                    const checkpointList = data.checkpoints.map((cp, i) => `
-                        <div class="mb-3 p-3 bg-gray-700 rounded">
-                            <p class="font-semibold">${i + 1}. ${cp.name}</p>
-                            <p class="text-sm text-gray-400">${cp.objective}</p>
-                            <p class="text-xs mt-1">
-                                <span class="text-${cp.blocking ? 'red' : 'green'}-400">
-                                    ${cp.blocking ? 'Blocking' : 'Non-blocking'}
-                                </span>
-                                • ${cp.passCriteria.length} tests
-                            </p>
-                        </div>
-                    `).join('');
-
-                    showResult('Task Decomposition', `
-                        <div class="mb-4">
-                            <h3 class="text-xl font-semibold">${data.task.name}</h3>
-                            <p class="text-gray-400">${data.task.objective}</p>
-                            <p class="mt-2">${data.task.acceptanceCriteria.length} acceptance criteria</p>
-                        </div>
-                        <h4 class="font-semibold mb-2">Checkpoints:</h4>
-                        ${checkpointList}
-                    `);
-                } else {
-                    showError(data);
+                try {
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'classify', request: state.request })
+                    });
+                    
+                    const data = await response.json();
+                    if (response.ok) {
+                        addLog(`Classification: ${data.classification.type} (${(data.classification.confidence * 100).toFixed(0)}%)`, 'success');
+                    } else {
+                        addLog(data.error || 'Classification failed', 'error');
+                    }
+                } catch (error) {
+                    addLog(error.message, 'error');
                 }
-            } catch (error) {
-                showError(error.message);
-            }
+                setLoading(false);
+            };
+
+            // Decompose task
+            const decomposeTask = async () => {
+                if (!state.request) {
+                    alert('Please enter a request');
+                    return;
+                }
+                setLoading(true);
+                addLog('Decomposing task into checkpoints...', 'info');
+                
+                try {
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            action: 'decompose', 
+                            request: state.request, 
+                            projectContext: state.projectContext 
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (response.ok) {
+                        setState(prev => ({
+                            ...prev,
+                            task: data.task,
+                            checkpoints: data.checkpoints,
+                            executionStatus: data.checkpoints.reduce((acc, cp) => ({
+                                ...acc,
+                                [cp.id]: { status: 'pending', logs: [] }
+                            }), {})
+                        }));
+                        addLog(`Task decomposed into ${data.checkpoints.length} checkpoints`, 'success');
+                    } else {
+                        addLog(data.error || 'Decomposition failed', 'error');
+                    }
+                } catch (error) {
+                    addLog(error.message, 'error');
+                }
+                setLoading(false);
+            };
+
+            // Execute all checkpoints
+            const executeAllCheckpoints = async () => {
+                if (!state.checkpoints.length) {
+                    alert('No checkpoints to execute');
+                    return;
+                }
+                
+                setExecuting(true);
+                addLog('Starting execution session...', 'info');
+                
+                // Start execution session
+                try {
+                    const startResponse = await fetch(EXECUTE_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'start' })
+                    });
+                    
+                    const startData = await startResponse.json();
+                    if (!startResponse.ok) throw new Error(startData.error);
+                    
+                    setState(prev => ({ ...prev, sessionId: startData.sessionId }));
+                    addLog(`Session started: ${startData.sessionId}`, 'success');
+                    
+                    // Execute checkpoints sequentially
+                    for (const checkpoint of state.checkpoints) {
+                        if (checkpoint.blocking || state.checkpoints.indexOf(checkpoint) === 0) {
+                            await executeCheckpoint(checkpoint);
+                        }
+                    }
+                    
+                    addLog('All checkpoints executed!', 'success');
+                } catch (error) {
+                    addLog(`Execution error: ${error.message}`, 'error');
+                }
+                
+                setExecuting(false);
+            };
+
+            // Execute single checkpoint
+            const executeCheckpoint = async (checkpoint) => {
+                addLog(`Executing: ${checkpoint.name}`, 'info');
+                
+                // Update status to in_progress
+                setState(prev => ({
+                    ...prev,
+                    executionStatus: {
+                        ...prev.executionStatus,
+                        [checkpoint.id]: { status: 'in_progress', logs: [] }
+                    }
+                }));
+                
+                try {
+                    // Execute via Terragon
+                    const execResponse = await fetch(EXECUTE_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            action: 'execute',
+                            checkpoint,
+                            projectContext: state.projectContext,
+                            sessionId: state.sessionId
+                        })
+                    });
+                    
+                    const execData = await execResponse.json();
+                    if (!execResponse.ok) throw new Error(execData.error);
+                    
+                    addLog(`Checkpoint executed, running tests...`, 'info');
+                    
+                    // Run tests
+                    const testResponse = await fetch(EXECUTE_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            action: 'test',
+                            checkpoint
+                        })
+                    });
+                    
+                    const testData = await testResponse.json();
+                    if (!testResponse.ok) throw new Error(testData.error);
+                    
+                    // Update status
+                    setState(prev => ({
+                        ...prev,
+                        executionStatus: {
+                            ...prev.executionStatus,
+                            [checkpoint.id]: {
+                                status: testData.status,
+                                logs: testData.testResults
+                            }
+                        }
+                    }));
+                    
+                    addLog(`${checkpoint.name}: ${testData.status}`, testData.status === 'pass' ? 'success' : 'error');
+                    
+                } catch (error) {
+                    setState(prev => ({
+                        ...prev,
+                        executionStatus: {
+                            ...prev.executionStatus,
+                            [checkpoint.id]: {
+                                status: 'fail',
+                                logs: [{ message: error.message }]
+                            }
+                        }
+                    }));
+                    addLog(`${checkpoint.name} failed: ${error.message}`, 'error');
+                }
+            };
+
+            // Checkpoint status badge
+            const StatusBadge = ({ status }) => {
+                const colors = {
+                    pending: 'bg-gray-600',
+                    in_progress: 'bg-blue-600',
+                    pass: 'bg-green-600',
+                    fail: 'bg-red-600'
+                };
+                
+                return (
+                    <span className={`px-2 py-1 text-xs rounded ${colors[status] || 'bg-gray-600'}`}>
+                        {status}
+                    </span>
+                );
+            };
+
+            return (
+                <div className="container mx-auto px-4 py-8 max-w-6xl">
+                    <h1 className="text-4xl font-bold mb-2">🔨 Uncle Frank's Bootstrap Core</h1>
+                    <p className="text-gray-400 mb-8">No BS Autonomous LLM Development Platform</p>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Left Panel - Input */}
+                        <div>
+                            <div className="bg-gray-800 rounded-lg p-6 mb-6">
+                                <h2 className="text-2xl font-semibold mb-4">Create New Task</h2>
+                                
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium mb-2">Request</label>
+                                    <textarea 
+                                        value={state.request}
+                                        onChange={(e) => setState(prev => ({ ...prev, request: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                                        rows="3"
+                                        placeholder="e.g., Add Discord bot integration"
+                                    />
+                                </div>
+
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium mb-2">Project Context (optional)</label>
+                                    <textarea 
+                                        value={state.projectContext}
+                                        onChange={(e) => setState(prev => ({ ...prev, projectContext: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                                        rows="3"
+                                        placeholder="Paste your Project.md content here..."
+                                    />
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={classifyRequest}
+                                        disabled={loading}
+                                        className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded transition disabled:opacity-50"
+                                    >
+                                        Classify
+                                    </button>
+                                    <button 
+                                        onClick={decomposeTask}
+                                        disabled={loading}
+                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition disabled:opacity-50"
+                                    >
+                                        Decompose Task
+                                    </button>
+                                    {state.checkpoints.length > 0 && (
+                                        <button 
+                                            onClick={executeAllCheckpoints}
+                                            disabled={executing}
+                                            className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded transition disabled:opacity-50"
+                                        >
+                                            {executing ? 'Executing...' : 'Execute All'}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Task Summary */}
+                            {state.task && (
+                                <div className="bg-gray-800 rounded-lg p-6">
+                                    <h3 className="text-lg font-semibold mb-2">{state.task.name}</h3>
+                                    <p className="text-gray-400 mb-2">{state.task.objective}</p>
+                                    <p className="text-sm">{state.task.acceptanceCriteria.length} acceptance criteria</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Right Panel - Checkpoints & Logs */}
+                        <div>
+                            {/* Checkpoints */}
+                            {state.checkpoints.length > 0 && (
+                                <div className="bg-gray-800 rounded-lg p-6 mb-6">
+                                    <h3 className="text-lg font-semibold mb-4">Checkpoints</h3>
+                                    <div className="space-y-3">
+                                        {state.checkpoints.map((cp, i) => (
+                                            <div key={cp.id} className="p-3 bg-gray-700 rounded">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div>
+                                                        <p className="font-semibold">{i + 1}. {cp.name}</p>
+                                                        <p className="text-sm text-gray-400">{cp.objective}</p>
+                                                    </div>
+                                                    <StatusBadge status={state.executionStatus[cp.id]?.status || 'pending'} />
+                                                </div>
+                                                <div className="text-xs mt-2">
+                                                    <span className={`text-${cp.blocking ? 'red' : 'green'}-400`}>
+                                                        {cp.blocking ? 'Blocking' : 'Non-blocking'}
+                                                    </span>
+                                                    <span className="text-gray-500 ml-2">• {cp.passCriteria.length} tests</span>
+                                                </div>
+                                                {state.executionStatus[cp.id]?.logs?.length > 0 && (
+                                                    <div className="mt-2 text-xs">
+                                                        {state.executionStatus[cp.id].logs.map((log, idx) => (
+                                                            <div key={idx} className={`${log.passed ? 'text-green-400' : 'text-red-400'}`}>
+                                                                {log.passed ? '✓' : '✗'} {log.description}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Execution Logs */}
+                            <div className="bg-gray-800 rounded-lg p-6">
+                                <h3 className="text-lg font-semibold mb-4">Execution Logs</h3>
+                                <div className="h-64 overflow-y-auto bg-gray-900 rounded p-3 font-mono text-xs">
+                                    {state.logs.map((log, i) => (
+                                        <div key={i} className={`mb-1 ${
+                                            log.level === 'error' ? 'text-red-400' : 
+                                            log.level === 'success' ? 'text-green-400' : 
+                                            'text-gray-300'
+                                        }`}>
+                                            <span className="text-gray-500">[{log.timestamp}]</span> {log.message}
+                                        </div>
+                                    ))}
+                                    {state.logs.length === 0 && (
+                                        <div className="text-gray-500">No logs yet...</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
         }
 
-        function showLoading(message) {
-            document.getElementById('results').innerHTML = `
-                <div class="bg-gray-800 rounded-lg p-6">
-                    <p class="text-yellow-400">${message}</p>
-                </div>
-            `;
-        }
-
-        function showResult(title, content) {
-            document.getElementById('results').innerHTML = `
-                <div class="bg-gray-800 rounded-lg p-6">
-                    <h3 class="text-lg font-semibold mb-3 text-green-400">${title}</h3>
-                    ${content}
-                </div>
-            `;
-        }
-
-        function showError(error) {
-            const message = typeof error === 'object' && error.error ? error.error : error;
-            const instructions = typeof error === 'object' && error.instructions ? error.instructions : '';
-            
-            document.getElementById('results').innerHTML = `
-                <div class="bg-red-900 rounded-lg p-6">
-                    <p class="text-red-300">Error: ${message}</p>
-                    ${instructions ? `<p class="text-red-200 mt-2 text-sm">${instructions}</p>` : ''}
-                </div>
-            `;
-        }
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>

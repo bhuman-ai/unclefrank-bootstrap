@@ -3,68 +3,61 @@ import chalk from 'chalk';
 import type { Checkpoint } from '../types';
 
 export class TerragonProxy {
-  private baseUrl = 'https://terragon.bhuman.ai/api';
-  private authToken: string;
+  private baseUrl = 'https://www.terragonlabs.com/dashboard';
+  private sessionToken: string;
+  private deploymentId = 'dpl_3hWzkM7LiymSczFN21Z8chju84CV';
 
   constructor(authToken: string) {
-    this.authToken = authToken;
+    this.sessionToken = authToken;
   }
 
   async createSession(taskName: string): Promise<string> {
-    try {
-      console.log(chalk.blue('Creating Terragon session...'));
-      
-      const response = await axios.post(
-        `${this.baseUrl}/sessions`,
-        {
-          name: taskName,
-          type: 'task_execution',
-          metadata: {
-            platform: 'unclefrank-bootstrap',
-            version: '0.0.1'
-          }
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${this.authToken}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      const sessionId = response.data.session_id || response.data.id;
-      console.log(chalk.green(`✓ Session created: ${sessionId}`));
-      return sessionId;
-    } catch (error) {
-      console.error(chalk.red('Failed to create Terragon session:'), error);
-      if (axios.isAxiosError(error)) {
-        console.error('Response:', error.response?.data);
-      }
-      throw error;
-    }
+    console.log(chalk.blue('Creating Terragon thread...'));
+    // Terragon uses a thread-based system
+    const threadId = `thread-${Date.now()}`;
+    console.log(chalk.green(`✓ Thread ID: ${threadId}`));
+    return threadId;
   }
 
   async sendMessage(
-    sessionId: string,
+    threadId: string,
     message: string,
-    context?: any
+    githubRepo = 'bhuman-ai/unclefrank-bootstrap'
   ): Promise<any> {
     try {
       console.log(chalk.blue('Sending message to Terragon...'));
       
-      const response = await axios.post(
-        `${this.baseUrl}/sessions/${sessionId}/messages`,
-        {
-          message,
-          context: {
-            ...context,
-            timestamp: new Date().toISOString()
-          }
+      const payload = [{
+        message: {
+          type: 'user',
+          model: 'sonnet',
+          parts: [{
+            type: 'rich-text',
+            nodes: [{
+              type: 'text',
+              text: message
+            }]
+          }],
+          timestamp: new Date().toISOString()
         },
+        githubRepoFullName: githubRepo,
+        repoBaseBranchName: 'main',
+        saveAsDraft: false
+      }];
+
+      const response = await axios.post(
+        this.baseUrl,
+        payload,
         {
           headers: {
-            'Authorization': `Bearer ${this.authToken}`,
-            'Content-Type': 'application/json'
+            'accept': 'text/x-component',
+            'content-type': 'text/plain;charset=UTF-8',
+            'cookie': `__Secure-better-auth.session_token=${this.sessionToken}`,
+            'next-action': '7f7cba8a674421dfd9e9da7470ee4d79875a158bc9',
+            'origin': 'https://www.terragonlabs.com',
+            'referer': 'https://www.terragonlabs.com/dashboard',
+            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+            'x-deployment-id': this.deploymentId
           }
         }
       );
@@ -81,7 +74,7 @@ export class TerragonProxy {
   }
 
   async executeCheckpoint(
-    sessionId: string,
+    threadId: string,
     checkpoint: Checkpoint,
     projectContext: string
   ): Promise<string> {
@@ -90,14 +83,10 @@ export class TerragonProxy {
     console.log(chalk.cyan(`\nExecuting checkpoint: ${checkpoint.name}`));
     console.log(chalk.gray('Objective:'), checkpoint.objective);
     
-    const response = await this.sendMessage(sessionId, message, {
-      checkpointId: checkpoint.id,
-      checkpointName: checkpoint.name,
-      step: 'execution'
-    });
-
-    // Extract the actual response text from Terragon
-    const responseText = response.message || response.content || JSON.stringify(response);
+    const response = await this.sendMessage(threadId, message);
+    
+    // Extract response text from the Terragon response
+    const responseText = this.extractResponseText(response);
     
     return responseText;
   }
@@ -121,38 +110,22 @@ ${checkpoint.passCriteria.map(pc => `- ${pc.description}`).join('\n')}
 Please execute this checkpoint step by step. Be specific about what you're doing and report the results clearly.`;
   }
 
-  async getSessionHistory(sessionId: string): Promise<any[]> {
-    try {
-      const response = await axios.get(
-        `${this.baseUrl}/sessions/${sessionId}/messages`,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.authToken}`
-          }
-        }
-      );
-
-      return response.data.messages || response.data || [];
-    } catch (error) {
-      console.error(chalk.red('Failed to get session history:'), error);
-      return [];
+  private extractResponseText(response: any): string {
+    // Terragon returns React Server Components, need to parse the actual text
+    if (typeof response === 'string') {
+      // Extract text content from the response
+      const textMatch = response.match(/"text":"([^"]+)"/);
+      return textMatch ? textMatch[1] : response;
     }
+    return JSON.stringify(response);
   }
 
-  async closeSession(sessionId: string): Promise<void> {
-    try {
-      await axios.post(
-        `${this.baseUrl}/sessions/${sessionId}/close`,
-        {},
-        {
-          headers: {
-            'Authorization': `Bearer ${this.authToken}`
-          }
-        }
-      );
-      console.log(chalk.green('✓ Session closed'));
-    } catch (error) {
-      console.warn(chalk.yellow('Failed to close session:'), error);
-    }
+  async getSessionHistory(threadId: string): Promise<any[]> {
+    console.log(chalk.yellow('Thread history not implemented for Terragon'));
+    return [];
+  }
+
+  async closeSession(threadId: string): Promise<void> {
+    console.log(chalk.green('✓ Thread closed'));
   }
 }

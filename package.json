@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "run": "tsx src/index.ts",
+    "execute": "node -e \"process.stdin.isTTY = true\" node_modules/.bin/tsx src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit"
