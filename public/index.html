@@ -634,26 +634,34 @@ The system can execute tasks in Terragon, which creates GitHub branches, but the
                 addLog('Starting sequential checkpoint execution with Pass/Fail testing...', 'info');
                 
                 try {
-                    // First create a Terragon thread for the task context
-                    const taskContextMessage = `# TASK CONTEXT: ${state.task.name}
+                    // FRANK'S FIX: Send ONLY the first checkpoint, not context dump
+                    const firstCheckpoint = state.checkpoints[0];
+                    if (!firstCheckpoint) {
+                        throw new Error('No checkpoints found to execute');
+                    }
+                    
+                    const firstCheckpointMessage = `# CHECKPOINT 1: ${firstCheckpoint.name}
 
 ## Objective
-${state.task.objective}
+${firstCheckpoint.objective}
 
-## Project Context
-${state.projectContext || 'No additional context provided'}
+## Task Context
+${state.task.name}: ${state.task.objective}
 
-## Sacred Flow Instructions
-This task will be executed checkpoint-by-checkpoint following the sacred flow:
-1. Execute checkpoint
-2. Run Pass/Fail tests
-3. Only proceed if tests pass (retry up to 3 times)
-4. No checkpoint can be skipped
-5. Blocking checkpoints must pass before others can start
+## Blocking Status
+${firstCheckpoint.blocking ? '🚫 BLOCKING - Must pass before continuing' : '⚡ NON-BLOCKING - Can fail without halting'}
 
-Total checkpoints: ${state.checkpoints.length}`;
+## Instructions
+${firstCheckpoint.instructions.map((inst, j) => `${j + 1}. ${inst}`).join('\n')}
 
-                    // Create initial Terragon thread with task context
+## Pass Criteria (Must verify ALL):
+${firstCheckpoint.passCriteria.map((pc, i) => `✓ ${i + 1}. ${pc.description}`).join('\n')}
+
+Execute this checkpoint and report when complete. After completion, I will run tests to verify all pass criteria before proceeding to the next checkpoint.
+
+SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoint will be sent individually after the previous one passes its tests.`;
+
+                    // Create Terragon thread with FIRST CHECKPOINT ONLY
                     const dashboardPayload = [{
                         message: {
                             type: 'user',
@@ -662,7 +670,7 @@ Total checkpoints: ${state.checkpoints.length}`;
                                 type: 'rich-text',
                                 nodes: [{
                                     type: 'text',
-                                    text: taskContextMessage
+                                    text: firstCheckpointMessage
                                 }]
                             }],
                             timestamp: new Date().toISOString()
@@ -689,32 +697,111 @@ Total checkpoints: ${state.checkpoints.length}`;
                     const threadId = result.threadId;
                     const threadUrl = `https://www.terragonlabs.com/task/${threadId}`;
                     
-                    addLog(`Terragon thread created: ${threadId}`, 'success');
+                    addLog(`✅ Checkpoint 1 sent to Terragon thread: ${threadId}`, 'success');
                     addLog(`Monitor at: ${threadUrl}`, 'info');
                     
-                    // Initialize state for sequential execution and start execution
+                    // Initialize state - mark checkpoint 1 as executing (since we just sent it)
                     setState(prev => {
+                        const firstCheckpoint = prev.checkpoints[0];
+                        const newExecutionStatus = {
+                            [firstCheckpoint.id]: {
+                                status: 'executing',
+                                threadId: threadId,
+                                startTime: new Date().toISOString(),
+                                logs: [{ 
+                                    message: `Checkpoint 1 sent to Terragon`,
+                                    url: threadUrl
+                                }]
+                            }
+                        };
+                        
                         const newState = { 
                             ...prev, 
                             sessionId: threadId,
                             taskThreadId: threadId,
-                            checkpointQueue: [...prev.checkpoints], // Use prev.checkpoints not state.checkpoints
+                            checkpointQueue: [...prev.checkpoints],
                             currentCheckpointIndex: 0,
-                            executionStatus: {} // Start fresh
+                            executionStatus: newExecutionStatus
                         };
                         
-                        // Start execution after state update with proper queue
+                        // FRANK'S FIX: Wait for Terragon to actually complete before testing
                         setTimeout(() => {
-                            console.log('Starting first checkpoint execution with queue:', newState.checkpointQueue.length);
-                            // Call with explicit parameters to avoid stale closure
-                            executeNextCheckpointWithQueue(newState.checkpointQueue, 0, threadId);
-                        }, 1000);
+                            addLog('🔍 Waiting for Terragon to complete checkpoint 1...', 'info');
+                            // Wait longer for actual execution, then test
+                            setTimeout(() => {
+                                addLog('⚡ Starting REAL tests for checkpoint 1...', 'info');
+                                testCheckpointAndContinue(firstCheckpoint, newState.checkpointQueue, 0, threadId);
+                            }, 10000); // Wait 10 seconds for Terragon to work
+                        }, 2000);
                         
                         return newState;
                     });
                     
                 } catch (error) {
                     addLog(`Execution error: ${error.message}`, 'error');
+                    setExecuting(false);
+                }
+            };
+
+            // FRANK'S REAL TEST AND CONTINUE FUNCTION
+            const testCheckpointAndContinue = async (checkpoint, queue, currentIndex, threadId) => {
+                const checkpointNumber = currentIndex + 1;
+                addLog(`🧪 Testing checkpoint ${checkpointNumber}: ${checkpoint.name}`, 'info');
+                
+                try {
+                    const testResult = await testCheckpoint(checkpoint);
+                    
+                    if (testResult.passed) {
+                        // Mark as passed and move to next
+                        setState(prev => ({
+                            ...prev,
+                            executionStatus: {
+                                ...prev.executionStatus,
+                                [checkpoint.id]: {
+                                    ...prev.executionStatus[checkpoint.id],
+                                    status: 'pass',
+                                    testResults: testResult,
+                                    completedTime: new Date().toISOString()
+                                }
+                            }
+                        }));
+                        
+                        addLog(`✅ Checkpoint ${checkpointNumber} PASSED all tests!`, 'success');
+                        
+                        // Continue to next checkpoint
+                        if (currentIndex + 1 < queue.length) {
+                            setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex + 1, threadId), 2000);
+                        } else {
+                            addLog('🎉 All checkpoints completed!', 'success');
+                            await validateTaskCompletion();
+                            setExecuting(false);
+                        }
+                        
+                    } else {
+                        addLog(`❌ Checkpoint ${checkpointNumber} FAILED tests!`, 'error');
+                        setState(prev => ({
+                            ...prev,
+                            executionStatus: {
+                                ...prev.executionStatus,
+                                [checkpoint.id]: {
+                                    ...prev.executionStatus[checkpoint.id],
+                                    status: 'fail',
+                                    testResults: testResult,
+                                    failedTime: new Date().toISOString()
+                                }
+                            }
+                        }));
+                        
+                        if (checkpoint.blocking) {
+                            addLog('🚫 Blocking checkpoint failed - execution stopped', 'error');
+                            setExecuting(false);
+                        } else {
+                            addLog('⚡ Non-blocking checkpoint failed - continuing', 'info');
+                            setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex + 1, threadId), 2000);
+                        }
+                    }
+                } catch (error) {
+                    addLog(`Test error: ${error.message}`, 'error');
                     setExecuting(false);
                 }
             };
@@ -1174,23 +1261,8 @@ Please execute this checkpoint and report when complete. I will then run tests t
                         addLog(`Testing: ${criteria.description}`, 'info');
                         
                         try {
-                            // Call API to test this specific criteria
-                            const testResponse = await fetch(EXECUTE_URL, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ 
-                                    action: 'test',
-                                    checkpoint,
-                                    criteria,
-                                    sessionId: state.taskThreadId
-                                })
-                            });
-                            
-                            const testData = await testResponse.json();
-                            
-                            // For now, simulate test results since API returns pending
-                            // In real implementation, this would analyze the actual execution results
-                            const testPassed = await simulateTestExecution(criteria, checkpoint);
+                            // REAL TEST - NO SIMULATION BULLSHIT
+                            const testPassed = await executeRealTest(criteria, checkpoint);
                             
                             if (testPassed) {
                                 testResults.passedTests.push({
@@ -1237,26 +1309,38 @@ Please execute this checkpoint and report when complete. I will then run tests t
                 }
             };
 
-            // Simulate test execution for development
-            const simulateTestExecution = async (criteria, checkpoint) => {
-                // Wait for realistic test time
-                await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+            // REAL TEST EXECUTION - NO BULLSHIT SIMULATIONS
+            const executeRealTest = async (criteria, checkpoint) => {
+                addLog(`REAL TEST: ${criteria.description}`, 'info');
                 
-                // For demo purposes, simulate 80% pass rate
-                // In real implementation, this would check actual code/system state
-                const passRate = 0.8;
-                
-                // Some criteria keywords that should always pass for demo
-                const alwaysPassKeywords = ['function', 'component', 'create', 'add', 'implement'];
-                const shouldAlwaysPass = alwaysPassKeywords.some(keyword => 
-                    criteria.description.toLowerCase().includes(keyword)
-                );
-                
-                if (shouldAlwaysPass) {
-                    return true;
+                try {
+                    // Call API to run actual test
+                    const testResponse = await fetch('/api/execute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            action: 'test-real',
+                            checkpoint,
+                            criteria,
+                            testDescription: criteria.description
+                        })
+                    });
+                    
+                    if (!testResponse.ok) {
+                        addLog(`Test API call failed: ${testResponse.status}`, 'error');
+                        return false;
+                    }
+                    
+                    const testResult = await testResponse.json();
+                    addLog(`Test result: ${testResult.passed ? 'PASSED' : 'FAILED'} - ${testResult.details}`, 
+                           testResult.passed ? 'success' : 'error');
+                    
+                    return testResult.passed;
+                    
+                } catch (error) {
+                    addLog(`Test execution error: ${error.message}`, 'error');
+                    return false;
                 }
-                
-                return Math.random() < passRate;
             };
 
             // Validate checkpoint dependencies
@@ -1381,8 +1465,8 @@ Please execute this checkpoint and report when complete. I will then run tests t
                                 })
                             });
                             
-                            // For now, simulate validation since API doesn't handle this yet
-                            const criteriaPassed = await simulateTaskValidation(criteria);
+                            // REAL VALIDATION - NO FAKE SHIT
+                            const criteriaPassed = await executeRealTaskValidation(criteria);
                             
                             if (criteriaPassed) {
                                 taskValidation.passedCriteria.push({
@@ -1455,25 +1539,38 @@ Please execute this checkpoint and report when complete. I will then run tests t
                 }
             };
 
-            // Simulate task validation for development
-            const simulateTaskValidation = async (criteria) => {
-                // Wait for realistic validation time
-                await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 2500));
+            // REAL TASK VALIDATION - NO FAKE BULLSHIT
+            const executeRealTaskValidation = async (criteria) => {
+                addLog(`REAL TASK VALIDATION: ${criteria}`, 'info');
                 
-                // For demo purposes, simulate 90% pass rate for task-level criteria
-                // In real implementation, this would check actual system state
-                const passRate = 0.9;
-                
-                // Task-level criteria are more likely to pass if checkpoints succeeded
-                const checkpointSuccessRate = state.checkpoints.reduce((acc, cp) => {
-                    const status = state.executionStatus[cp.id];
-                    return acc + (status?.status === 'pass' ? 1 : 0);
-                }, 0) / state.checkpoints.length;
-                
-                // Boost pass rate based on checkpoint success
-                const adjustedPassRate = Math.min(passRate + (checkpointSuccessRate * 0.1), 0.95);
-                
-                return Math.random() < adjustedPassRate;
+                try {
+                    // Call API to run actual task-level validation
+                    const validationResponse = await fetch('/api/execute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            action: 'validate-task-real',
+                            criteria,
+                            task: state.task,
+                            checkpointResults: state.executionStatus
+                        })
+                    });
+                    
+                    if (!validationResponse.ok) {
+                        addLog(`Task validation API failed: ${validationResponse.status}`, 'error');
+                        return false;
+                    }
+                    
+                    const validationResult = await validationResponse.json();
+                    addLog(`Task validation: ${validationResult.passed ? 'PASSED' : 'FAILED'} - ${validationResult.details}`, 
+                           validationResult.passed ? 'success' : 'error');
+                    
+                    return validationResult.passed;
+                    
+                } catch (error) {
+                    addLog(`Task validation error: ${error.message}`, 'error');
+                    return false;
+                }
             };
 
             // No longer executing checkpoints individually
