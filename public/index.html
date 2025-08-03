@@ -17,8 +17,22 @@
 
         // State management
         const initialState = {
-            request: '',
-            projectContext: '',
+            request: 'Implement Task Review UI that shows completed tasks awaiting human review with GitHub integration. This must include: 1) Task Queue view showing tasks with "Awaiting Review" status after Terragon completes them, 2) Display the GitHub branch created by Terragon, 3) Show acceptance criteria as a review checklist, 4) Provide View Changes, Run Tests, Approve, and Request Changes buttons, 5) Integration with GitHub API to detect branches and create PRs, 6) Merge Review Screen showing diffs, 7) Update task status from "sent" through "completed", "awaiting review", to "merged"',
+            projectContext: `# Current State
+The system can execute tasks in Terragon, which creates GitHub branches, but there's no UI to review and approve these completed tasks. According to Interface.md, we need screens #3 (Task Queue), #7 (Merge Review), #9 (GitHub Integration), and #15 (Escalation Notifications).
+
+# Requirements from Interface.md
+- Task Queue must show task status management
+- Merge Review Screen must show Draft vs Production diff viewer  
+- GitHub Integration Panel must show repo browser and PR statuses
+- System must enforce the immutable flow - no bypassing allowed
+- Every action must have immediate feedback
+
+# Technical Context
+- Tasks are executed in Terragon and push to branches like "terragon/project-md-validation-system"
+- System uses GitHub API for integration
+- React-based UI in public/index.html
+- Task state is managed in React component state`,
             task: null,
             checkpoints: [],
             executionStatus: {},
