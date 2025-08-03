@@ -24,7 +24,8 @@
             executionStatus: {},
             sessionId: null,
             logs: [],
-            activeThreads: {} // Track thread IDs for each checkpoint
+            activeThreads: {}, // Track thread IDs for each checkpoint
+            taskThreadId: null // One thread per task
         };
 
         function App() {
@@ -119,36 +120,89 @@
 
             // Execute all checkpoints
             const executeAllCheckpoints = async () => {
-                if (!state.checkpoints.length) {
+                if (!state.checkpoints.length || !state.task) {
                     alert('No checkpoints to execute');
                     return;
                 }
                 
                 setExecuting(true);
-                addLog('Starting execution session...', 'info');
+                addLog('Creating Terragon thread for task...', 'info');
                 
-                // Start execution session
                 try {
-                    const startResponse = await fetch(EXECUTE_URL, {
+                    // Create ONE thread for the entire task
+                    const threadId = `task-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+                    const threadUrl = `https://www.terragonlabs.com/task/${threadId}`;
+                    
+                    addLog(`Task thread created: ${threadId}`, 'success');
+                    addLog(`Thread URL: ${threadUrl}`, 'info');
+                    
+                    // Set the thread ID for the entire task
+                    setState(prev => ({ 
+                        ...prev, 
+                        sessionId: threadId,
+                        taskThreadId: threadId 
+                    }));
+                    
+                    // Build the complete task message with all checkpoints
+                    const taskMessage = `# TASK EXECUTION: ${state.task.name}
+
+## Objective
+${state.task.objective}
+
+## Project Context
+${state.projectContext || 'No additional context provided'}
+
+## Checkpoints to Execute
+${state.checkpoints.map((cp, i) => `
+### ${i + 1}. ${cp.name}
+**Objective:** ${cp.objective}
+**Instructions:**
+${cp.instructions.map((inst, j) => `  ${j + 1}. ${inst}`).join('\n')}
+**Pass Criteria:**
+${cp.passCriteria.map(pc => `  - ${pc.description}`).join('\n')}
+`).join('\n')}
+
+Please execute each checkpoint sequentially and report the results for each one.`;
+
+                    // Send the complete task to Terragon
+                    const response = await fetch('/api/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'start' })
+                        body: JSON.stringify({ 
+                            threadId: threadId,
+                            message: taskMessage
+                        })
                     });
                     
-                    const startData = await startResponse.json();
-                    if (!startResponse.ok) throw new Error(startData.error);
-                    
-                    setState(prev => ({ ...prev, sessionId: startData.sessionId }));
-                    addLog(`Session started: ${startData.sessionId}`, 'success');
-                    
-                    // Execute checkpoints sequentially
-                    for (const checkpoint of state.checkpoints) {
-                        if (checkpoint.blocking || state.checkpoints.indexOf(checkpoint) === 0) {
-                            await executeCheckpoint(checkpoint);
-                        }
+                    if (!response.ok) {
+                        throw new Error(`Failed to send task to Terragon: ${response.status}`);
                     }
                     
-                    addLog('All checkpoints executed!', 'success');
+                    // Update all checkpoints to show they're in the same thread
+                    const newActiveThreads = {};
+                    const newExecutionStatus = {};
+                    
+                    state.checkpoints.forEach(cp => {
+                        newActiveThreads[cp.id] = threadId;
+                        newExecutionStatus[cp.id] = {
+                            status: 'sent',
+                            threadId: threadId,
+                            logs: [{ 
+                                message: `Queued in Terragon thread`,
+                                url: threadUrl
+                            }]
+                        };
+                    });
+                    
+                    setState(prev => ({
+                        ...prev,
+                        activeThreads: newActiveThreads,
+                        executionStatus: newExecutionStatus
+                    }));
+                    
+                    addLog('All checkpoints sent to Terragon!', 'success');
+                    addLog(`Monitor progress at: ${threadUrl}`, 'info');
+                    
                 } catch (error) {
                     addLog(`Execution error: ${error.message}`, 'error');
                 }
@@ -156,8 +210,9 @@
                 setExecuting(false);
             };
 
-            // Execute single checkpoint
+            // No longer executing checkpoints individually
             const executeCheckpoint = async (checkpoint) => {
+                // DEPRECATED - we now send all checkpoints to one thread
                 addLog(`Executing: ${checkpoint.name}`, 'info');
                 
                 // Update status to in_progress
@@ -369,6 +424,22 @@
                                     <h3 className="text-lg font-semibold mb-2">{state.task.name}</h3>
                                     <p className="text-gray-400 mb-2">{state.task.objective}</p>
                                     <p className="text-sm">{state.task.acceptanceCriteria.length} acceptance criteria</p>
+                                    
+                                    {/* Task-level Terragon Chat */}
+                                    {state.taskThreadId && (
+                                        <div className="mt-4 pt-4 border-t border-gray-700">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-sm font-semibold">Terragon Thread</span>
+                                                <span className="text-xs text-gray-500">{state.taskThreadId}</span>
+                                            </div>
+                                            <button 
+                                                onClick={() => window.open(`https://www.terragonlabs.com/task/${state.taskThreadId}`, '_blank')}
+                                                className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm transition"
+                                            >
+                                                Open in Terragon →
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -411,44 +482,6 @@
                                                                 )}
                                                             </div>
                                                         ))}
-                                                    </div>
-                                                )}
-                                                
-                                                {/* Terragon Chat for this checkpoint */}
-                                                {state.activeThreads[cp.id] && (
-                                                    <div className="mt-3 border-t border-gray-600 pt-3">
-                                                        <div className="flex items-center justify-between mb-2">
-                                                            <span className="text-xs font-semibold text-gray-400">Terragon Chat</span>
-                                                            <span className="text-xs text-gray-500">Thread: {state.activeThreads[cp.id].substring(0, 8)}...</span>
-                                                        </div>
-                                                        <div className="bg-gray-900 rounded p-2 h-32 overflow-y-auto text-xs mb-2">
-                                                            <div className="text-gray-400">
-                                                                <p>→ Executing: {cp.name}</p>
-                                                                <p className="text-gray-500 mt-1">Check Terragon for live updates...</p>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex gap-1">
-                                                            <input 
-                                                                type="text" 
-                                                                placeholder="Send message to Terragon..."
-                                                                className="flex-1 px-2 py-1 bg-gray-700 rounded text-xs border border-gray-600 focus:border-blue-500 focus:outline-none"
-                                                                onKeyPress={(e) => {
-                                                                    if (e.key === 'Enter' && e.target.value) {
-                                                                        // TODO: Send message to Terragon
-                                                                        addLog(`Message to ${cp.name}: ${e.target.value}`, 'info');
-                                                                        e.target.value = '';
-                                                                    }
-                                                                }}
-                                                            />
-                                                            <button 
-                                                                className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs transition"
-                                                                onClick={() => {
-                                                                    window.open(`https://www.terragonlabs.com/task/${state.activeThreads[cp.id]}`, '_blank');
-                                                                }}
-                                                            >
-                                                                View
-                                                            </button>
-                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
