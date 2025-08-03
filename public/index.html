@@ -724,15 +724,11 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             executionStatus: newExecutionStatus
                         };
                         
-                        // FRANK'S FIX: Wait for Terragon to actually complete before testing
+                        // FRANK'S REAL FIX: Poll Terragon until actual completion
                         setTimeout(() => {
-                            addLog('🔍 Waiting for Terragon to complete checkpoint 1...', 'info');
-                            // Wait longer for actual execution, then test
-                            setTimeout(() => {
-                                addLog('⚡ Starting REAL tests for checkpoint 1...', 'info');
-                                testCheckpointAndContinue(firstCheckpoint, newState.checkpointQueue, 0, threadId);
-                            }, 10000); // Wait 10 seconds for Terragon to work
-                        }, 2000);
+                            addLog('🔍 Polling Terragon thread for actual completion...', 'info');
+                            pollTerragonForCompletion(threadId, firstCheckpoint, newState.checkpointQueue, 0);
+                        }, 5000); // Give it 5 seconds to start, then poll
                         
                         return newState;
                     });
@@ -740,6 +736,68 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                 } catch (error) {
                     addLog(`Execution error: ${error.message}`, 'error');
                     setExecuting(false);
+                }
+            };
+
+            // FRANK'S TERRAGON COMPLETION POLLING - NO MORE FAKE TIMING
+            const pollTerragonForCompletion = async (threadId, checkpoint, queue, currentIndex, pollCount = 0) => {
+                const maxPolls = 60; // Max 5 minutes of polling (5 seconds * 60)
+                const checkpointNumber = currentIndex + 1;
+                
+                addLog(`🔄 Polling attempt ${pollCount + 1}: Checking if Terragon completed checkpoint ${checkpointNumber}`, 'info');
+                
+                try {
+                    // Check Terragon thread status via our API
+                    const statusResponse = await fetch('/api/execute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            action: 'check-terragon-status',
+                            threadId: threadId
+                        })
+                    });
+                    
+                    if (statusResponse.ok) {
+                        const statusResult = await statusResponse.json();
+                        
+                        if (statusResult.completed) {
+                            addLog(`✅ Terragon ACTUALLY completed checkpoint ${checkpointNumber}!`, 'success');
+                            addLog(`📝 Status: ${statusResult.status} - ${statusResult.message}`, 'info');
+                            
+                            // NOW run contextless tests after verified completion
+                            setTimeout(() => {
+                                testCheckpointAndContinue(checkpoint, queue, currentIndex, threadId);
+                            }, 1000);
+                            return;
+                        } else {
+                            addLog(`⏳ Terragon still working on checkpoint ${checkpointNumber}... (${statusResult.status})`, 'info');
+                        }
+                    } else {
+                        addLog(`⚠️ Could not check Terragon status, assuming still working...`, 'info');
+                    }
+                    
+                    // Continue polling if not complete and under max attempts
+                    if (pollCount < maxPolls) {
+                        setTimeout(() => {
+                            pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1);
+                        }, 5000); // Poll every 5 seconds
+                    } else {
+                        addLog(`🕐 Max polling time reached (5 minutes). Proceeding with tests anyway...`, 'error');
+                        testCheckpointAndContinue(checkpoint, queue, currentIndex, threadId);
+                    }
+                    
+                } catch (error) {
+                    addLog(`Polling error: ${error.message}`, 'error');
+                    
+                    // If polling fails, wait a bit more and continue
+                    if (pollCount < 5) {
+                        setTimeout(() => {
+                            pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1);
+                        }, 10000);
+                    } else {
+                        addLog(`Polling failed multiple times, proceeding with tests...`, 'error');
+                        testCheckpointAndContinue(checkpoint, queue, currentIndex, threadId);
+                    }
                 }
             };
 
@@ -912,14 +970,16 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                         }
                     }));
                     
-                    addLog(`Checkpoint sent to Terragon, waiting for execution...`, 'info');
+                    addLog(`✅ Checkpoint ${checkpointNumber} sent to Terragon thread: ${threadId}`, 'success');
+                    addLog(`Monitor at: https://www.terragonlabs.com/task/${threadId}`, 'info');
                     
-                    // Wait for Terragon to execute (in real implementation, would poll for completion)
-                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    // FRANK'S REAL POLLING - NO FAKE TIMING
+                    addLog(`🔍 Waiting for Terragon to complete checkpoint ${checkpointNumber}...`, 'info');
+                    setTimeout(() => {
+                        pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex);
+                    }, 2000); // Small delay before polling starts
                     
-                    // Run pass/fail tests
-                    addLog(`Running Pass/Fail tests for ${checkpoint.name}...`, 'info');
-                    const testResult = await testCheckpoint(checkpoint);
+                    return; // Exit here - polling will handle the rest
                     
                     if (testResult.passed) {
                         // Mark as passed and move to next
