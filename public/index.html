@@ -14,7 +14,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useCallback } = React;
 
         // GitHub API Service
         const GitHubService = {
@@ -703,7 +703,10 @@ Total checkpoints: ${state.checkpoints.length}`;
                     }));
                     
                     // Start executing the first checkpoint
-                    setTimeout(() => executeNextCheckpoint(), 1000);
+                    setTimeout(() => {
+                        console.log('Starting first checkpoint execution');
+                        executeNextCheckpoint();
+                    }, 1000);
                     
                 } catch (error) {
                     addLog(`Execution error: ${error.message}`, 'error');
@@ -713,8 +716,23 @@ Total checkpoints: ${state.checkpoints.length}`;
 
             // Execute next checkpoint in queue
             const executeNextCheckpoint = async () => {
+                console.log('executeNextCheckpoint called');
+                console.log('Current state:', {
+                    currentCheckpointIndex: state.currentCheckpointIndex,
+                    checkpointQueue: state.checkpointQueue?.length,
+                    checkpoints: state.checkpoints?.length
+                });
+                
                 const currentIndex = state.currentCheckpointIndex || 0;
                 const queue = state.checkpointQueue || state.checkpoints;
+                
+                addLog(`Checking execution: index=${currentIndex}, queue length=${queue?.length || 0}`, 'info');
+                
+                if (!queue || queue.length === 0) {
+                    addLog('ERROR: No checkpoints found in queue!', 'error');
+                    setExecuting(false);
+                    return;
+                }
                 
                 if (currentIndex >= queue.length) {
                     addLog('All checkpoints completed, running final validation...', 'info');
