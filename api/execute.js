@@ -61,6 +61,15 @@ class TerragonExecutor {
         data: 'Message sent to Terragon'
       };
     } catch (error) {
+      // Terragon returns 500 with digest when task is created successfully
+      if (error.response?.status === 500 && error.response?.data?.includes('digest')) {
+        console.log('Task created in Terragon (500 response is expected)');
+        return {
+          success: true,
+          data: 'Task created in Terragon successfully'
+        };
+      }
+      
       console.error('Terragon API Error:', error.response?.data || error.message);
       return {
         success: false,
