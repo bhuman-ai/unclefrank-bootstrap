@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { MetaAgent } from '../src/agents/meta-agent.js';
-import { DocumentManager } from '../src/core/document-manager.js';
-import { TerragonProxy } from '../src/core/terragon-proxy.js';
-import { PrincipleEnforcer } from '../src/core/principle-enforcer.js';
+import { MetaAgent } from '../src/agents/meta-agent';
+import { DocumentManager } from '../src/core/document-manager';
+import { TerragonProxy } from '../src/core/terragon-proxy';
+import { PrincipleEnforcer } from '../src/core/principle-enforcer';
 
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || '';
 const TERRAGON_AUTH = process.env.TERRAGON_AUTH || 'JTgr3pSvWUN2bNmaO66GnTGo2wrk1zFf.fW4Qo8gvM1lTf%2Fis9Ss%2FJOdlSKJrnLR0CapMdm%2Bcy0U%3D';

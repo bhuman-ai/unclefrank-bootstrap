@@ -1,6 +1,6 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
+  "buildCommand": "echo 'No build required'",
+  "outputDirectory": "public",
   "framework": null,
   "installCommand": "npm install",
   "functions": {
