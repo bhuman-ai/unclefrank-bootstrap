@@ -1,5 +1,4 @@
 // Vercel Edge Function for Terragon Chat
-import axios from 'axios';
 
 const TERRAGON_AUTH = process.env.TERRAGON_AUTH || 'JTgr3pSvWUN2bNmaO66GnTGo2wrk1zFf.fW4Qo8gvM1lTf%2Fis9Ss%2FJOdlSKJrnLR0CapMdm%2Bcy0U%3D';
 const TERRAGON_BASE_URL = 'https://www.terragonlabs.com';
@@ -66,10 +65,10 @@ async function handleSendMessage(req, res) {
       }
     }];
 
-    const response = await axios.post(
+    const response = await fetch(
       `${TERRAGON_BASE_URL}/task/${threadId}`,
-      payload,
       {
+        method: 'POST',
         headers: {
           'accept': 'text/x-component',
           'content-type': 'text/plain;charset=UTF-8',
@@ -79,12 +78,14 @@ async function handleSendMessage(req, res) {
           'referer': `${TERRAGON_BASE_URL}/task/${threadId}`,
           'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
           'x-deployment-id': 'dpl_3hWzkM7LiymSczFN21Z8chju84CV'
-        }
+        },
+        body: JSON.stringify(payload)
       }
     );
 
     // Extract messages from response
-    const messages = extractMessages(response.data);
+    const responseText = await response.text();
+    const messages = extractMessages(responseText);
     
     res.status(200).json({ 
       success: true, 
@@ -93,10 +94,10 @@ async function handleSendMessage(req, res) {
       responses: messages
     });
   } catch (error) {
-    console.error('Failed to send message:', error.response?.data || error.message);
+    console.error('Failed to send message:', error.message);
     res.status(500).json({ 
       error: 'Failed to send message', 
-      details: error.response?.data || error.message 
+      details: error.message 
     });
   }
 }
@@ -111,9 +112,10 @@ async function handleGetMessages(req, res) {
   }
 
   try {
-    const response = await axios.get(
+    const response = await fetch(
       `${TERRAGON_BASE_URL}/task/${threadId}`,
       {
+        method: 'GET',
         headers: {
           'accept': 'text/x-component',
           'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
@@ -123,7 +125,8 @@ async function handleGetMessages(req, res) {
       }
     );
 
-    const messages = extractMessages(response.data);
+    const responseText = await response.text();
+    const messages = extractMessages(responseText);
     
     res.status(200).json({ 
       success: true, 
@@ -131,10 +134,10 @@ async function handleGetMessages(req, res) {
       messages 
     });
   } catch (error) {
-    console.error('Failed to get messages:', error.response?.data || error.message);
+    console.error('Failed to get messages:', error.message);
     res.status(500).json({ 
       error: 'Failed to get messages', 
-      details: error.response?.data || error.message 
+      details: error.message 
     });
   }
 }
@@ -160,7 +163,3 @@ function extractMessages(responseData) {
   }
   return messages;
 }
-
-export const config = {
-  runtime: 'edge',
-};
