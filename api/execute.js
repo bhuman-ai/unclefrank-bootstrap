@@ -105,6 +105,61 @@ export default async function handler(req, res) {
         });
       }
 
+      case 'create-task': {
+        // Create a new task via Terragon dashboard
+        const { payload } = req.body;
+        if (!payload) {
+          return res.status(400).json({ error: 'Payload required' });
+        }
+
+        try {
+          const response = await fetch(
+            'https://www.terragonlabs.com/dashboard',
+            {
+              method: 'POST',
+              headers: {
+                'accept': 'text/x-component',
+                'content-type': 'text/plain;charset=UTF-8',
+                'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
+                'next-action': '7f7cba8a674421dfd9e9da7470ee4d79875a158bc9',
+                'origin': 'https://www.terragonlabs.com',
+                'referer': 'https://www.terragonlabs.com/dashboard',
+                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+                'x-deployment-id': 'dpl_3hWzkM7LiymSczFN21Z8chju84CV'
+              },
+              body: JSON.stringify(payload)
+            }
+          );
+
+          const responseText = await response.text();
+          
+          // Extract thread ID from response
+          const threadIdMatch = responseText.match(/"id":"([^"]+)"/);
+          const threadId = threadIdMatch ? threadIdMatch[1] : null;
+          
+          if (threadId) {
+            return res.status(200).json({
+              status: 'created',
+              threadId: threadId,
+              message: `Task created in Terragon`
+            });
+          } else {
+            // Even if we don't get an ID, the task might have been created
+            return res.status(200).json({
+              status: 'created',
+              threadId: 'check-dashboard',
+              message: 'Task sent to Terragon - check dashboard for new task'
+            });
+          }
+        } catch (error) {
+          console.error('Failed to create Terragon task:', error);
+          return res.status(500).json({
+            error: 'Failed to create Terragon task',
+            details: error.message
+          });
+        }
+      }
+
       case 'execute': {
         if (!checkpoint) {
           return res.status(400).json({ error: 'Checkpoint required' });

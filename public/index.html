@@ -129,19 +129,8 @@
                 addLog('Creating Terragon thread for task...', 'info');
                 
                 try {
-                    // Create ONE thread for the entire task
-                    const threadId = `task-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-                    const threadUrl = `https://www.terragonlabs.com/task/${threadId}`;
-                    
-                    addLog(`Task thread created: ${threadId}`, 'success');
-                    addLog(`Thread URL: ${threadUrl}`, 'info');
-                    
-                    // Set the thread ID for the entire task
-                    setState(prev => ({ 
-                        ...prev, 
-                        sessionId: threadId,
-                        taskThreadId: threadId 
-                    }));
+                    // Create a real Terragon task via dashboard endpoint
+                    addLog('Creating real Terragon task...', 'info');
                     
                     // Build the complete task message with all checkpoints
                     const taskMessage = `# TASK EXECUTION: ${state.task.name}
@@ -164,19 +153,50 @@ ${cp.passCriteria.map(pc => `  - ${pc.description}`).join('\n')}
 
 Please execute each checkpoint sequentially and report the results for each one.`;
 
-                    // Send the complete task to Terragon
-                    const response = await fetch('/api/chat', {
+                    // Create a new Terragon task via dashboard
+                    const dashboardPayload = [{
+                        message: {
+                            type: 'user',
+                            model: 'sonnet',
+                            parts: [{
+                                type: 'rich-text',
+                                nodes: [{
+                                    type: 'text',
+                                    text: taskMessage
+                                }]
+                            }],
+                            timestamp: new Date().toISOString()
+                        },
+                        githubRepoFullName: 'bhuman-ai/unclefrank-bootstrap',
+                        repoBaseBranchName: 'master',
+                        saveAsDraft: false
+                    }];
+
+                    const response = await fetch('/api/execute', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
-                            threadId: threadId,
-                            message: taskMessage
+                            action: 'create-task',
+                            payload: dashboardPayload
                         })
                     });
                     
+                    const result = await response.json();
                     if (!response.ok) {
-                        throw new Error(`Failed to send task to Terragon: ${response.status}`);
+                        throw new Error(result.error || `Failed to create Terragon task: ${response.status}`);
                     }
+                    
+                    const threadId = result.threadId;
+                    const threadUrl = `https://www.terragonlabs.com/task/${threadId}`;
+                    
+                    addLog(`Task created with ID: ${threadId}`, 'success');
+                    
+                    // Set the thread ID for the entire task
+                    setState(prev => ({ 
+                        ...prev, 
+                        sessionId: threadId,
+                        taskThreadId: threadId 
+                    }));
                     
                     // Update all checkpoints to show they're in the same thread
                     const newActiveThreads = {};
