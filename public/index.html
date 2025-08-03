@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uncle Frank's Bootstrap Core</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <h1 class="text-4xl font-bold mb-2">🔨 Uncle Frank's Bootstrap Core</h1>
+        <p class="text-gray-400 mb-8">No BS Autonomous LLM Development Platform</p>
+
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h2 class="text-2xl font-semibold mb-4">Create New Task</h2>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2">Request</label>
+                <textarea 
+                    id="request" 
+                    class="w-full px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                    rows="3"
+                    placeholder="e.g., Add Discord bot integration"
+                ></textarea>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2">Project Context (optional)</label>
+                <textarea 
+                    id="context" 
+                    class="w-full px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                    rows="3"
+                    placeholder="Paste your Project.md content here..."
+                ></textarea>
+            </div>
+
+            <div class="flex gap-2">
+                <button 
+                    onclick="classifyRequest()"
+                    class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded transition"
+                >
+                    Classify
+                </button>
+                <button 
+                    onclick="decomposeTask()"
+                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition"
+                >
+                    Decompose Task
+                </button>
+            </div>
+        </div>
+
+        <div id="results" class="space-y-4"></div>
+    </div>
+
+    <script>
+        const API_URL = '/api/task';
+
+        async function classifyRequest() {
+            const request = document.getElementById('request').value;
+            if (!request) {
+                alert('Please enter a request');
+                return;
+            }
+
+            showLoading('Classifying request...');
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'classify', request })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('Classification Result', `
+                        <p><strong>Type:</strong> ${data.classification.type}</p>
+                        <p><strong>Confidence:</strong> ${(data.classification.confidence * 100).toFixed(0)}%</p>
+                        <p><strong>Reasoning:</strong> ${data.classification.reasoning}</p>
+                    `);
+                } else {
+                    showError(data.error);
+                }
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        async function decomposeTask() {
+            const request = document.getElementById('request').value;
+            const projectContext = document.getElementById('context').value;
+            
+            if (!request) {
+                alert('Please enter a request');
+                return;
+            }
+
+            showLoading('Decomposing task...');
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'decompose', request, projectContext })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const checkpointList = data.checkpoints.map((cp, i) => `
+                        <div class="mb-3 p-3 bg-gray-700 rounded">
+                            <p class="font-semibold">${i + 1}. ${cp.name}</p>
+                            <p class="text-sm text-gray-400">${cp.objective}</p>
+                            <p class="text-xs mt-1">
+                                <span class="text-${cp.blocking ? 'red' : 'green'}-400">
+                                    ${cp.blocking ? 'Blocking' : 'Non-blocking'}
+                                </span>
+                                • ${cp.passCriteria.length} tests
+                            </p>
+                        </div>
+                    `).join('');
+
+                    showResult('Task Decomposition', `
+                        <div class="mb-4">
+                            <h3 class="text-xl font-semibold">${data.task.name}</h3>
+                            <p class="text-gray-400">${data.task.objective}</p>
+                            <p class="mt-2">${data.task.acceptanceCriteria.length} acceptance criteria</p>
+                        </div>
+                        <h4 class="font-semibold mb-2">Checkpoints:</h4>
+                        ${checkpointList}
+                    `);
+                } else {
+                    showError(data.error);
+                }
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        function showLoading(message) {
+            document.getElementById('results').innerHTML = `
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <p class="text-yellow-400">${message}</p>
+                </div>
+            `;
+        }
+
+        function showResult(title, content) {
+            document.getElementById('results').innerHTML = `
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <h3 class="text-lg font-semibold mb-3 text-green-400">${title}</h3>
+                    ${content}
+                </div>
+            `;
+        }
+
+        function showError(message) {
+            document.getElementById('results').innerHTML = `
+                <div class="bg-red-900 rounded-lg p-6">
+                    <p class="text-red-300">Error: ${message}</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
