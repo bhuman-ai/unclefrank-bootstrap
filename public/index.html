@@ -97,12 +97,35 @@
                 setTestStatus('running');
                 
                 try {
-                    // Simulate test run
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    setTestStatus('passed');
-                    onRunTests(task);
+                    // FRANK'S REAL TEST EXECUTION - NO SIMULATIONS
+                    setTestStatus('running');
+                    addLog(`Running real tests for ${task.name}...`, 'info');
+                    
+                    const testResponse = await fetch('/api/execute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            action: 'validate-task-real',
+                            task: task,
+                            criteria: task.acceptanceCriteria || 'Task completion validation',
+                            checkpointResults: state.executionStatus
+                        })
+                    });
+                    
+                    if (testResponse.ok) {
+                        const testData = await testResponse.json();
+                        const status = testData.passed ? 'passed' : 'failed';
+                        setTestStatus(status);
+                        addLog(`Test result: ${status.toUpperCase()} - ${testData.details}`, 
+                               status === 'passed' ? 'success' : 'error');
+                        if (status === 'passed') onRunTests(task);
+                    } else {
+                        setTestStatus('failed');
+                        addLog('Test execution failed', 'error');
+                    }
                 } catch (error) {
                     setTestStatus('failed');
+                    addLog(`Test error: ${error.message}`, 'error');
                 } finally {
                     setLoading(false);
                 }
@@ -536,7 +559,9 @@ The system can execute tasks in Terragon, which creates GitHub branches, but the
                     
                 } catch (error) {
                     addLog(`Failed to load tasks from GitHub: ${error.message}`, 'error');
-                    // Fall back to hardcoded tasks if GitHub fails
+                    // FRANK'S RULE: NO FALLBACKS - FAIL FAST AND HONEST
+                    addLog('System requires GitHub integration to function. Fix the connection.', 'error');
+                    setTasks([]);
                 }
                 
                 setLoadingTasks(false);
@@ -1889,9 +1914,36 @@ Please execute this checkpoint and report when complete. I will then run tests t
                 setDiffViewerOpen(true);
             };
 
-            const handleRunTests = (task) => {
-                addLog(`Running tests for ${task.name}`, 'info');
-                // TODO: Implement actual test runner integration
+            const handleRunTests = async (task) => {
+                addLog(`Running comprehensive tests for ${task.name}`, 'info');
+                
+                try {
+                    // FRANK'S REAL TEST RUNNER - NO TODOS
+                    const testResponse = await fetch('/api/execute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            action: 'validate-task-real',
+                            task: task,
+                            criteria: task.acceptanceCriteria || task.description,
+                            checkpointResults: state.executionStatus
+                        })
+                    });
+                    
+                    if (testResponse.ok) {
+                        const testData = await testResponse.json();
+                        addLog(`Task validation: ${testData.passed ? 'PASSED' : 'FAILED'}`, 
+                               testData.passed ? 'success' : 'error');
+                        addLog(`Details: ${testData.details}`, 'info');
+                        return testData.passed;
+                    } else {
+                        addLog('Task validation API failed', 'error');
+                        return false;
+                    }
+                } catch (error) {
+                    addLog(`Test runner error: ${error.message}`, 'error');
+                    return false;
+                }
             };
 
             const handleApprove = async (task) => {

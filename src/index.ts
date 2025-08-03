@@ -184,13 +184,48 @@ class UncleFrankBootstrap {
   private async runTests(checkpoint: Checkpoint): Promise<boolean> {
     console.log(chalk.blue('Running tests...'));
     
-    // In a real implementation, we'd actually run the test commands
-    // For now, simulate with user confirmation
+    // FRANK'S REAL TEST EXECUTION - NO USER CONFIRMATION BULLSHIT
     for (const criterion of checkpoint.passCriteria) {
-      const passed = await confirm(`Does this pass: "${criterion.description}"?`);
-      criterion.passed = passed;
+      console.log(chalk.blue(`Testing: ${criterion.description}`));
       
-      if (!passed) {
+      try {
+        // Execute the actual test command or validation
+        let passed = false;
+        
+        if (criterion.testCommand) {
+          // Run actual test command
+          const { exec } = require('child_process');
+          const result = await new Promise((resolve) => {
+            exec(criterion.testCommand, (error, stdout, stderr) => {
+              resolve({ success: !error, output: stdout, error: stderr });
+            });
+          });
+          passed = result.success;
+          console.log(chalk.gray(`Command output: ${result.output}`));
+        } else if (criterion.description.includes('file') && criterion.description.includes('exists')) {
+          // File existence check
+          const fs = require('fs');
+          const fileName = criterion.description.match(/(\w+\.?\w*)/)?.[1];
+          if (fileName) {
+            passed = fs.existsSync(fileName);
+          }
+        } else {
+          // Default: fail if no clear test criteria
+          console.log(chalk.red(`No automated test available for: ${criterion.description}`));
+          passed = false;
+        }
+        
+        criterion.passed = passed;
+        
+        if (passed) {
+          console.log(chalk.green(`✓ ${criterion.description}`));
+        } else {
+          console.log(chalk.red(`✗ ${criterion.description}`));
+          return false;
+        }
+      } catch (error) {
+        console.log(chalk.red(`Test failed: ${error.message}`));
+        criterion.passed = false;
         return false;
       }
     }

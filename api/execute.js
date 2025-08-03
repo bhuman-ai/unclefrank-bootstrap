@@ -427,12 +427,23 @@ Will report results once test instance completes verification.`
               validationPassed = indexContent.includes('ProjectEditor') || indexContent.includes('Draft');
               validationDetails = validationPassed ? 'UI components found' : 'UI components missing';
             } else if (criteria.includes('API') || criteria.includes('endpoint')) {
-              validationPassed = true; // Assume API validation passes for now
-              validationDetails = 'API endpoints validated';
+              // FRANK'S REAL API VALIDATION - NO ASSUMPTIONS
+              try {
+                const apiTestResponse = await fetch('/api/execute', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'start' })
+                });
+                validationPassed = apiTestResponse.ok;
+                validationDetails = validationPassed ? 'API endpoints responding' : 'API endpoints failed';
+              } catch (apiError) {
+                validationPassed = false;
+                validationDetails = `API validation failed: ${apiError.message}`;
+              }
             } else {
-              // Default: strict validation
+              // FRANK'S RULE: FAIL HONESTLY IF CRITERIA UNCLEAR
               validationPassed = false;
-              validationDetails = 'Criteria requires manual verification - failed by default';
+              validationDetails = `Unclear validation criteria: "${criteria}" - cannot validate automatically`;
             }
           }
           
