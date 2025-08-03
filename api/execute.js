@@ -539,29 +539,44 @@ Will report results once test instance completes verification.`
             lastResponse = lastMessageMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
           }
           
-          // FRANK'S NATURAL COMPLETION DETECTION - NO MORE FAKE TERMINATION RULES
+          // FRANK'S UI-BASED COMPLETION DETECTION - LOOKING AT SPINNER AND THINKING INDICATORS
+          const hasSpinner = pageContent.includes('spinner') || pageContent.includes('loading') || pageContent.includes('animate-spin');
+          const hasThinking = pageContent.includes('thinking') || pageContent.includes('Thinking');
+          const hasCursorBlink = pageContent.includes('cursor-blink') || pageContent.includes('animate-pulse');
+          const hasGenerating = pageContent.includes('generating') || pageContent.includes('Generating');
+          
+          // Track message changes
           const previousMessageCount = lastMessageCount || 0;
           const previousMessageTime = lastMessageTime ? new Date(lastMessageTime).getTime() : Date.now();
           const now = Date.now();
           const timeSinceLastMessage = now - previousMessageTime;
           
-          if (lastResponse.length > 0) {
-            // Has response from Terragon
+          // Primary detection: UI indicators
+          if (hasSpinner || hasThinking || hasGenerating || hasCursorBlink) {
+            // Terragon is actively working
+            status = 'active';
+            completed = false;
+            console.log(`Terragon active - UI indicators present (spinner: ${hasSpinner}, thinking: ${hasThinking})`);
+          } else if (lastResponse.length > 0) {
+            // No UI activity indicators, has response
             if (currentMessageCount > previousMessageCount) {
-              // New message arrived - Terragon is still active
+              // New message just arrived, might still be typing
               status = 'active';
               completed = false;
-            } else if (timeSinceLastMessage > 30000) {
-              // No new messages for 30 seconds - Terragon stopped responding
+              messageTracker.lastMessageCount = currentMessageCount;
+              messageTracker.lastMessageTime = now;
+            } else if (timeSinceLastMessage > 10000) {
+              // No UI activity and no new messages for 10 seconds - completed
               status = 'completed';
               completed = true;
+              console.log(`Terragon completed - no UI activity and no new messages for ${timeSinceLastMessage/1000}s`);
             } else {
-              // Same message count but less than 30 seconds - still waiting
+              // Wait a bit more to be sure
               status = 'active';
               completed = false;
             }
           } else if (pageContent.includes('Waiting for') || pageContent.includes('provisioning') || pageContent.includes('Sandbox')) {
-            // Terragon is starting up - not an error, just waiting
+            // Terragon is starting up
             status = 'starting';
             completed = false;
           } else {

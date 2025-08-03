@@ -764,7 +764,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                 }
             };
 
-            // FRANK'S NATURAL COMPLETION POLLING - TRACK MESSAGE COUNT AND TIME
+            // FRANK'S UI-BASED COMPLETION DETECTION - TRACK UI INDICATORS
             const messageTracker = {}; // Store message state per thread
             
             const pollTerragonForCompletion = async (threadId, checkpoint, queue, currentIndex, pollCount = 0) => {
@@ -775,7 +775,8 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                 if (!messageTracker[threadId]) {
                     messageTracker[threadId] = {
                         lastMessageCount: 0,
-                        lastMessageTime: Date.now()
+                        lastMessageTime: Date.now(),
+                        uiQuietCount: 0 // Track polls without UI activity
                     };
                 }
                 
@@ -807,9 +808,24 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             }
                         }
                         
+                        // UI-based completion detection
+                        if (statusResult.status === 'starting') {
+                            addLog(`⏳ Terragon is starting up (waiting for sandbox)...`, 'info');
+                            messageTracker[threadId].uiQuietCount = 0;
+                        } else if (statusResult.status === 'active') {
+                            // Check for UI activity in the response
+                            if (statusResult.lastResponse && statusResult.lastResponse.includes('spinner')) {
+                                addLog(`⚡ Terragon is actively working (UI indicators present)`, 'info');
+                                messageTracker[threadId].uiQuietCount = 0;
+                            } else {
+                                messageTracker[threadId].uiQuietCount++;
+                                addLog(`⏸️ No UI activity detected (quiet count: ${messageTracker[threadId].uiQuietCount})`, 'info');
+                            }
+                        }
+                        
                         if (statusResult.completed && statusResult.status === 'completed') {
-                            addLog(`✅ Terragon stopped responding - checkpoint ${checkpointNumber} complete!`, 'success');
-                            addLog(`📝 No new messages for 30+ seconds, proceeding with tests`, 'info');
+                            addLog(`✅ Terragon completed - no UI activity and stable message count!`, 'success');
+                            addLog(`📝 UI indicators disappeared and messages stable for 10+ seconds`, 'info');
                             
                             // NOW run contextless tests after verified completion
                             setTimeout(() => {
