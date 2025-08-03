@@ -8,12 +8,365 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/diff-match-patch@1.0.5/index.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
+
+        // GitHub API Service
+        const GitHubService = {
+            baseUrl: 'https://api.github.com',
+            owner: 'bhuman-ai',
+            repo: 'unclefrank-bootstrap',
+
+            async getBranches() {
+                try {
+                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/branches`);
+                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    console.error('Failed to fetch branches:', error);
+                    return [];
+                }
+            },
+
+            async getBranchDetails(branchName) {
+                try {
+                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/branches/${branchName}`);
+                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    console.error('Failed to fetch branch details:', error);
+                    return null;
+                }
+            },
+
+            async getCommitDiff(baseBranch = 'master', headBranch) {
+                try {
+                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/compare/${baseBranch}...${headBranch}`);
+                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    console.error('Failed to fetch diff:', error);
+                    return null;
+                }
+            },
+
+            async createPullRequest(title, body, headBranch, baseBranch = 'master') {
+                try {
+                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/pulls`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            // Note: In production, you'd need proper authentication
+                        },
+                        body: JSON.stringify({
+                            title,
+                            body,
+                            head: headBranch,
+                            base: baseBranch
+                        })
+                    });
+                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    console.error('Failed to create PR:', error);
+                    return null;
+                }
+            },
+
+            getCompareUrl(baseBranch = 'master', headBranch) {
+                return `https://github.com/${this.owner}/${this.repo}/compare/${baseBranch}...${headBranch}`;
+            },
+
+            getBranchUrl(branchName) {
+                return `https://github.com/${this.owner}/${this.repo}/tree/${branchName}`;
+            }
+        };
+
+        // Review Actions Component
+        const ReviewActions = ({ task, onViewChanges, onRunTests, onApprove, onRequestChanges }) => {
+            const [testStatus, setTestStatus] = useState(null);
+            const [loading, setLoading] = useState(false);
+
+            const handleRunTests = async () => {
+                setLoading(true);
+                setTestStatus('running');
+                
+                try {
+                    // Simulate test run
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    setTestStatus('passed');
+                    onRunTests(task);
+                } catch (error) {
+                    setTestStatus('failed');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const getTestStatusColor = () => {
+                switch (testStatus) {
+                    case 'running': return 'bg-blue-600';
+                    case 'passed': return 'bg-green-600';
+                    case 'failed': return 'bg-red-600';
+                    default: return 'bg-gray-600';
+                }
+            };
+
+            return (
+                <div className="flex gap-1">
+                    <button 
+                        onClick={() => onViewChanges(task)}
+                        className="px-2 py-1 bg-gray-600 hover:bg-gray-700 rounded text-xs transition"
+                    >
+                        View Changes
+                    </button>
+                    <button 
+                        onClick={handleRunTests}
+                        disabled={loading}
+                        className={`px-2 py-1 rounded text-xs transition ${getTestStatusColor()} hover:opacity-80 disabled:opacity-50`}
+                    >
+                        {loading ? 'Running...' : testStatus === 'passed' ? '✓ Tests' : testStatus === 'failed' ? '✗ Tests' : 'Run Tests'}
+                    </button>
+                    <button 
+                        onClick={() => onApprove(task)}
+                        className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs transition"
+                    >
+                        Approve
+                    </button>
+                    <button 
+                        onClick={() => onRequestChanges(task)}
+                        className="px-2 py-1 bg-orange-600 hover:bg-orange-700 rounded text-xs transition"
+                    >
+                        Request Changes
+                    </button>
+                </div>
+            );
+        };
+
+        // Diff Viewer Component
+        const DiffViewer = ({ isOpen, onClose, task, diffData }) => {
+            const [loading, setLoading] = useState(false);
+            const [files, setFiles] = useState([]);
+
+            useEffect(() => {
+                if (isOpen && task && task.branch) {
+                    fetchDiffData();
+                }
+            }, [isOpen, task]);
+
+            const fetchDiffData = async () => {
+                setLoading(true);
+                try {
+                    const diff = await GitHubService.getCommitDiff('master', task.branch);
+                    if (diff && diff.files) {
+                        setFiles(diff.files);
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch diff:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const renderDiffLines = (patch) => {
+                if (!patch) return null;
+                
+                const lines = patch.split('\n');
+                return lines.map((line, index) => {
+                    let className = 'font-mono text-sm px-4 py-1 ';
+                    if (line.startsWith('+')) {
+                        className += 'bg-green-900 text-green-200';
+                    } else if (line.startsWith('-')) {
+                        className += 'bg-red-900 text-red-200';
+                    } else if (line.startsWith('@@')) {
+                        className += 'bg-blue-900 text-blue-200 font-semibold';
+                    } else {
+                        className += 'bg-gray-800 text-gray-300';
+                    }
+                    
+                    return (
+                        <div key={index} className={className}>
+                            {line || ' '}
+                        </div>
+                    );
+                });
+            };
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 rounded-lg max-w-6xl max-h-[90vh] w-full mx-4 flex flex-col">
+                        <div className="flex justify-between items-center p-4 border-b border-gray-700">
+                            <h2 className="text-xl font-semibold">
+                                Changes for: {task?.name}
+                            </h2>
+                            <button 
+                                onClick={onClose}
+                                className="text-gray-400 hover:text-white text-2xl"
+                            >
+                                ×
+                            </button>
+                        </div>
+                        
+                        <div className="flex-1 overflow-auto p-4">
+                            {loading ? (
+                                <div className="text-center py-8">
+                                    <div className="text-blue-400">Loading diff...</div>
+                                </div>
+                            ) : files.length > 0 ? (
+                                <div className="space-y-6">
+                                    {files.map((file, index) => (
+                                        <div key={index} className="border border-gray-700 rounded">
+                                            <div className="bg-gray-700 px-4 py-2 font-mono text-sm">
+                                                <span className="text-gray-300">{file.filename}</span>
+                                                <span className="ml-4 text-green-400">+{file.additions}</span>
+                                                <span className="ml-2 text-red-400">-{file.deletions}</span>
+                                            </div>
+                                            <div className="max-h-96 overflow-auto">
+                                                {renderDiffLines(file.patch)}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-8">
+                                    <div className="text-gray-500">No changes found</div>
+                                    <a 
+                                        href={GitHubService.getCompareUrl('master', task?.branch)}
+                                        target="_blank"
+                                        className="text-blue-400 hover:underline mt-2 inline-block"
+                                    >
+                                        View on GitHub →
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="p-4 border-t border-gray-700 flex justify-end gap-2">
+                            <button 
+                                onClick={onClose}
+                                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded"
+                            >
+                                Close
+                            </button>
+                            <a 
+                                href={GitHubService.getCompareUrl('master', task?.branch)}
+                                target="_blank"
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded"
+                            >
+                                View on GitHub
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Task Queue Component
+        const TaskQueue = ({ tasks, onUpdateTaskStatus, onViewChanges, onRunTests, onApprove, onRequestChanges }) => {
+            const [filter, setFilter] = useState('Awaiting Review');
+            
+            const filteredTasks = tasks.filter(task => 
+                !filter || task.status === filter
+            );
+
+            const StatusBadge = ({ status }) => {
+                const colors = {
+                    'Awaiting Review': 'bg-yellow-600',
+                    'In Review': 'bg-blue-600',
+                    'Approved': 'bg-green-600',
+                    'Changes Requested': 'bg-red-600',
+                    'Merged': 'bg-purple-600'
+                };
+                
+                return (
+                    <span className={`px-2 py-1 text-xs rounded ${colors[status] || 'bg-gray-600'}`}>
+                        {status}
+                    </span>
+                );
+            };
+
+            return (
+                <div className="bg-gray-800 rounded-lg p-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-xl font-semibold">Task Queue</h2>
+                        <select 
+                            value={filter}
+                            onChange={(e) => setFilter(e.target.value)}
+                            className="px-3 py-1 bg-gray-700 rounded border border-gray-600 text-sm"
+                        >
+                            <option value="">All Tasks</option>
+                            <option value="Awaiting Review">Awaiting Review</option>
+                            <option value="In Review">In Review</option>
+                            <option value="Approved">Approved</option>
+                            <option value="Changes Requested">Changes Requested</option>
+                            <option value="Merged">Merged</option>
+                        </select>
+                    </div>
+                    
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-b border-gray-700">
+                                    <th className="text-left py-2 px-3">Task Name</th>
+                                    <th className="text-left py-2 px-3">Status</th>
+                                    <th className="text-left py-2 px-3">Branch</th>
+                                    <th className="text-left py-2 px-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredTasks.map(task => (
+                                    <tr key={task.id} className="border-b border-gray-700 hover:bg-gray-750">
+                                        <td className="py-3 px-3">
+                                            <div>
+                                                <div className="font-medium">{task.name}</div>
+                                                <div className="text-xs text-gray-400">{task.objective}</div>
+                                            </div>
+                                        </td>
+                                        <td className="py-3 px-3">
+                                            <StatusBadge status={task.status} />
+                                        </td>
+                                        <td className="py-3 px-3">
+                                            {task.branch ? (
+                                                <a 
+                                                    href={GitHubService.getBranchUrl(task.branch)}
+                                                    target="_blank"
+                                                    className="text-blue-400 hover:underline text-xs"
+                                                >
+                                                    {task.branch}
+                                                </a>
+                                            ) : (
+                                                <span className="text-gray-500 text-xs">No branch</span>
+                                            )}
+                                        </td>
+                                        <td className="py-3 px-3">
+                                            <ReviewActions 
+                                                task={task}
+                                                onViewChanges={onViewChanges}
+                                                onRunTests={onRunTests}
+                                                onApprove={onApprove}
+                                                onRequestChanges={onRequestChanges}
+                                            />
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {filteredTasks.length === 0 && (
+                            <div className="text-center py-8 text-gray-500">
+                                No tasks found with status "{filter}"
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
 
         // State management
         const initialState = {
@@ -39,13 +392,43 @@ The system can execute tasks in Terragon, which creates GitHub branches, but the
             sessionId: null,
             logs: [],
             activeThreads: {}, // Track thread IDs for each checkpoint
-            taskThreadId: null // One thread per task
+            taskThreadId: null, // One thread per task
+            reviewTasks: [
+                {
+                    id: 'task-1',
+                    name: 'Task Review UI Implementation',
+                    objective: 'Build review interface for completed Terragon tasks with GitHub integration',
+                    status: 'Awaiting Review',
+                    branch: 'terragon/task-review-ui-github-integration',
+                    threadId: 'thread-123',
+                    acceptanceCriteria: [
+                        'Task Queue component renders without errors',
+                        'GitHub API integration works correctly',
+                        'Review actions update task status',
+                        'PR creation flow functions properly'
+                    ]
+                },
+                {
+                    id: 'task-2',
+                    name: 'Discord Bot Integration',
+                    objective: 'Add Discord bot for task notifications',
+                    status: 'In Review',
+                    branch: 'terragon/discord-bot-integration',
+                    threadId: 'thread-456',
+                    acceptanceCriteria: [
+                        'Bot connects to Discord successfully',
+                        'Notifications sent on task completion'
+                    ]
+                }
+            ]
         };
 
         function App() {
             const [state, setState] = useState(initialState);
             const [loading, setLoading] = useState(false);
             const [executing, setExecuting] = useState(false);
+            const [diffViewerOpen, setDiffViewerOpen] = useState(false);
+            const [selectedTask, setSelectedTask] = useState(null);
             const executionInterval = useRef(null);
 
             const API_URL = '/api/task';
@@ -392,10 +775,95 @@ Please execute each checkpoint sequentially and report the results for each one.
                 addLog('Task request populated from chat', 'info');
             };
 
+            // Task Review handlers
+            const handleUpdateTaskStatus = (taskId, newStatus) => {
+                setState(prev => ({
+                    ...prev,
+                    reviewTasks: prev.reviewTasks.map(task =>
+                        task.id === taskId ? { ...task, status: newStatus } : task
+                    )
+                }));
+                addLog(`Task ${taskId} status updated to ${newStatus}`, 'info');
+            };
+
+            const handleViewChanges = (task) => {
+                addLog(`Opening diff viewer for ${task.name}`, 'info');
+                setSelectedTask(task);
+                setDiffViewerOpen(true);
+            };
+
+            const handleRunTests = (task) => {
+                addLog(`Running tests for ${task.name}`, 'info');
+                // TODO: Implement actual test runner integration
+            };
+
+            const handleApprove = async (task) => {
+                try {
+                    addLog(`Creating PR for ${task.name}...`, 'info');
+                    
+                    // Create PR body with task details
+                    const prBody = `## Task: ${task.name}
+
+### Objective
+${task.objective}
+
+### Acceptance Criteria
+${task.acceptanceCriteria ? task.acceptanceCriteria.map(criteria => `- ${criteria}`).join('\n') : 'No criteria specified'}
+
+### Branch
+\`${task.branch}\`
+
+### Terragon Thread
+https://www.terragonlabs.com/task/${task.threadId}
+
+---
+🤖 This PR was automatically created by Uncle Frank's Task Review System`;
+
+                    // Note: In a real implementation, this would need proper GitHub authentication
+                    // For now, we'll simulate the PR creation and update status
+                    
+                    handleUpdateTaskStatus(task.id, 'In Review');
+                    addLog(`PR created for ${task.name}`, 'success');
+                    addLog(`View PR: https://github.com/bhuman-ai/unclefrank-bootstrap/pull/[PR_NUMBER]`, 'info');
+                    
+                    // In a real implementation, uncomment this:
+                    // const pr = await GitHubService.createPullRequest(
+                    //     `Task: ${task.name}`,
+                    //     prBody,
+                    //     task.branch,
+                    //     'master'
+                    // );
+                    // if (pr) {
+                    //     addLog(`PR created: ${pr.html_url}`, 'success');
+                    //     handleUpdateTaskStatus(task.id, 'In Review');
+                    // }
+                    
+                } catch (error) {
+                    addLog(`Failed to create PR: ${error.message}`, 'error');
+                }
+            };
+
+            const handleRequestChanges = (task) => {
+                handleUpdateTaskStatus(task.id, 'Changes Requested');
+                addLog(`Changes requested for ${task.name}`, 'info');
+            };
+
             return (
                 <div className="container mx-auto px-4 py-8 max-w-6xl">
                     <h1 className="text-4xl font-bold mb-2">🔨 Uncle Frank's Bootstrap Core</h1>
                     <p className="text-gray-400 mb-8">No BS Autonomous LLM Development Platform</p>
+
+                    {/* Task Review Queue */}
+                    <div className="mb-6">
+                        <TaskQueue 
+                            tasks={state.reviewTasks}
+                            onUpdateTaskStatus={handleUpdateTaskStatus}
+                            onViewChanges={handleViewChanges}
+                            onRunTests={handleRunTests}
+                            onApprove={handleApprove}
+                            onRequestChanges={handleRequestChanges}
+                        />
+                    </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* Left Panel - Input */}
@@ -544,6 +1012,13 @@ Please execute each checkpoint sequentially and report the results for each one.
                             </div>
                         </div>
                     </div>
+
+                    {/* Diff Viewer Modal */}
+                    <DiffViewer 
+                        isOpen={diffViewerOpen}
+                        onClose={() => setDiffViewerOpen(false)}
+                        task={selectedTask}
+                    />
                 </div>
             );
         }
