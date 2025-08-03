@@ -9,7 +9,10 @@
     "execute": "node -e \"process.stdin.isTTY = true\" node_modules/.bin/tsx src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "validate": "tsx src/validation/cli.ts validate",
+    "validate:watch": "tsx src/validation/cli.ts watch",
+    "validate:test": "tsx src/validation/cli.ts test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
@@ -28,5 +31,20 @@
   },
   "engines": {
     "node": "18.x"
-  }
+  },
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bhuman-ai/unclefrank-bootstrap.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/bhuman-ai/unclefrank-bootstrap/issues"
+  },
+  "homepage": "https://github.com/bhuman-ai/unclefrank-bootstrap#readme"
 }
