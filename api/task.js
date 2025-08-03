@@ -1,4 +1,4 @@
-const { Anthropic } = require('@anthropic-ai/sdk');
+import Anthropic from '@anthropic-ai/sdk';
 
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || '';
 const TERRAGON_AUTH = process.env.TERRAGON_AUTH || 'JTgr3pSvWUN2bNmaO66GnTGo2wrk1zFf.fW4Qo8gvM1lTf%2Fis9Ss%2FJOdlSKJrnLR0CapMdm%2Bcy0U%3D';
@@ -148,7 +148,7 @@ FORMAT YOUR RESPONSE AS JSON:
   }
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -212,4 +212,4 @@ module.exports = async (req, res) => {
       details: process.env.NODE_ENV === 'development' ? error : undefined
     });
   }
-};
+}
