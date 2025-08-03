@@ -1398,18 +1398,20 @@ Please execute this checkpoint and report when complete. I will then run tests t
                     if (testResult.testInstanceCreated) {
                         addLog(`✅ Test instance created: ${testResult.testThreadId}`, 'success');
                         addLog(`🔗 Test URL: ${testResult.testUrl}`, 'info');
-                        addLog(`⏳ Waiting for contextless test results...`, 'info');
+                        addLog(`⏳ Polling test instance for REAL results...`, 'info');
                         
-                        // For now, we need to manually check the test results
-                        // In a full implementation, we'd poll the test instance or have webhooks
-                        // For this demo, we'll wait and assume the test will be checked manually
+                        // FRANK'S REAL TEST RESULT POLLING - NO BULLSHIT
+                        const testInstanceResult = await pollTestInstanceForResults(testResult.testThreadId, 60); // 5 minute max
                         
-                        // Wait a bit for the test to run
-                        await new Promise(resolve => setTimeout(resolve, 15000));
-                        
-                        // For now, return true to continue flow (manual verification required)
-                        addLog(`⚠️  MANUAL VERIFICATION REQUIRED: Check test instance ${testResult.testThreadId}`, 'info');
-                        return true; // Will be replaced with actual result polling
+                        if (testInstanceResult.completed && testInstanceResult.result) {
+                            const passed = testInstanceResult.result.toLowerCase().includes('pass');
+                            addLog(`🧪 Test instance completed: ${passed ? 'PASS' : 'FAIL'}`, passed ? 'success' : 'error');
+                            addLog(`📝 Test evidence: ${testInstanceResult.evidence}`, 'info');
+                            return passed;
+                        } else {
+                            addLog(`❌ Test instance failed to complete or provide results`, 'error');
+                            return false;
+                        }
                         
                     } else {
                         addLog(`Test instance creation failed`, 'error');
@@ -1420,6 +1422,76 @@ Please execute this checkpoint and report when complete. I will then run tests t
                     addLog(`Contextless test error: ${error.message}`, 'error');
                     return false;
                 }
+            };
+
+            // FRANK'S REAL TEST INSTANCE POLLING - NO FAKE RESULTS
+            const pollTestInstanceForResults = async (testThreadId, maxPolls = 60) => {
+                addLog(`🔄 Polling test instance ${testThreadId} for real results...`, 'info');
+                
+                for (let pollCount = 0; pollCount < maxPolls; pollCount++) {
+                    try {
+                        // Check test instance status
+                        const statusResponse = await fetch('/api/execute', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                                action: 'check-terragon-status',
+                                threadId: testThreadId
+                            })
+                        });
+                        
+                        if (statusResponse.ok) {
+                            const statusResult = await statusResponse.json();
+                            
+                            if (statusResult.completed) {
+                                addLog(`✅ Test instance ${testThreadId} completed!`, 'success');
+                                
+                                // Parse the actual test result from Terragon response
+                                // Look for RESULT: PASS/FAIL pattern in the response
+                                const testContent = statusResult.lastResponse || statusResult.message || '';
+                                
+                                let result = 'UNKNOWN';
+                                let evidence = 'No evidence found';
+                                
+                                // Extract RESULT: and EVIDENCE: from Terragon response
+                                const resultMatch = testContent.match(/RESULT:\s*(PASS|FAIL)/i);
+                                const evidenceMatch = testContent.match(/EVIDENCE:\s*([^\n]+)/i);
+                                
+                                if (resultMatch) {
+                                    result = resultMatch[1].toUpperCase();
+                                }
+                                if (evidenceMatch) {
+                                    evidence = evidenceMatch[1].trim();
+                                }
+                                
+                                return {
+                                    completed: true,
+                                    result: result,
+                                    evidence: evidence,
+                                    fullResponse: testContent
+                                };
+                            } else {
+                                if (pollCount % 6 === 0) { // Log every 30 seconds
+                                    addLog(`⏳ Test instance still running... (${pollCount * 5}s elapsed)`, 'info');
+                                }
+                            }
+                        }
+                        
+                        // Wait 5 seconds before next poll
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        
+                    } catch (error) {
+                        addLog(`Test polling error: ${error.message}`, 'error');
+                    }
+                }
+                
+                // Max polls reached
+                addLog(`🕐 Test instance polling timeout after ${maxPolls * 5} seconds`, 'error');
+                return {
+                    completed: false,
+                    result: 'TIMEOUT',
+                    evidence: 'Test instance did not complete within timeout period'
+                };
             };
 
             // Validate checkpoint dependencies

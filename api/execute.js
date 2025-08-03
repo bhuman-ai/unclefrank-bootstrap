@@ -512,10 +512,19 @@ Will report results once test instance completes verification.`
 
           const pageContent = await response.text();
           
-          // Parse the page to determine status
+          // Parse the page to determine status and extract latest response
           let status = 'unknown';
           let completed = false;
           let hasRecentActivity = false;
+          let lastResponse = '';
+          
+          // Extract the latest assistant message content
+          const messageMatches = [...pageContent.matchAll(/"text":"([^"]+)"/g)];
+          if (messageMatches.length > 0) {
+            // Get the last message (most recent)
+            const lastMessageMatch = messageMatches[messageMatches.length - 1];
+            lastResponse = lastMessageMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+          }
           
           // Check for completion indicators in the HTML
           if (pageContent.includes('Task completed') || pageContent.includes('execution complete')) {
@@ -558,6 +567,7 @@ Will report results once test instance completes verification.`
             status,
             completed,
             hasRecentActivity,
+            lastResponse,
             url: `https://www.terragonlabs.com/task/${threadId}`,
             message: `Thread ${threadId} is ${status}`,
             timestamp: new Date().toISOString()
