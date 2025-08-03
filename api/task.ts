@@ -65,8 +65,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   } catch (error) {
     console.error('API Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    const isAnthropicError = errorMessage.includes('401') || errorMessage.includes('authentication');
+    
     return res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Internal server error' 
+      error: isAnthropicError 
+        ? 'Invalid CLAUDE_API_KEY. Please check your Anthropic API key in Vercel settings.'
+        : errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error : undefined
     });
   }
 }
