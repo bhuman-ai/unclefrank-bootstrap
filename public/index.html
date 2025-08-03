@@ -684,7 +684,9 @@ ${firstCheckpoint.passCriteria.map((pc, i) => `✓ ${i + 1}. ${pc.description}`)
 
 Execute this checkpoint and report when complete. After completion, I will run tests to verify all pass criteria before proceeding to the next checkpoint.
 
-SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoint will be sent individually after the previous one passes its tests.`;
+SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoint will be sent individually after the previous one passes its tests.
+
+**CRITICAL: End your response with exactly "END OF MESSAGE" when you are completely finished.**`;
 
                     // Create Terragon thread with FIRST CHECKPOINT ONLY
                     const dashboardPayload = [{
@@ -785,14 +787,20 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     if (statusResponse.ok) {
                         const statusResult = await statusResponse.json();
                         
-                        if (statusResult.completed) {
+                        if (statusResult.completed && statusResult.status === 'completed') {
                             addLog(`✅ Terragon ACTUALLY completed checkpoint ${checkpointNumber}!`, 'success');
-                            addLog(`📝 Status: ${statusResult.status} - ${statusResult.message}`, 'info');
+                            addLog(`📝 Terragon finished successfully with "END OF MESSAGE"`, 'info');
                             
                             // NOW run contextless tests after verified completion
                             setTimeout(() => {
                                 testCheckpointAndContinue(checkpoint, queue, currentIndex, threadId);
                             }, 1000);
+                            return;
+                        } else if (statusResult.completed && statusResult.status === 'error') {
+                            addLog(`❌ Terragon encountered an error in checkpoint ${checkpointNumber}`, 'error');
+                            addLog(`📝 Error details: ${statusResult.message}`, 'error');
+                            addLog(`🚫 Checkpoint execution failed - stopping`, 'error');
+                            setExecuting(false);
                             return;
                         } else {
                             addLog(`⏳ Terragon still working on checkpoint ${checkpointNumber}... (${statusResult.status})`, 'info');
