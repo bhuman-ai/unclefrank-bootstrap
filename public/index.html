@@ -525,11 +525,11 @@ The system can execute tasks in Terragon, which creates GitHub branches, but the
                 }
                 
                 setExecuting(true);
-                addLog('Creating real Terragon task...', 'info');
+                addLog('Starting sequential checkpoint execution with Pass/Fail testing...', 'info');
                 
                 try {
-                    // Build the complete task message with all checkpoints
-                    const taskMessage = `# TASK EXECUTION: ${state.task.name}
+                    // First create a Terragon thread for the task context
+                    const taskContextMessage = `# TASK CONTEXT: ${state.task.name}
 
 ## Objective
 ${state.task.objective}
@@ -538,24 +538,16 @@ ${state.task.objective}
 ${state.projectContext || 'No additional context provided'}
 
 ## Sacred Flow Instructions
-IMPORTANT: This task follows the sacred flow with checkpoint-by-checkpoint execution and testing.
-Execute each checkpoint sequentially, running Pass/Fail tests between each one.
-Only proceed to the next checkpoint if the current one passes all tests.
+This task will be executed checkpoint-by-checkpoint following the sacred flow:
+1. Execute checkpoint
+2. Run Pass/Fail tests
+3. Only proceed if tests pass (retry up to 3 times)
+4. No checkpoint can be skipped
+5. Blocking checkpoints must pass before others can start
 
-## Checkpoints to Execute
-${state.checkpoints.map((cp, i) => `
-### ${i + 1}. ${cp.name}
-**Objective:** ${cp.objective}
-**Blocking:** ${cp.blocking ? 'Yes - Must pass before continuing' : 'No - Can fail without blocking'}
-**Instructions:**
-${cp.instructions.map((inst, j) => `  ${j + 1}. ${inst}`).join('\n')}
-**Pass Criteria:**
-${cp.passCriteria.map(pc => `  - ${pc.description}`).join('\n')}
-`).join('\n')}
+Total checkpoints: ${state.checkpoints.length}`;
 
-Please execute each checkpoint sequentially and report the results for each one.`;
-
-                    // Create a new Terragon task via dashboard
+                    // Create initial Terragon thread with task context
                     const dashboardPayload = [{
                         message: {
                             type: 'user',
@@ -564,7 +556,7 @@ Please execute each checkpoint sequentially and report the results for each one.
                                 type: 'rich-text',
                                 nodes: [{
                                     type: 'text',
-                                    text: taskMessage
+                                    text: taskContextMessage
                                 }]
                             }],
                             timestamp: new Date().toISOString()
@@ -591,43 +583,21 @@ Please execute each checkpoint sequentially and report the results for each one.
                     const threadId = result.threadId;
                     const threadUrl = `https://www.terragonlabs.com/task/${threadId}`;
                     
-                    addLog(`Real Terragon task created with ID: ${threadId}`, 'success');
-                    addLog(`Monitor progress at: ${threadUrl}`, 'info');
+                    addLog(`Terragon thread created: ${threadId}`, 'success');
+                    addLog(`Monitor at: ${threadUrl}`, 'info');
                     
-                    // Initialize checkpoint queue with real thread ID
-                    const checkpointQueue = [...state.checkpoints];
-                    
+                    // Initialize state for sequential execution
                     setState(prev => ({ 
                         ...prev, 
                         sessionId: threadId,
                         taskThreadId: threadId,
-                        checkpointQueue: checkpointQueue,
-                        currentCheckpointIndex: 0
+                        checkpointQueue: [...state.checkpoints],
+                        currentCheckpointIndex: 0,
+                        executionStatus: {} // Start fresh
                     }));
                     
-                    // Mark all checkpoints as sent to Terragon
-                    const newExecutionStatus = {};
-                    state.checkpoints.forEach(cp => {
-                        newExecutionStatus[cp.id] = {
-                            status: 'sent',
-                            threadId: threadId,
-                            logs: [{ 
-                                message: `Sent to Terragon for sequential execution`,
-                                url: threadUrl
-                            }]
-                        };
-                    });
-                    
-                    setState(prev => ({
-                        ...prev,
-                        executionStatus: newExecutionStatus
-                    }));
-                    
-                    addLog('Task sent to Terragon for sequential execution with Pass/Fail testing', 'success');
-                    
-                    // Note: In a real implementation, we would need to poll Terragon
-                    // to get checkpoint execution status and test results
-                    // For now, this creates the real task but doesn't track individual checkpoint progress
+                    // Start executing the first checkpoint
+                    setTimeout(() => executeNextCheckpoint(), 1000);
                     
                 } catch (error) {
                     addLog(`Execution error: ${error.message}`, 'error');
@@ -648,28 +618,55 @@ Please execute each checkpoint sequentially and report the results for each one.
                 }
                 
                 const checkpoint = queue[currentIndex];
-                addLog(`Executing checkpoint ${currentIndex + 1}/${queue.length}: ${checkpoint.name}`, 'info');
+                const checkpointNumber = currentIndex + 1;
+                addLog(`=== Starting Checkpoint ${checkpointNumber}/${queue.length}: ${checkpoint.name} ===`, 'info');
                 
                 // Validate dependencies before execution
                 const dependenciesValid = await validateDependencies(checkpoint);
                 if (!dependenciesValid) {
-                    addLog(`Dependencies not met for ${checkpoint.name}, retrying...`, 'error');
+                    addLog(`Dependencies not met for ${checkpoint.name}, waiting...`, 'error');
                     setTimeout(() => executeNextCheckpoint(), 2000);
                     return;
                 }
+                
+                // Get current retry count
+                const currentStatus = state.executionStatus[checkpoint.id];
+                const retryCount = currentStatus?.retryCount || 0;
                 
                 // Update status to in_progress
                 setState(prev => ({
                     ...prev,
                     executionStatus: {
                         ...prev.executionStatus,
-                        [checkpoint.id]: { status: 'in_progress', logs: [], retryCount: 0 }
+                        [checkpoint.id]: { 
+                            status: 'in_progress', 
+                            logs: [], 
+                            retryCount: retryCount,
+                            startTime: new Date().toISOString()
+                        }
                     }
                 }));
                 
                 try {
-                    // Execute checkpoint via Terragon
-                    const execResponse = await fetch(EXECUTE_URL, {
+                    // Send checkpoint execution message to existing Terragon thread
+                    const checkpointMessage = `# CHECKPOINT ${checkpointNumber}: ${checkpoint.name}
+
+## Objective
+${checkpoint.objective}
+
+## Blocking Status
+${checkpoint.blocking ? '🚫 BLOCKING - Must pass before continuing' : '⚡ NON-BLOCKING - Can fail without halting'}
+
+## Instructions
+${checkpoint.instructions.map((inst, j) => `${j + 1}. ${inst}`).join('\n')}
+
+## Pass Criteria (Must verify ALL):
+${checkpoint.passCriteria.map((pc, i) => `✓ ${i + 1}. ${pc.description}`).join('\n')}
+
+Please execute this checkpoint and report when complete. I will then run tests to verify all pass criteria.`;
+
+                    // Send checkpoint to Terragon via API proxy
+                    const execResponse = await fetch('/api/execute', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
@@ -680,26 +677,38 @@ Please execute each checkpoint sequentially and report the results for each one.
                         })
                     });
                     
-                    const execData = await execResponse.json();
-                    if (!execResponse.ok) throw new Error(execData.error);
+                    if (!execResponse.ok) {
+                        const errorData = await execResponse.json();
+                        throw new Error(errorData.error || 'Failed to execute checkpoint');
+                    }
                     
-                    // Update status and wait for completion
+                    const execData = await execResponse.json();
+                    addLog(`Checkpoint sent to thread: ${execData.threadId}`, 'info');
+                    
+                    // Update status to executing
                     setState(prev => ({
                         ...prev,
                         executionStatus: {
                             ...prev.executionStatus,
                             [checkpoint.id]: {
+                                ...prev.executionStatus[checkpoint.id],
                                 status: 'executing',
-                                threadId: execData.threadId,
+                                threadId: state.taskThreadId,
                                 logs: [{ 
-                                    message: `Executing in Terragon thread: ${execData.threadId}`,
-                                    url: `https://www.terragonlabs.com/task/${execData.threadId}`
+                                    message: `Executing in thread: ${state.taskThreadId}`,
+                                    url: `https://www.terragonlabs.com/task/${state.taskThreadId}`
                                 }]
                             }
                         }
                     }));
                     
+                    addLog(`Checkpoint sent to Terragon, waiting for execution...`, 'info');
+                    
+                    // Wait for Terragon to execute (in real implementation, would poll for completion)
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    
                     // Run pass/fail tests
+                    addLog(`Running Pass/Fail tests for ${checkpoint.name}...`, 'info');
                     const testResult = await testCheckpoint(checkpoint);
                     
                     if (testResult.passed) {
@@ -712,23 +721,23 @@ Please execute each checkpoint sequentially and report the results for each one.
                                 [checkpoint.id]: {
                                     ...prev.executionStatus[checkpoint.id],
                                     status: 'pass',
-                                    testResults: testResult
+                                    testResults: testResult,
+                                    completedTime: new Date().toISOString()
                                 }
                             }
                         }));
                         
-                        addLog(`✓ ${checkpoint.name} passed all tests`, 'success');
+                        addLog(`✅ Checkpoint ${checkpointNumber} PASSED all tests!`, 'success');
                         
                         // Continue to next checkpoint
-                        setTimeout(() => executeNextCheckpoint(), 1000);
+                        setTimeout(() => executeNextCheckpoint(), 2000);
                         
                     } else {
                         // Handle failure with retry logic
-                        const currentStatus = state.executionStatus[checkpoint.id];
-                        const retryCount = (currentStatus?.retryCount || 0) + 1;
+                        const newRetryCount = retryCount + 1;
                         
-                        if (retryCount < 3) {
-                            addLog(`✗ ${checkpoint.name} failed, retrying (${retryCount}/3)...`, 'error');
+                        if (newRetryCount < 3) {
+                            addLog(`❌ Checkpoint ${checkpointNumber} FAILED - Retry ${newRetryCount}/3`, 'error');
                             setState(prev => ({
                                 ...prev,
                                 executionStatus: {
@@ -736,7 +745,7 @@ Please execute each checkpoint sequentially and report the results for each one.
                                     [checkpoint.id]: {
                                         ...prev.executionStatus[checkpoint.id],
                                         status: 'retrying',
-                                        retryCount: retryCount,
+                                        retryCount: newRetryCount,
                                         testResults: testResult
                                     }
                                 }
@@ -745,7 +754,10 @@ Please execute each checkpoint sequentially and report the results for each one.
                             // Retry same checkpoint
                             setTimeout(() => executeNextCheckpoint(), 3000);
                         } else {
-                            addLog(`✗ ${checkpoint.name} failed after 3 attempts, escalating...`, 'error');
+                            addLog(`🛑 Checkpoint ${checkpointNumber} FAILED after 3 attempts!`, 'error');
+                            if (checkpoint.blocking) {
+                                addLog(`🚫 This is a BLOCKING checkpoint - execution halted`, 'error');
+                            }
                             setState(prev => ({
                                 ...prev,
                                 executionStatus: {
@@ -753,11 +765,25 @@ Please execute each checkpoint sequentially and report the results for each one.
                                     [checkpoint.id]: {
                                         ...prev.executionStatus[checkpoint.id],
                                         status: 'fail',
-                                        testResults: testResult
+                                        testResults: testResult,
+                                        failedTime: new Date().toISOString()
                                     }
                                 }
                             }));
-                            setExecuting(false);
+                            
+                            // If blocking checkpoint failed, stop execution
+                            if (checkpoint.blocking) {
+                                setExecuting(false);
+                                addLog('Execution stopped due to blocking checkpoint failure', 'error');
+                            } else {
+                                // Non-blocking can continue
+                                addLog('Non-blocking checkpoint failed, continuing...', 'info');
+                                setState(prev => ({
+                                    ...prev,
+                                    currentCheckpointIndex: currentIndex + 1
+                                }));
+                                setTimeout(() => executeNextCheckpoint(), 2000);
+                            }
                         }
                     }
                     
@@ -769,11 +795,23 @@ Please execute each checkpoint sequentially and report the results for each one.
                             ...prev.executionStatus,
                             [checkpoint.id]: {
                                 status: 'fail',
-                                logs: [{ message: error.message }]
+                                logs: [{ message: error.message }],
+                                error: error.message
                             }
                         }
                     }));
-                    setExecuting(false);
+                    
+                    if (checkpoint.blocking) {
+                        setExecuting(false);
+                        addLog('Execution stopped due to error in blocking checkpoint', 'error');
+                    } else {
+                        // Try next checkpoint for non-blocking
+                        setState(prev => ({
+                            ...prev,
+                            currentCheckpointIndex: currentIndex + 1
+                        }));
+                        setTimeout(() => executeNextCheckpoint(), 2000);
+                    }
                 }
             };
 

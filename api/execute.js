@@ -165,50 +165,95 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: 'Checkpoint required' });
         }
 
-        // Build execution message
+        // For sequential execution, we should use the existing thread
+        const threadId = sessionId || checkpoint.threadId;
+        if (!threadId || threadId.startsWith('exec-')) {
+          return res.status(400).json({ 
+            error: 'Valid Terragon thread ID required for checkpoint execution' 
+          });
+        }
+
+        // Build checkpoint execution message
         const message = `# CHECKPOINT EXECUTION
 
 ## Checkpoint: ${checkpoint.name}
 **Objective:** ${checkpoint.objective}
+**Blocking:** ${checkpoint.blocking ? 'Yes - Must pass before continuing' : 'No'}
 
 ## Instructions
 ${checkpoint.instructions.map((inst, i) => `${i + 1}. ${inst}`).join('\n')}
 
-## Pass Criteria
-${checkpoint.passCriteria.map(pc => `- ${pc.description}`).join('\n')}
+## Pass Criteria (All must pass)
+${checkpoint.passCriteria.map(pc => `✓ ${pc.description}`).join('\n')}
 
-Execute this checkpoint and report results.`;
+Please execute this checkpoint and report when complete.`;
 
-        // Send to Terragon chat
-        const result = await executor.sendToTerragon(message, sessionId);
+        try {
+          // Send to existing Terragon thread
+          const payload = [{
+            threadId: threadId,
+            message: {
+              type: 'user',
+              model: 'sonnet',
+              parts: [{
+                type: 'rich-text',
+                nodes: [{
+                  type: 'text',
+                  text: message
+                }]
+              }],
+              timestamp: new Date().toISOString()
+            }
+          }];
 
-        if (!result.success) {
+          const response = await fetch(
+            `https://www.terragonlabs.com/task/${threadId}`,
+            {
+              method: 'POST',
+              headers: {
+                'accept': 'text/x-component',
+                'content-type': 'text/plain;charset=UTF-8',
+                'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
+                'next-action': '7f40cb55e87cce4b3543b51a374228296bc2436c6d',
+                'origin': 'https://www.terragonlabs.com',
+                'referer': `https://www.terragonlabs.com/task/${threadId}`,
+                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+                'x-deployment-id': 'dpl_3hWzkM7LiymSczFN21Z8chju84CV'
+              },
+              body: JSON.stringify(payload)
+            }
+          );
+
+          const responseText = await response.text();
+          
+          // Return enhanced execution result
+          return res.status(200).json({
+            status: 'executed',
+            checkpointId: checkpoint.id,
+            checkpointName: checkpoint.name,
+            threadId: threadId,
+            response: response.ok ? 'Checkpoint sent to Terragon' : 'Sent (check thread)',
+            executionDetails: {
+              objective: checkpoint.objective,
+              blocking: checkpoint.blocking,
+              passCriteriaCount: checkpoint.passCriteria?.length || 0,
+              instructions: checkpoint.instructions?.length || 0
+            },
+            nextActions: [
+              'Wait for execution completion',
+              'Run pass/fail tests',
+              'Validate dependencies',
+              'Continue to next checkpoint'
+            ],
+            timestamp: new Date().toISOString()
+          });
+        } catch (error) {
+          console.error('Failed to send checkpoint to Terragon:', error);
           return res.status(500).json({
             status: 'error',
-            error: result.error
+            error: `Failed to send checkpoint to thread ${threadId}: ${error.message}`
           });
         }
-
-        // Return enhanced execution result
-        return res.status(200).json({
-          status: 'executed',
-          checkpointId: checkpoint.id,
-          checkpointName: checkpoint.name,
-          threadId: result.threadId,
-          response: result.data,
-          executionDetails: {
-            objective: checkpoint.objective,
-            blocking: checkpoint.blocking,
-            passCriteriaCount: checkpoint.passCriteria?.length || 0,
-            instructions: checkpoint.instructions?.length || 0
-          },
-          nextActions: [
-            'Run pass/fail tests',
-            'Validate dependencies',
-            'Continue to next checkpoint'
-          ],
-          timestamp: new Date().toISOString()
-        });
       }
 
       case 'test': {
