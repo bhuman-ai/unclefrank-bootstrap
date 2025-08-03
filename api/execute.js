@@ -257,58 +257,144 @@ Please execute this checkpoint and report when complete.`;
       }
 
       case 'test-real': {
-        if (!checkpoint || !req.body.criteria) {
-          return res.status(400).json({ error: 'Checkpoint and criteria required' });
+        if (!req.body.criteria) {
+          return res.status(400).json({ error: 'Test criteria required' });
         }
 
-        const { criteria, testDescription } = req.body;
+        const { criteria, testDescription, mainThreadId } = req.body;
         
-        // REAL TEST EXECUTION - NO SIMULATIONS
+        // FRANK'S CONTEXTLESS TESTING - NEW TERRAGON INSTANCE FOR EACH TEST
         try {
-          // Check if files/directories exist based on test criteria
-          let testPassed = false;
-          let testDetails = '';
-          
           const description = testDescription || criteria.description;
           
-          // Real file system checks based on what the test is looking for
-          if (description.includes('file exists') || description.includes('created')) {
-            // Check if specific files were created
-            const fs = require('fs');
-            if (description.includes('PROJECT.md')) {
-              testPassed = fs.existsSync('PROJECT.md');
-              testDetails = testPassed ? 'PROJECT.md file exists' : 'PROJECT.md file not found';
-            } else if (description.includes('component')) {
-              // Check if React component was added to index.html
-              const indexContent = fs.readFileSync('public/index.html', 'utf-8');
-              testPassed = indexContent.includes('ProjectEditor') || indexContent.includes('Draft');
-              testDetails = testPassed ? 'Component found in index.html' : 'Component not found in index.html';
-            } else {
-              testDetails = 'Generic file check - assuming passed for now';
-              testPassed = true;
+          // Create test message for fresh Terragon instance
+          const testMessage = `# CONTEXTLESS TEST EXECUTION
+
+## Test Objective
+Verify: ${description}
+
+## Sacred Testing Principles
+- NO CONTEXT from execution
+- NO assumptions about what happened
+- ONLY check actual system state
+- Report OBJECTIVE findings
+
+## Instructions
+Check the actual file system / codebase and report:
+1. Does the condition exist or not?
+2. Provide specific evidence found
+3. Be brutally honest - no assumptions
+
+Test this criteria: "${description}"
+
+Return result in format:
+RESULT: [PASS/FAIL]
+EVIDENCE: [what you actually found]
+DETAILS: [specific findings]`;
+
+          // Create NEW Terragon instance for testing
+          const testPayload = [{
+            message: {
+              type: 'user',
+              model: 'sonnet',
+              parts: [{
+                type: 'rich-text',
+                nodes: [{
+                  type: 'text',
+                  text: testMessage
+                }]
+              }],
+              timestamp: new Date().toISOString()
+            },
+            githubRepoFullName: 'bhuman-ai/unclefrank-bootstrap',
+            repoBaseBranchName: 'master',
+            saveAsDraft: false
+          }];
+
+          console.log('Creating NEW Terragon test instance for contextless testing...');
+          
+          const testResponse = await fetch(
+            'https://www.terragonlabs.com/dashboard',
+            {
+              method: 'POST',
+              headers: {
+                'accept': 'text/x-component',
+                'content-type': 'text/plain;charset=UTF-8',
+                'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
+                'next-action': '7f7cba8a674421dfd9e9da7470ee4d79875a158bc9',
+                'origin': 'https://www.terragonlabs.com',
+                'referer': 'https://www.terragonlabs.com/dashboard',
+                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+                'x-deployment-id': 'dpl_3hWzkM7LiymSczFN21Z8chju84CV'
+              },
+              body: JSON.stringify(testPayload)
             }
-          } else if (description.includes('API') || description.includes('endpoint')) {
-            // Check if API endpoints exist
-            testPassed = true; // For now, assume API tests pass
-            testDetails = 'API endpoint check completed';
-          } else {
-            // Default: require manual verification
-            testPassed = false;
-            testDetails = 'Test requires manual verification - failed by default';
+          );
+
+          const testResponseText = await testResponse.text();
+          const testThreadMatch = testResponseText.match(/"id":"([^"]+)"/);
+          const testThreadId = testThreadMatch ? testThreadMatch[1] : 'test-pending';
+          
+          console.log(`Test instance created: ${testThreadId}`);
+          
+          // Send test result back to main execution thread
+          if (mainThreadId && mainThreadId !== 'undefined') {
+            const reportPayload = [{
+              threadId: mainThreadId,
+              message: {
+                type: 'user',
+                model: 'sonnet',
+                parts: [{
+                  type: 'rich-text',
+                  nodes: [{
+                    type: 'text',
+                    text: `# TEST INITIATED
+
+Fresh Terragon test instance created: ${testThreadId}
+
+Testing criteria: "${description}"
+
+Test is running in contextless environment with no knowledge of execution history.
+Will report results once test instance completes verification.`
+                  }]
+                }],
+                timestamp: new Date().toISOString()
+              }
+            }];
+
+            await fetch(
+              `https://www.terragonlabs.com/task/${mainThreadId}`,
+              {
+                method: 'POST',
+                headers: {
+                  'accept': 'text/x-component',
+                  'content-type': 'text/plain;charset=UTF-8',
+                  'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
+                  'next-action': '7f40cb55e87cce4b3543b51a374228296bc2436c6d',
+                  'origin': 'https://www.terragonlabs.com',
+                  'referer': `https://www.terragonlabs.com/task/${mainThreadId}`,
+                  'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+                  'x-deployment-id': 'dpl_3hWzkM7LiymSczFN21Z8chju84CV'
+                },
+                body: JSON.stringify(reportPayload)
+              }
+            );
           }
           
           return res.status(200).json({
-            passed: testPassed,
-            details: testDetails,
+            testInstanceCreated: true,
+            testThreadId: testThreadId,
+            testUrl: `https://www.terragonlabs.com/task/${testThreadId}`,
             criteria: description,
-            checkpointId: checkpoint.id,
+            message: 'Contextless test instance created - results pending',
             timestamp: new Date().toISOString()
           });
           
         } catch (error) {
+          console.error('Test instance creation failed:', error);
           return res.status(500).json({
             passed: false,
-            details: `Test execution error: ${error.message}`,
+            details: `Test instance creation error: ${error.message}`,
             criteria: criteria.description,
             error: error.message
           });
