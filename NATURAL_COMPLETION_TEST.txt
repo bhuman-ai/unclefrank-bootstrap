@@ -1,0 +1,1 @@
+This is a test message for natural completion detection. The system should recognize when this message naturally concludes without requiring an explicit end marker. The message flows naturally and provides complete information about the testing scenario.
