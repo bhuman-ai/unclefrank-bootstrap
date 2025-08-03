@@ -525,26 +525,109 @@ The system can execute tasks in Terragon, which creates GitHub branches, but the
                 }
                 
                 setExecuting(true);
-                addLog('Starting sequential checkpoint execution...', 'info');
+                addLog('Creating real Terragon task...', 'info');
                 
                 try {
-                    // Initialize checkpoint queue
+                    // Build the complete task message with all checkpoints
+                    const taskMessage = `# TASK EXECUTION: ${state.task.name}
+
+## Objective
+${state.task.objective}
+
+## Project Context
+${state.projectContext || 'No additional context provided'}
+
+## Sacred Flow Instructions
+IMPORTANT: This task follows the sacred flow with checkpoint-by-checkpoint execution and testing.
+Execute each checkpoint sequentially, running Pass/Fail tests between each one.
+Only proceed to the next checkpoint if the current one passes all tests.
+
+## Checkpoints to Execute
+${state.checkpoints.map((cp, i) => `
+### ${i + 1}. ${cp.name}
+**Objective:** ${cp.objective}
+**Blocking:** ${cp.blocking ? 'Yes - Must pass before continuing' : 'No - Can fail without blocking'}
+**Instructions:**
+${cp.instructions.map((inst, j) => `  ${j + 1}. ${inst}`).join('\n')}
+**Pass Criteria:**
+${cp.passCriteria.map(pc => `  - ${pc.description}`).join('\n')}
+`).join('\n')}
+
+Please execute each checkpoint sequentially and report the results for each one.`;
+
+                    // Create a new Terragon task via dashboard
+                    const dashboardPayload = [{
+                        message: {
+                            type: 'user',
+                            model: 'sonnet',
+                            parts: [{
+                                type: 'rich-text',
+                                nodes: [{
+                                    type: 'text',
+                                    text: taskMessage
+                                }]
+                            }],
+                            timestamp: new Date().toISOString()
+                        },
+                        githubRepoFullName: 'bhuman-ai/unclefrank-bootstrap',
+                        repoBaseBranchName: 'master',
+                        saveAsDraft: false
+                    }];
+
+                    const response = await fetch('/api/execute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            action: 'create-task',
+                            payload: dashboardPayload
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    if (!response.ok) {
+                        throw new Error(result.error || `Failed to create Terragon task: ${response.status}`);
+                    }
+                    
+                    const threadId = result.threadId;
+                    const threadUrl = `https://www.terragonlabs.com/task/${threadId}`;
+                    
+                    addLog(`Real Terragon task created with ID: ${threadId}`, 'success');
+                    addLog(`Monitor progress at: ${threadUrl}`, 'info');
+                    
+                    // Initialize checkpoint queue with real thread ID
                     const checkpointQueue = [...state.checkpoints];
                     
-                    // Set task thread ID
-                    const taskThreadId = `task-${Date.now()}-${Math.random().toString(36).substring(7)}`;
                     setState(prev => ({ 
                         ...prev, 
-                        sessionId: taskThreadId,
-                        taskThreadId: taskThreadId,
+                        sessionId: threadId,
+                        taskThreadId: threadId,
                         checkpointQueue: checkpointQueue,
                         currentCheckpointIndex: 0
                     }));
                     
-                    addLog(`Task thread created: ${taskThreadId}`, 'success');
+                    // Mark all checkpoints as sent to Terragon
+                    const newExecutionStatus = {};
+                    state.checkpoints.forEach(cp => {
+                        newExecutionStatus[cp.id] = {
+                            status: 'sent',
+                            threadId: threadId,
+                            logs: [{ 
+                                message: `Sent to Terragon for sequential execution`,
+                                url: threadUrl
+                            }]
+                        };
+                    });
                     
-                    // Start executing the first checkpoint
-                    await executeNextCheckpoint();
+                    setState(prev => ({
+                        ...prev,
+                        executionStatus: newExecutionStatus
+                    }));
+                    
+                    addLog('Task sent to Terragon for sequential execution with Pass/Fail testing', 'success');
+                    
+                    // Note: In a real implementation, we would need to poll Terragon
+                    // to get checkpoint execution status and test results
+                    // For now, this creates the real task but doesn't track individual checkpoint progress
                     
                 } catch (error) {
                     addLog(`Execution error: ${error.message}`, 'error');
