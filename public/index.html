@@ -692,21 +692,26 @@ Total checkpoints: ${state.checkpoints.length}`;
                     addLog(`Terragon thread created: ${threadId}`, 'success');
                     addLog(`Monitor at: ${threadUrl}`, 'info');
                     
-                    // Initialize state for sequential execution
-                    setState(prev => ({ 
-                        ...prev, 
-                        sessionId: threadId,
-                        taskThreadId: threadId,
-                        checkpointQueue: [...state.checkpoints],
-                        currentCheckpointIndex: 0,
-                        executionStatus: {} // Start fresh
-                    }));
-                    
-                    // Start executing the first checkpoint
-                    setTimeout(() => {
-                        console.log('Starting first checkpoint execution');
-                        executeNextCheckpoint();
-                    }, 1000);
+                    // Initialize state for sequential execution and start execution
+                    setState(prev => {
+                        const newState = { 
+                            ...prev, 
+                            sessionId: threadId,
+                            taskThreadId: threadId,
+                            checkpointQueue: [...prev.checkpoints], // Use prev.checkpoints not state.checkpoints
+                            currentCheckpointIndex: 0,
+                            executionStatus: {} // Start fresh
+                        };
+                        
+                        // Start execution after state update with proper queue
+                        setTimeout(() => {
+                            console.log('Starting first checkpoint execution with queue:', newState.checkpointQueue.length);
+                            // Call with explicit parameters to avoid stale closure
+                            executeNextCheckpointWithQueue(newState.checkpointQueue, 0, threadId);
+                        }, 1000);
+                        
+                        return newState;
+                    });
                     
                 } catch (error) {
                     addLog(`Execution error: ${error.message}`, 'error');
@@ -714,7 +719,216 @@ Total checkpoints: ${state.checkpoints.length}`;
                 }
             };
 
-            // Execute next checkpoint in queue
+            // Execute next checkpoint with explicit parameters (avoids stale closure)
+            const executeNextCheckpointWithQueue = async (queue, currentIndex, threadId) => {
+                console.log('executeNextCheckpointWithQueue called with:', {
+                    queueLength: queue?.length || 0,
+                    currentIndex,
+                    threadId
+                });
+                
+                addLog(`Checking execution: index=${currentIndex}, queue length=${queue?.length || 0}`, 'info');
+                
+                if (!queue || queue.length === 0) {
+                    addLog('ERROR: No checkpoints found in queue!', 'error');
+                    setExecuting(false);
+                    return;
+                }
+                
+                if (currentIndex >= queue.length) {
+                    addLog('All checkpoints completed, running final validation...', 'info');
+                    await validateTaskCompletion();
+                    setExecuting(false);
+                    return;
+                }
+                
+                const checkpoint = queue[currentIndex];
+                const checkpointNumber = currentIndex + 1;
+                addLog(`=== Starting Checkpoint ${checkpointNumber}/${queue.length}: ${checkpoint.name} ===`, 'info');
+                
+                // Update current checkpoint index in state
+                setState(prev => ({
+                    ...prev,
+                    currentCheckpointIndex: currentIndex
+                }));
+                
+                // Continue with checkpoint execution...
+                await executeCheckpointWithParams(checkpoint, queue, currentIndex, threadId);
+            };
+
+            // Execute individual checkpoint with explicit parameters
+            const executeCheckpointWithParams = async (checkpoint, queue, currentIndex, threadId) => {
+                const checkpointNumber = currentIndex + 1;
+                
+                // Validate dependencies before execution
+                const dependenciesValid = await validateDependencies(checkpoint);
+                if (!dependenciesValid) {
+                    addLog(`Dependencies not met for ${checkpoint.name}, waiting...`, 'error');
+                    setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex, threadId), 2000);
+                    return;
+                }
+                
+                // Get current retry count
+                const currentStatus = state.executionStatus[checkpoint.id];
+                const retryCount = currentStatus?.retryCount || 0;
+                
+                // Update status to in_progress
+                setState(prev => ({
+                    ...prev,
+                    executionStatus: {
+                        ...prev.executionStatus,
+                        [checkpoint.id]: { 
+                            status: 'in_progress', 
+                            logs: [], 
+                            retryCount: retryCount,
+                            startTime: new Date().toISOString()
+                        }
+                    }
+                }));
+                
+                try {
+                    // Send checkpoint to Terragon via API proxy
+                    const execResponse = await fetch('/api/execute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            action: 'execute',
+                            checkpoint,
+                            projectContext: state.projectContext,
+                            sessionId: threadId
+                        })
+                    });
+                    
+                    if (!execResponse.ok) {
+                        const errorData = await execResponse.json();
+                        throw new Error(errorData.error || 'Failed to execute checkpoint');
+                    }
+                    
+                    const execData = await execResponse.json();
+                    addLog(`Checkpoint sent to thread: ${execData.threadId}`, 'info');
+                    
+                    // Update status to executing
+                    setState(prev => ({
+                        ...prev,
+                        executionStatus: {
+                            ...prev.executionStatus,
+                            [checkpoint.id]: {
+                                ...prev.executionStatus[checkpoint.id],
+                                status: 'executing',
+                                threadId: threadId,
+                                logs: [{ 
+                                    message: `Executing in thread: ${threadId}`,
+                                    url: `https://www.terragonlabs.com/task/${threadId}`
+                                }]
+                            }
+                        }
+                    }));
+                    
+                    addLog(`Checkpoint sent to Terragon, waiting for execution...`, 'info');
+                    
+                    // Wait for Terragon to execute (in real implementation, would poll for completion)
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    
+                    // Run pass/fail tests
+                    addLog(`Running Pass/Fail tests for ${checkpoint.name}...`, 'info');
+                    const testResult = await testCheckpoint(checkpoint);
+                    
+                    if (testResult.passed) {
+                        // Mark as passed and move to next
+                        setState(prev => ({
+                            ...prev,
+                            executionStatus: {
+                                ...prev.executionStatus,
+                                [checkpoint.id]: {
+                                    ...prev.executionStatus[checkpoint.id],
+                                    status: 'pass',
+                                    testResults: testResult,
+                                    completedTime: new Date().toISOString()
+                                }
+                            }
+                        }));
+                        
+                        addLog(`✅ Checkpoint ${checkpointNumber} PASSED all tests!`, 'success');
+                        
+                        // Continue to next checkpoint
+                        setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex + 1, threadId), 2000);
+                        
+                    } else {
+                        // Handle failure with retry logic
+                        const newRetryCount = retryCount + 1;
+                        
+                        if (newRetryCount < 3) {
+                            addLog(`❌ Checkpoint ${checkpointNumber} FAILED - Retry ${newRetryCount}/3`, 'error');
+                            setState(prev => ({
+                                ...prev,
+                                executionStatus: {
+                                    ...prev.executionStatus,
+                                    [checkpoint.id]: {
+                                        ...prev.executionStatus[checkpoint.id],
+                                        status: 'retrying',
+                                        retryCount: newRetryCount,
+                                        testResults: testResult
+                                    }
+                                }
+                            }));
+                            
+                            // Retry same checkpoint
+                            setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex, threadId), 3000);
+                        } else {
+                            addLog(`🛑 Checkpoint ${checkpointNumber} FAILED after 3 attempts!`, 'error');
+                            if (checkpoint.blocking) {
+                                addLog(`🚫 This is a BLOCKING checkpoint - execution halted`, 'error');
+                            }
+                            setState(prev => ({
+                                ...prev,
+                                executionStatus: {
+                                    ...prev.executionStatus,
+                                    [checkpoint.id]: {
+                                        ...prev.executionStatus[checkpoint.id],
+                                        status: 'fail',
+                                        testResults: testResult,
+                                        failedTime: new Date().toISOString()
+                                    }
+                                }
+                            }));
+                            
+                            // If blocking checkpoint failed, stop execution
+                            if (checkpoint.blocking) {
+                                setExecuting(false);
+                                addLog('Execution stopped due to blocking checkpoint failure', 'error');
+                            } else {
+                                // Non-blocking can continue
+                                addLog('Non-blocking checkpoint failed, continuing...', 'info');
+                                setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex + 1, threadId), 2000);
+                            }
+                        }
+                    }
+                    
+                } catch (error) {
+                    addLog(`Checkpoint execution error: ${error.message}`, 'error');
+                    setState(prev => ({
+                        ...prev,
+                        executionStatus: {
+                            ...prev.executionStatus,
+                            [checkpoint.id]: {
+                                status: 'fail',
+                                logs: [{ message: error.message }],
+                                error: error.message
+                            }
+                        }
+                    }));
+                    
+                    if (checkpoint.blocking) {
+                        setExecuting(false);
+                        addLog('Execution stopped due to error in blocking checkpoint', 'error');
+                    } else {
+                        // Try next checkpoint for non-blocking
+                        setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex + 1, threadId), 2000);
+                    }
+                }
+            };
+
+            // Execute next checkpoint in queue (legacy - uses state)
             const executeNextCheckpoint = async () => {
                 console.log('executeNextCheckpoint called');
                 console.log('Current state:', {
