@@ -184,34 +184,19 @@
                     const execData = await execResponse.json();
                     if (!execResponse.ok) throw new Error(execData.error);
                     
-                    addLog(`Checkpoint executed, running tests...`, 'info');
+                    addLog(`${checkpoint.name}: Task created in Terragon`, 'success');
                     
-                    // Run tests
-                    const testResponse = await fetch(EXECUTE_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            action: 'test',
-                            checkpoint
-                        })
-                    });
-                    
-                    const testData = await testResponse.json();
-                    if (!testResponse.ok) throw new Error(testData.error);
-                    
-                    // Update status
+                    // Update status to show execution was sent to Terragon
                     setState(prev => ({
                         ...prev,
                         executionStatus: {
                             ...prev.executionStatus,
                             [checkpoint.id]: {
-                                status: testData.status,
-                                logs: testData.testResults
+                                status: 'sent',
+                                logs: [{ message: 'Task sent to Terragon. Check your Terragon dashboard.' }]
                             }
                         }
                     }));
-                    
-                    addLog(`${checkpoint.name}: ${testData.status}`, testData.status === 'pass' ? 'success' : 'error');
                     
                 } catch (error) {
                     setState(prev => ({
@@ -233,6 +218,7 @@
                 const colors = {
                     pending: 'bg-gray-600',
                     in_progress: 'bg-blue-600',
+                    sent: 'bg-purple-600',
                     pass: 'bg-green-600',
                     fail: 'bg-red-600'
                 };

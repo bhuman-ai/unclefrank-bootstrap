@@ -11,7 +11,7 @@ class TerragonExecutor {
   }
 
   async sendToTerragon(message, githubRepo = 'bhuman-ai/unclefrank-bootstrap') {
-    const payload = [{
+    const payload = JSON.stringify([{
       message: {
         type: 'user',
         model: 'sonnet',
@@ -27,7 +27,7 @@ class TerragonExecutor {
       githubRepoFullName: githubRepo,
       repoBaseBranchName: 'main',
       saveAsDraft: false
-    }];
+    }]);
 
     try {
       const response = await axios.post(
@@ -47,9 +47,18 @@ class TerragonExecutor {
         }
       );
 
+      // Terragon returns React Server Components, not JSON
+      // Check if response indicates success
+      if (response.data && typeof response.data === 'string' && response.data.includes('digest')) {
+        return {
+          success: true,
+          data: 'Task created in Terragon successfully'
+        };
+      }
+      
       return {
         success: true,
-        data: response.data
+        data: 'Message sent to Terragon'
       };
     } catch (error) {
       console.error('Terragon API Error:', error.response?.data || error.message);
@@ -141,20 +150,12 @@ Execute this checkpoint and report results.`;
           return res.status(400).json({ error: 'Checkpoint required' });
         }
 
-        // Simulate test execution
-        const testResults = checkpoint.passCriteria.map(pc => ({
-          criterionId: pc.id,
-          description: pc.description,
-          passed: Math.random() > 0.3, // 70% pass rate for demo
-          message: pc.testCommand ? `Executed: ${pc.testCommand}` : 'Manual verification'
-        }));
-
-        const allPassed = testResults.every(tr => tr.passed);
-
+        // Tests should be run in Terragon
+        // For now, return pending status
         return res.status(200).json({
           checkpointId: checkpoint.id,
-          status: allPassed ? 'pass' : 'fail',
-          testResults,
+          status: 'pending',
+          message: 'Tests should be executed in Terragon',
           timestamp: new Date().toISOString()
         });
       }
