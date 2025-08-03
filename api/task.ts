@@ -25,7 +25,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { action, request, projectContext } = req.body;
 
   if (!CLAUDE_API_KEY) {
-    return res.status(500).json({ error: 'CLAUDE_API_KEY not configured' });
+    return res.status(500).json({ 
+      error: 'CLAUDE_API_KEY not configured. Please add it to Vercel environment variables.',
+      instructions: 'Go to https://vercel.com/bhuman/unclefrank-bootstrap/settings/environment-variables and add CLAUDE_API_KEY'
+    });
   }
 
   try {

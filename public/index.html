@@ -81,7 +81,7 @@
                         <p><strong>Reasoning:</strong> ${data.classification.reasoning}</p>
                     `);
                 } else {
-                    showError(data.error);
+                    showError(data);
                 }
             } catch (error) {
                 showError(error.message);
@@ -132,7 +132,7 @@
                         ${checkpointList}
                     `);
                 } else {
-                    showError(data.error);
+                    showError(data);
                 }
             } catch (error) {
                 showError(error.message);
@@ -156,10 +156,14 @@
             `;
         }
 
-        function showError(message) {
+        function showError(error) {
+            const message = typeof error === 'object' && error.error ? error.error : error;
+            const instructions = typeof error === 'object' && error.instructions ? error.instructions : '';
+            
             document.getElementById('results').innerHTML = `
                 <div class="bg-red-900 rounded-lg p-6">
                     <p class="text-red-300">Error: ${message}</p>
+                    ${instructions ? `<p class="text-red-200 mt-2 text-sm">${instructions}</p>` : ''}
                 </div>
             `;
         }
