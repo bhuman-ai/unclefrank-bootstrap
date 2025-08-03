@@ -802,8 +802,10 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             addLog(`🚫 Checkpoint execution failed - stopping`, 'error');
                             setExecuting(false);
                             return;
+                        } else if (statusResult.status === 'starting') {
+                            addLog(`⏳ Terragon starting up... (waiting for sandbox)`, 'info');
                         } else {
-                            addLog(`⏳ Terragon still working on checkpoint ${checkpointNumber}... (${statusResult.status})`, 'info');
+                            addLog(`⏳ Terragon working on checkpoint ${checkpointNumber}... (${statusResult.status})`, 'info');
                         }
                     } else {
                         addLog(`⚠️ Could not check Terragon status, assuming still working...`, 'info');

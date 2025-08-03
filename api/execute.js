@@ -541,16 +541,17 @@ Will report results once test instance completes verification.`
             lastResponse = lastMessageMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
           }
           
-          // FRANK'S REAL COMPLETION DETECTION - LOOK FOR "END OF MESSAGE"
+          // FRANK'S REAL COMPLETION DETECTION - ONLY LOOK FOR "END OF MESSAGE"
           if (lastResponse.includes('END OF MESSAGE')) {
             status = 'completed';
             completed = true;
-          } else if (pageContent.includes('Error') || pageContent.includes('Failed')) {
-            status = 'error';
-            completed = true; // Consider errors as "completed" to stop polling
           } else if (lastResponse.length > 0) {
-            // Has response but no END OF MESSAGE - still working
+            // Has actual response from Terragon but no END OF MESSAGE - still working
             status = 'active';
+            completed = false;
+          } else if (pageContent.includes('Waiting for') || pageContent.includes('provisioning') || pageContent.includes('Sandbox')) {
+            // Terragon is starting up - not an error, just waiting
+            status = 'starting';
             completed = false;
           } else {
             // Look for recent message activity - if Terragon replied recently, likely still working
