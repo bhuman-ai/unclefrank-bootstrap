@@ -488,6 +488,93 @@ Will report results once test instance completes verification.`
         });
       }
 
+      case 'check-terragon-status': {
+        // Check if Terragon thread has completed execution
+        const { threadId } = req.body;
+        if (!threadId) {
+          return res.status(400).json({ error: 'Thread ID required for status check' });
+        }
+
+        try {
+          // FRANK'S REAL TERRAGON STATUS CHECK - NO FAKE BULLSHIT
+          const response = await fetch(
+            `https://www.terragonlabs.com/task/${threadId}`,
+            {
+              method: 'GET',
+              headers: {
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
+                'referer': 'https://www.terragonlabs.com/dashboard',
+                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
+              }
+            }
+          );
+
+          const pageContent = await response.text();
+          
+          // Parse the page to determine status
+          let status = 'unknown';
+          let completed = false;
+          let hasRecentActivity = false;
+          
+          // Check for completion indicators in the HTML
+          if (pageContent.includes('Task completed') || pageContent.includes('execution complete')) {
+            status = 'completed';
+            completed = true;
+          } else if (pageContent.includes('In progress') || pageContent.includes('Executing')) {
+            status = 'executing';
+            completed = false;
+          } else if (pageContent.includes('Error') || pageContent.includes('Failed')) {
+            status = 'error';
+            completed = true; // Consider errors as "completed" to stop polling
+          } else {
+            // Look for recent message activity - if Terragon replied recently, likely still working
+            const messagePattern = /"timestamp":\s*"([^"]+)"/g;
+            const timestamps = [...pageContent.matchAll(messagePattern)];
+            
+            if (timestamps.length > 0) {
+              const latestTimestamp = timestamps[timestamps.length - 1][1];
+              const latestTime = new Date(latestTimestamp).getTime();
+              const now = new Date().getTime();
+              const timeDiff = now - latestTime;
+              
+              // If last activity was within 2 minutes, consider it active
+              if (timeDiff < 120000) {
+                status = 'active';
+                hasRecentActivity = true;
+                completed = false;
+              } else {
+                status = 'idle';
+                completed = true; // Consider idle threads as completed for polling
+              }
+            } else {
+              status = 'waiting';
+              completed = false;
+            }
+          }
+          
+          return res.status(200).json({
+            threadId,
+            status,
+            completed,
+            hasRecentActivity,
+            url: `https://www.terragonlabs.com/task/${threadId}`,
+            message: `Thread ${threadId} is ${status}`,
+            timestamp: new Date().toISOString()
+          });
+          
+        } catch (error) {
+          console.error('Failed to check Terragon status:', error);
+          return res.status(500).json({
+            threadId,
+            status: 'error',
+            completed: true, // Stop polling on errors
+            error: `Status check failed: ${error.message}`,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
       default:
         return res.status(400).json({ error: 'Invalid action' });
     }
