@@ -186,9 +186,7 @@ ${checkpoint.instructions.map((inst, i) => `${i + 1}. ${inst}`).join('\n')}
 ## Pass Criteria (All must pass)
 ${checkpoint.passCriteria.map(pc => `✓ ${pc.description}`).join('\n')}
 
-Please execute this checkpoint and report when complete.
-
-**CRITICAL: End your response with exactly "END OF MESSAGE" when you are completely finished.**`;
+Please execute this checkpoint and report when complete.`;
 
         try {
           // Send to existing Terragon thread
@@ -292,9 +290,7 @@ Test this criteria: "${description}"
 Return result in format:
 RESULT: [PASS/FAIL]
 EVIDENCE: [what you actually found]
-DETAILS: [specific findings]
-
-**CRITICAL: End your response with exactly "END OF MESSAGE" when you are completely finished.**`;
+DETAILS: [specific findings]`;
 
           // Create NEW Terragon instance for testing
           const testPayload = [{
@@ -505,7 +501,7 @@ Will report results once test instance completes verification.`
 
       case 'check-terragon-status': {
         // Check if Terragon thread has completed execution
-        const { threadId } = req.body;
+        const { threadId, lastMessageCount, lastMessageTime } = req.body;
         if (!threadId) {
           return res.status(400).json({ error: 'Thread ID required for status check' });
         }
@@ -535,20 +531,35 @@ Will report results once test instance completes verification.`
           
           // Extract the latest assistant message content
           const messageMatches = [...pageContent.matchAll(/"text":"([^"]+)"/g)];
+          const currentMessageCount = messageMatches.length;
+          
           if (messageMatches.length > 0) {
             // Get the last message (most recent)
             const lastMessageMatch = messageMatches[messageMatches.length - 1];
             lastResponse = lastMessageMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
           }
           
-          // FRANK'S REAL COMPLETION DETECTION - ONLY LOOK FOR "END OF MESSAGE"
-          if (lastResponse.includes('END OF MESSAGE')) {
-            status = 'completed';
-            completed = true;
-          } else if (lastResponse.length > 0) {
-            // Has actual response from Terragon but no END OF MESSAGE - still working
-            status = 'active';
-            completed = false;
+          // FRANK'S NATURAL COMPLETION DETECTION - NO MORE FAKE TERMINATION RULES
+          const previousMessageCount = lastMessageCount || 0;
+          const previousMessageTime = lastMessageTime ? new Date(lastMessageTime).getTime() : Date.now();
+          const now = Date.now();
+          const timeSinceLastMessage = now - previousMessageTime;
+          
+          if (lastResponse.length > 0) {
+            // Has response from Terragon
+            if (currentMessageCount > previousMessageCount) {
+              // New message arrived - Terragon is still active
+              status = 'active';
+              completed = false;
+            } else if (timeSinceLastMessage > 30000) {
+              // No new messages for 30 seconds - Terragon stopped responding
+              status = 'completed';
+              completed = true;
+            } else {
+              // Same message count but less than 30 seconds - still waiting
+              status = 'active';
+              completed = false;
+            }
           } else if (pageContent.includes('Waiting for') || pageContent.includes('provisioning') || pageContent.includes('Sandbox')) {
             // Terragon is starting up - not an error, just waiting
             status = 'starting';
@@ -585,6 +596,8 @@ Will report results once test instance completes verification.`
             completed,
             hasRecentActivity,
             lastResponse,
+            messageCount: currentMessageCount,
+            lastMessageTime: currentMessageCount > previousMessageCount ? now : previousMessageTime,
             url: `https://www.terragonlabs.com/task/${threadId}`,
             message: `Thread ${threadId} is ${status}`,
             timestamp: new Date().toISOString()

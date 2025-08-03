@@ -684,9 +684,7 @@ ${firstCheckpoint.passCriteria.map((pc, i) => `✓ ${i + 1}. ${pc.description}`)
 
 Execute this checkpoint and report when complete. After completion, I will run tests to verify all pass criteria before proceeding to the next checkpoint.
 
-SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoint will be sent individually after the previous one passes its tests.
-
-**CRITICAL: End your response with exactly "END OF MESSAGE" when you are completely finished.**`;
+SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoint will be sent individually after the previous one passes its tests.`;
 
                     // Create Terragon thread with FIRST CHECKPOINT ONLY
                     const dashboardPayload = [{
@@ -766,10 +764,20 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                 }
             };
 
-            // FRANK'S TERRAGON COMPLETION POLLING - NO MORE FAKE TIMING
+            // FRANK'S NATURAL COMPLETION POLLING - TRACK MESSAGE COUNT AND TIME
+            const messageTracker = {}; // Store message state per thread
+            
             const pollTerragonForCompletion = async (threadId, checkpoint, queue, currentIndex, pollCount = 0) => {
-                const maxPolls = 60; // Max 5 minutes of polling (5 seconds * 60)
+                const maxPolls = 120; // Max 10 minutes of polling (5 seconds * 120)
                 const checkpointNumber = currentIndex + 1;
+                
+                // Initialize tracker for this thread if needed
+                if (!messageTracker[threadId]) {
+                    messageTracker[threadId] = {
+                        lastMessageCount: 0,
+                        lastMessageTime: Date.now()
+                    };
+                }
                 
                 addLog(`🔄 Polling attempt ${pollCount + 1}: Checking if Terragon completed checkpoint ${checkpointNumber}`, 'info');
                 
@@ -780,16 +788,28 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
                             action: 'check-terragon-status',
-                            threadId: threadId
+                            threadId: threadId,
+                            lastMessageCount: messageTracker[threadId].lastMessageCount,
+                            lastMessageTime: messageTracker[threadId].lastMessageTime
                         })
                     });
                     
                     if (statusResponse.ok) {
                         const statusResult = await statusResponse.json();
                         
+                        // Update message tracker
+                        if (statusResult.messageCount !== undefined) {
+                            if (statusResult.messageCount > messageTracker[threadId].lastMessageCount) {
+                                // New messages detected
+                                addLog(`📝 New message detected (${statusResult.messageCount} total messages)`, 'info');
+                                messageTracker[threadId].lastMessageCount = statusResult.messageCount;
+                                messageTracker[threadId].lastMessageTime = statusResult.lastMessageTime;
+                            }
+                        }
+                        
                         if (statusResult.completed && statusResult.status === 'completed') {
-                            addLog(`✅ Terragon ACTUALLY completed checkpoint ${checkpointNumber}!`, 'success');
-                            addLog(`📝 Terragon finished successfully with "END OF MESSAGE"`, 'info');
+                            addLog(`✅ Terragon stopped responding - checkpoint ${checkpointNumber} complete!`, 'success');
+                            addLog(`📝 No new messages for 30+ seconds, proceeding with tests`, 'info');
                             
                             // NOW run contextless tests after verified completion
                             setTimeout(() => {
