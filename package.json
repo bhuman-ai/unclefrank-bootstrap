@@ -1,0 +1,26 @@
+{
+  "name": "unclefrank-bootstrap",
+  "version": "0.0.1",
+  "description": "Uncle Frank's Autonomous LLM Dev Platform - Bootstrap Core",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "axios": "^1.7.9",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "inquirer": "^11.1.0",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
