@@ -186,7 +186,9 @@ ${checkpoint.instructions.map((inst, i) => `${i + 1}. ${inst}`).join('\n')}
 ## Pass Criteria (All must pass)
 ${checkpoint.passCriteria.map(pc => `✓ ${pc.description}`).join('\n')}
 
-Please execute this checkpoint and report when complete.`;
+Please execute this checkpoint and report when complete.
+
+**CRITICAL: End your response with exactly "END OF MESSAGE" when you are completely finished.**`;
 
         try {
           // Send to existing Terragon thread
@@ -267,7 +269,7 @@ Please execute this checkpoint and report when complete.`;
         try {
           const description = testDescription || criteria.description;
           
-          // Create test message for fresh Terragon instance
+          // Create test message for fresh Terragon instance with HARD TERMINATION
           const testMessage = `# CONTEXTLESS TEST EXECUTION
 
 ## Test Objective
@@ -290,7 +292,9 @@ Test this criteria: "${description}"
 Return result in format:
 RESULT: [PASS/FAIL]
 EVIDENCE: [what you actually found]
-DETAILS: [specific findings]`;
+DETAILS: [specific findings]
+
+**CRITICAL: End your response with exactly "END OF MESSAGE" when you are completely finished.**`;
 
           // Create NEW Terragon instance for testing
           const testPayload = [{
@@ -537,16 +541,17 @@ Will report results once test instance completes verification.`
             lastResponse = lastMessageMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
           }
           
-          // Check for completion indicators in the HTML
-          if (pageContent.includes('Task completed') || pageContent.includes('execution complete')) {
+          // FRANK'S REAL COMPLETION DETECTION - LOOK FOR "END OF MESSAGE"
+          if (lastResponse.includes('END OF MESSAGE')) {
             status = 'completed';
             completed = true;
-          } else if (pageContent.includes('In progress') || pageContent.includes('Executing')) {
-            status = 'executing';
-            completed = false;
           } else if (pageContent.includes('Error') || pageContent.includes('Failed')) {
             status = 'error';
             completed = true; // Consider errors as "completed" to stop polling
+          } else if (lastResponse.length > 0) {
+            // Has response but no END OF MESSAGE - still working
+            status = 'active';
+            completed = false;
           } else {
             // Look for recent message activity - if Terragon replied recently, likely still working
             const messagePattern = /"timestamp":\s*"([^"]+)"/g;
