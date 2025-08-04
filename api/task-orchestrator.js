@@ -253,7 +253,7 @@ class TaskOrchestrator {
       console.log(`[Orchestrator] 🤔 CONSULTING: Asking Claude for decision...`);
       
       const response = await this.anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-opus-4-20250514',
         max_tokens: 1000, // FRANK'S LIMIT: Smaller responses
         messages: [{
           role: 'user',
@@ -640,7 +640,7 @@ Respond with a JSON decision:
       console.log(`[Orchestrator] 🤔 CONSULTING: Asking Claude to decompose task into checkpoints...`);
       
       const response = await this.anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-opus-4-20250514',
         max_tokens: 2000, // More tokens for detailed decomposition
         messages: [{
           role: 'user',
