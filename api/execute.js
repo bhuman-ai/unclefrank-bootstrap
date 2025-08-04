@@ -544,6 +544,8 @@ Will report results once test instance completes verification.`
           const hasThinking = pageContent.includes('thinking') || pageContent.includes('Thinking');
           const hasCursorBlink = pageContent.includes('cursor-blink') || pageContent.includes('animate-pulse');
           const hasGenerating = pageContent.includes('generating') || pageContent.includes('Generating');
+          const hasProcessing = pageContent.includes('processing') || pageContent.includes('Processing');
+          const hasAnimating = pageContent.includes('animate') && !pageContent.includes('animate-none');
           
           // Track message changes
           const previousMessageCount = lastMessageCount || 0;
@@ -552,11 +554,11 @@ Will report results once test instance completes verification.`
           const timeSinceLastMessage = now - previousMessageTime;
           
           // Primary detection: UI indicators
-          if (hasSpinner || hasThinking || hasGenerating || hasCursorBlink) {
+          if (hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating) {
             // Terragon is actively working
             status = 'active';
             completed = false;
-            console.log(`Terragon active - UI indicators present (spinner: ${hasSpinner}, thinking: ${hasThinking})`);
+            console.log(`Terragon active - UI indicators present (spinner: ${hasSpinner}, thinking: ${hasThinking}, processing: ${hasProcessing})`);
           } else if (lastResponse.length > 0) {
             // No UI activity indicators, has response
             if (currentMessageCount > previousMessageCount) {
@@ -613,6 +615,15 @@ Will report results once test instance completes verification.`
             lastResponse,
             messageCount: currentMessageCount,
             lastMessageTime: currentMessageCount > previousMessageCount ? now : previousMessageTime,
+            hasUIActivity: hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating,
+            uiIndicators: {
+              spinner: hasSpinner,
+              thinking: hasThinking,
+              generating: hasGenerating,
+              cursorBlink: hasCursorBlink,
+              processing: hasProcessing,
+              animating: hasAnimating
+            },
             url: `https://www.terragonlabs.com/task/${threadId}`,
             message: `Thread ${threadId} is ${status}`,
             timestamp: new Date().toISOString()
