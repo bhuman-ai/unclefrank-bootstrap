@@ -34,7 +34,7 @@ const rateLimiter = {
 class TaskOrchestrator {
   constructor() {
     this.baseUrl = 'https://www.terragonlabs.com';
-    this.deploymentId = 'dpl_3hWzkM7LiymSczFN21Z8chju84CV';
+    this.deploymentId = 'dpl_EcYagrYkth26MSww72T3G2EZGiUH';
     this.anthropic = new Anthropic({ apiKey: CLAUDE_API_KEY });
     this.startTime = Date.now();
     
@@ -265,52 +265,11 @@ class TaskOrchestrator {
         max_tokens: 1000, // FRANK'S LIMIT: Smaller responses
         messages: [{
           role: 'user',
-          content: `You are Uncle Frank's Task Orchestrator, monitoring multiple Terragon instances.
+          content: `You are monitoring Terragon instance ${instanceId}. Type: ${instance.type}, Status: ${instance.status}, Messages: ${instance.messages.length}, Already decomposed: ${instance.decomposition ? 'yes' : 'no'}.
 
-Current Instance: ${instanceId} (${instance.type})
-Status: ${instance.status}
-Decision Count: ${instance.decisionCount}/${this.MAX_DECISIONS_PER_INSTANCE}
-Latest Messages: ${JSON.stringify(instance.messages.slice(-3), null, 2)}
+${instance.type === 'main-task' && !instance.decomposition ? `This is a main task that needs decomposition. The task has ${instance.messages.length} messages. If there are at least 2 messages (user request + initial response), decompose it into checkpoints.` : 'This instance does not need decomposition.'}
 
-Active Instances: ${this.instances.size}/${this.MAX_INSTANCES}
-Has Decomposition: ${instance.decomposition ? 'YES' : 'NO'}
-
-IMPORTANT CONSTRAINTS:
-- Do NOT create instances if near limit
-- Do NOT make decisions in rapid succession
-- PREFER 'wait' action when uncertain
-- ESCALATE early if no clear path forward
-
-Analyze the current situation and decide what actions to take. You can:
-1. Send messages to any instance
-2. Create new instances (test, resolver, etc.)
-3. Mark instances as complete
-4. Escalate to human
-5. Wait for more information
-6. Decompose task into checkpoints (for new tasks)
-
-Context about task decomposition:
-- You have the ability to decompose tasks into checkpoints
-- Instance type 'main-task' means this is a primary task instance
-- Has Decomposition field shows if task has been broken down yet
-
-Consider:
-- Has the main task made progress?
-- Are tests passing or failing?
-- Do we need to retry or fix something?
-- Should we create a resolver instance?
-- Is human intervention needed?
-- Does this task need to be broken down into checkpoints?
-
-Respond with ONLY a JSON object, no other text before or after:
-{
-  "action": "decompose_task",
-  "targetInstance": "the-instance-id",
-  "details": {},
-  "reasoning": "Brief explanation"
-}
-
-Valid actions: send_message, create_instance, mark_complete, escalate, wait, decompose_task`
+Return ONLY JSON: {"action":"[decompose_task or wait]","targetInstance":"${instanceId}","details":{},"reasoning":"[your reasoning]"}`
         }]
       });
       
@@ -320,15 +279,26 @@ Valid actions: send_message, create_instance, mark_complete, escalate, wait, dec
         const rawDecision = response.content[0].text;
         console.log(`[Orchestrator] 📝 RAW RESPONSE: ${rawDecision.substring(0, 200)}...`);
         
+        // Try to extract JSON from the response
+        // Sometimes LLMs add explanatory text before/after JSON
+        let jsonString = rawDecision;
+        
+        // Look for JSON object pattern
+        const jsonMatch = rawDecision.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          jsonString = jsonMatch[0];
+          console.log(`[Orchestrator] 🔍 Extracted JSON from response`);
+        }
+        
         // Remove any potential code execution attempts
-        const sanitized = rawDecision.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+        const sanitized = jsonString.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
         decision = JSON.parse(sanitized);
         
         console.log(`[Orchestrator] 🎯 DECISION: ${decision.action}`);
         console.log(`[Orchestrator] 💭 REASONING: ${decision.reasoning}`);
       } catch (parseError) {
         console.error('[Orchestrator] ❌ PARSE ERROR:', parseError.message);
-        console.error('[Orchestrator] 📝 RAW RESPONSE WAS:', rawDecision.substring(0, 500));
+        console.error('[Orchestrator] 📝 RAW RESPONSE WAS:', response.content[0].text.substring(0, 500));
         // Default to safe wait action
         decision = { action: 'wait', reasoning: 'Failed to parse LLM response' };
       }
@@ -448,39 +418,44 @@ Valid actions: send_message, create_instance, mark_complete, escalate, wait, dec
 
   // Send message to a Terragon instance
   async sendMessage(instanceId, message) {
-    const payload = [{
-      threadId: instanceId,
-      message: {
-        type: 'user',
-        model: 'sonnet',
-        parts: [{
-          type: 'rich-text',
-          nodes: [{
-            type: 'text',
-            text: message
-          }]
-        }],
-        timestamp: new Date().toISOString()
-      }
-    }];
+    console.log(`[Orchestrator] 📮 SENDING MESSAGE to ${instanceId}`);
+    console.log(`[Orchestrator] 📝 Message preview: "${message.substring(0, 100)}..."`);
+    
+    try {
+      // Use the working send-terragon-message endpoint
+      const apiBase = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://unclefrank-bootstrap-ellm56p3u-bhuman.vercel.app';
+      
+      const response = await fetch(
+        `${apiBase}/api/send-terragon-message`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            threadId: instanceId,
+            message: message
+          })
+        }
+      );
 
-    await fetch(
-      `${this.baseUrl}/task/${instanceId}`,
-      {
-        method: 'POST',
-        headers: {
-          'accept': 'text/x-component',
-          'content-type': 'text/plain;charset=UTF-8',
-          'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
-          'next-action': '7f40cb55e87cce4b3543b51a374228296bc2436c6d',
-          'origin': this.baseUrl,
-          'referer': `${this.baseUrl}/task/${instanceId}`,
-          'user-agent': 'Mozilla/5.0',
-          'x-deployment-id': this.deploymentId
-        },
-        body: JSON.stringify(payload)
+      const result = await response.json();
+      const success = result.success === true && result.debug?.responsePreview?.includes('"status":"success"');
+      
+      console.log(`[Orchestrator] 📨 MESSAGE RESPONSE: ${response.status} - ${success ? 'SUCCESS' : 'FAILED'}`);
+      
+      if (!success) {
+        console.error(`[Orchestrator] ❌ Failed to send message:`, result.message || 'Unknown error');
+        console.error(`[Orchestrator] Debug:`, result.debug);
+      } else {
+        console.log(`[Orchestrator] ✅ Message sent successfully via send-terragon-message`);
       }
-    );
+      
+      return success;
+    } catch (error) {
+      console.error(`[Orchestrator] ❌ Error sending message:`, error.message);
+      return false;
+    }
   }
 
   // Create a new Terragon instance
@@ -633,10 +608,15 @@ Valid actions: send_message, create_instance, mark_complete, escalate, wait, dec
   // Decompose task into checkpoints
   async decomposeTask(instanceId, details) {
     const instance = this.instances.get(instanceId);
-    if (!instance) return;
+    if (!instance) {
+      console.error(`[Orchestrator] ❌ Instance not found: ${instanceId}`);
+      return;
+    }
     
     console.log(`[Orchestrator] 🧠 TASK DECOMPOSITION STARTING for ${instanceId}`);
     console.log(`[Orchestrator] 📝 Task context:`, JSON.stringify(details, null, 2));
+    console.log(`[Orchestrator] 📌 Instance status: ${instance.status}`);
+    console.log(`[Orchestrator] 📌 Instance messages: ${instance.messages.length}`);
     
     try {
       // Extract task details from instance messages
@@ -644,6 +624,12 @@ Valid actions: send_message, create_instance, mark_complete, escalate, wait, dec
       
       console.log(`[Orchestrator] 🔍 ANALYZING: Extracting task requirements...`);
       console.log(`[Orchestrator] 📊 Message count: ${instance.messages.length}`);
+      console.log(`[Orchestrator] 📝 Task content: "${taskMessages.substring(0, 100)}..."`);
+      
+      if (!taskMessages || taskMessages.trim().length === 0) {
+        console.error(`[Orchestrator] ❌ No task messages found`);
+        return;
+      }
       
       // Ask Claude to decompose the task
       console.log(`[Orchestrator] 🤔 CONSULTING: Asking Claude to decompose task into checkpoints...`);
@@ -653,38 +639,14 @@ Valid actions: send_message, create_instance, mark_complete, escalate, wait, dec
         max_tokens: 2000, // More tokens for detailed decomposition
         messages: [{
           role: 'user',
-          content: `You are Uncle Frank's Task Orchestrator. Break down this task into granular checkpoints.
+          content: `You are decomposing a task into checkpoints. The task is: "${taskMessages.substring(0, 500).replace(/["\n]/g, ' ')}". 
 
-Task Messages:
-${taskMessages.substring(0, 2000)}
+Create 2-3 specific checkpoints for this exact task. Return ONLY a JSON object with real, actionable steps (not placeholders).
 
-FRANK'S CHECKPOINT RULES:
-1. Each checkpoint must be atomic (single responsibility)
-2. Each checkpoint must have clear Pass/Fail criteria
-3. Checkpoints can have dependencies (blocking: true/false)
-4. Be SPECIFIC - no vague objectives
-5. Include test criteria that can be verified
+Example format:
+{"taskSummary":"Create user profile component","checkpoints":[{"id":"cp1","name":"Build profile UI","objective":"Create the visual component","blocking":true,"dependencies":[],"instructions":["Create ProfileComponent.js","Add avatar image display","Add name and bio fields"],"passCriteria":[{"type":"component_exists","description":"ProfileComponent renders without errors"},{"type":"ui_complete","description":"Shows avatar, name, and bio"}]}],"estimatedDuration":"30 minutes","riskFactors":["Image loading errors"]}
 
-Respond with ONLY a JSON object, no other text:
-{
-  "taskSummary": "One-line task summary",
-  "checkpoints": [
-    {
-      "id": "cp1",
-      "name": "Checkpoint name",
-      "objective": "What to achieve",
-      "blocking": true,
-      "dependencies": [],
-      "instructions": ["Step 1", "Step 2"],
-      "passCriteria": [
-        {"type": "file_exists", "description": "File X exists at path Y"},
-        {"type": "api_responds", "description": "API endpoint Z returns 200"}
-      ]
-    }
-  ],
-  "estimatedDuration": "X minutes",
-  "riskFactors": ["Potential issues"]
-}`
+Now create checkpoints for the given task. Return only JSON:`
         }]
       });
 
@@ -693,7 +655,17 @@ Respond with ONLY a JSON object, no other text:
         const rawDecomposition = response.content[0].text;
         console.log(`[Orchestrator] 📝 RAW DECOMPOSITION:`, rawDecomposition.substring(0, 500) + '...');
         
-        decomposition = JSON.parse(rawDecomposition);
+        // Try to extract JSON from the response
+        let jsonString = rawDecomposition;
+        
+        // Look for JSON object pattern
+        const jsonMatch = rawDecomposition.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          jsonString = jsonMatch[0];
+          console.log(`[Orchestrator] 🔍 Extracted JSON from decomposition response`);
+        }
+        
+        decomposition = JSON.parse(jsonString);
         
         console.log(`[Orchestrator] ✅ DECOMPOSITION COMPLETE:`);
         console.log(`[Orchestrator]   - Task: ${decomposition.taskSummary}`);
@@ -713,6 +685,7 @@ Respond with ONLY a JSON object, no other text:
         
       } catch (parseError) {
         console.error('[Orchestrator] ❌ DECOMPOSITION PARSE ERROR:', parseError.message);
+        console.error('[Orchestrator] 📝 RAW RESPONSE WAS:', response.content[0].text.substring(0, 500));
         decomposition = {
           taskSummary: 'Failed to decompose task',
           checkpoints: [],

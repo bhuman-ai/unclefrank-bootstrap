@@ -26,11 +26,11 @@ export default async function handler(req, res) {
           'accept': 'text/x-component',
           'content-type': 'text/plain;charset=UTF-8',
           'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
-          'next-action': '7f40cb55e87cce4b3543b51a374228296bc2436c6d',
+          'next-action': '7f7f75ac3cce9016222850cb0f9b89dacfcdb75c9b',
           'origin': 'https://www.terragonlabs.com',
           'referer': `https://www.terragonlabs.com/task/${threadId}`,
-          'user-agent': 'Mozilla/5.0',
-          'x-deployment-id': 'dpl_3hWzkM7LiymSczFN21Z8chju84CV'
+          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+          'x-deployment-id': 'dpl_EcYagrYkth26MSww72T3G2EZGiUH'
         },
         body: JSON.stringify([threadId])
       }
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
       threadId,
       status,
       messageCount: messages.length,
-      messages: messages.slice(0, 5), // First 5 messages
+      messages: messages, // Return ALL messages
       contentLength: content.length,
       contentPreview: content.substring(0, 500)
     });
