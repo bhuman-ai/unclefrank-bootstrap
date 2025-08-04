@@ -302,15 +302,15 @@ Consider:
 - Is human intervention needed?
 - Does this task need to be broken down into checkpoints?
 
-Respond with a JSON decision:
+Respond with ONLY a JSON object, no other text before or after:
 {
-  "action": "send_message|create_instance|mark_complete|escalate|wait|decompose_task",
-  "targetInstance": "instance-id",
-  "details": {
-    // Action-specific details
-  },
-  "reasoning": "Why this decision?"
-}`
+  "action": "decompose_task",
+  "targetInstance": "the-instance-id",
+  "details": {},
+  "reasoning": "Brief explanation"
+}
+
+Valid actions: send_message, create_instance, mark_complete, escalate, wait, decompose_task`
         }]
       });
       
@@ -665,7 +665,7 @@ FRANK'S CHECKPOINT RULES:
 4. Be SPECIFIC - no vague objectives
 5. Include test criteria that can be verified
 
-Respond with a JSON structure:
+Respond with ONLY a JSON object, no other text:
 {
   "taskSummary": "One-line task summary",
   "checkpoints": [
@@ -673,13 +673,12 @@ Respond with a JSON structure:
       "id": "cp1",
       "name": "Checkpoint name",
       "objective": "What to achieve",
-      "blocking": true/false,
-      "dependencies": ["cp_ids"],
+      "blocking": true,
+      "dependencies": [],
       "instructions": ["Step 1", "Step 2"],
       "passCriteria": [
         {"type": "file_exists", "description": "File X exists at path Y"},
-        {"type": "api_responds", "description": "API endpoint Z returns 200"},
-        {"type": "code_compiles", "description": "No TypeScript errors"}
+        {"type": "api_responds", "description": "API endpoint Z returns 200"}
       ]
     }
   ],
