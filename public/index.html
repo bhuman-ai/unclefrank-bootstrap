@@ -1223,10 +1223,18 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     } else {
                         addLog(`❌ Checkpoint ${checkpointNumber} FAILED tests!`, 'error');
                         
-                        // FRANK'S TEST-RUNNER: Retry up to 3 times
+                        // FRANK'S SMART LOGIC: Check if failures are retryable
+                        const hasRetryableFailures = testResult.failedTests.some(test => 
+                            test.details.includes('timeout') || 
+                            test.details.includes('network') ||
+                            test.details.includes('connection')
+                        );
+                        
                         const currentRetryCount = checkpoint._retryCount || 0;
-                        if (currentRetryCount < 3) {
-                            addLog(`🔄 TEST-RUNNER: Retrying tests (attempt ${currentRetryCount + 1}/3)...`, 'warning');
+                        
+                        // Only retry for transient failures (network, timeouts)
+                        if (hasRetryableFailures && currentRetryCount < 3) {
+                            addLog(`🔄 TEST-RUNNER: Retrying due to possible transient failure (attempt ${currentRetryCount + 1}/3)...`, 'warning');
                             checkpoint._retryCount = currentRetryCount + 1;
                             
                             // Wait before retry
@@ -1236,8 +1244,13 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             return;
                         }
                         
-                        // FRANK'S TASK-LLM-RESOLVER: After 3 test retries, try to fix
-                        addLog(`❌ TEST-RUNNER exhausted 3 retries. Activating Task-LLM-Resolver...`, 'error');
+                        // FRANK'S DIRECT APPROACH: Skip retries for deterministic failures
+                        if (!hasRetryableFailures && currentRetryCount === 0) {
+                            addLog(`🎯 Skipping retries - these failures need fixes, not retries`, 'info');
+                        }
+                        
+                        // Activate Task-LLM-Resolver immediately for fixable issues
+                        addLog(`🔧 Activating Task-LLM-Resolver to fix issues...`, 'warning');
                         
                         // Send failure info back to main Terragon thread
                         const resolverResult = await taskLLMResolver(checkpoint, testResult, state.taskThreadId || executionThreadId);
