@@ -191,6 +191,150 @@
             );
         }
         
+        // Calculator Component
+        function Calculator() {
+            const [display, setDisplay] = useState('0');
+            const [previousValue, setPreviousValue] = useState(null);
+            const [operation, setOperation] = useState(null);
+            const [waitingForOperand, setWaitingForOperand] = useState(false);
+
+            const inputDigit = (digit) => {
+                if (waitingForOperand) {
+                    setDisplay(String(digit));
+                    setWaitingForOperand(false);
+                } else {
+                    setDisplay(display === '0' ? String(digit) : display + digit);
+                }
+            };
+
+            const inputDecimal = () => {
+                if (waitingForOperand) {
+                    setDisplay('0.');
+                    setWaitingForOperand(false);
+                } else if (display.indexOf('.') === -1) {
+                    setDisplay(display + '.');
+                }
+            };
+
+            const clear = () => {
+                setDisplay('0');
+                setPreviousValue(null);
+                setOperation(null);
+                setWaitingForOperand(false);
+            };
+
+            const performOperation = (nextOperation) => {
+                const inputValue = parseFloat(display);
+
+                if (previousValue === null) {
+                    setPreviousValue(inputValue);
+                } else if (operation) {
+                    const currentValue = previousValue || 0;
+                    let result;
+
+                    switch (operation) {
+                        case '+':
+                            result = currentValue + inputValue;
+                            break;
+                        case '-':
+                            result = currentValue - inputValue;
+                            break;
+                        case '*':
+                            result = currentValue * inputValue;
+                            break;
+                        case '/':
+                            result = currentValue / inputValue;
+                            break;
+                        default:
+                            return;
+                    }
+
+                    setDisplay(String(result));
+                    setPreviousValue(result);
+                } else {
+                    setPreviousValue(inputValue);
+                }
+
+                setWaitingForOperand(true);
+                setOperation(nextOperation);
+            };
+
+            const calculate = () => {
+                performOperation(null);
+                setOperation(null);
+                setPreviousValue(null);
+                setWaitingForOperand(true);
+            };
+
+            return (
+                <div className="bg-gray-800 rounded-lg p-6">
+                    <h3 className="text-lg font-semibold mb-4">Calculator</h3>
+                    <div className="bg-gray-900 p-4 rounded-lg mb-4">
+                        <div className="text-right text-2xl font-mono text-white bg-black p-3 rounded">
+                            {display}
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                        <button onClick={clear} className="col-span-2 bg-red-600 hover:bg-red-700 text-white p-3 rounded transition">
+                            Clear
+                        </button>
+                        <button onClick={() => performOperation('/')} className="bg-orange-600 hover:bg-orange-700 text-white p-3 rounded transition">
+                            ÷
+                        </button>
+                        <button onClick={() => performOperation('*')} className="bg-orange-600 hover:bg-orange-700 text-white p-3 rounded transition">
+                            ×
+                        </button>
+                        
+                        <button onClick={() => inputDigit(7)} className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded transition">
+                            7
+                        </button>
+                        <button onClick={() => inputDigit(8)} className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded transition">
+                            8
+                        </button>
+                        <button onClick={() => inputDigit(9)} className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded transition">
+                            9
+                        </button>
+                        <button onClick={() => performOperation('-')} className="bg-orange-600 hover:bg-orange-700 text-white p-3 rounded transition">
+                            −
+                        </button>
+                        
+                        <button onClick={() => inputDigit(4)} className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded transition">
+                            4
+                        </button>
+                        <button onClick={() => inputDigit(5)} className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded transition">
+                            5
+                        </button>
+                        <button onClick={() => inputDigit(6)} className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded transition">
+                            6
+                        </button>
+                        <button onClick={() => performOperation('+')} className="bg-orange-600 hover:bg-orange-700 text-white p-3 rounded transition">
+                            +
+                        </button>
+                        
+                        <button onClick={() => inputDigit(1)} className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded transition">
+                            1
+                        </button>
+                        <button onClick={() => inputDigit(2)} className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded transition">
+                            2
+                        </button>
+                        <button onClick={() => inputDigit(3)} className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded transition">
+                            3
+                        </button>
+                        <button onClick={calculate} className="row-span-2 bg-blue-600 hover:bg-blue-700 text-white p-3 rounded transition">
+                            =
+                        </button>
+                        
+                        <button onClick={() => inputDigit(0)} className="col-span-2 bg-gray-600 hover:bg-gray-700 text-white p-3 rounded transition">
+                            0
+                        </button>
+                        <button onClick={inputDecimal} className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded transition">
+                            .
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+        
         // GitHub API Service
         const GitHubService = {
             baseUrl: 'https://api.github.com',
@@ -3331,6 +3475,11 @@ https://www.terragonlabs.com/task/${task.threadId}
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    {/* Calculator Section */}
+                    <div className="mt-6">
+                        <Calculator />
                     </div>
 
                     {/* Diff Viewer Modal */}
