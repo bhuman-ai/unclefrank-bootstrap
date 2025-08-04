@@ -539,6 +539,10 @@ Will report results once test instance completes verification.`
             lastResponse = lastMessageMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
           }
           
+          // FRANK'S FAVICON-BASED COMPLETION DETECTION
+          // Look for favicon-badged.png requests in the page
+          const hasFaviconBadged = pageContent.includes('favicon-badged.png');
+          
           // FRANK'S UI-BASED COMPLETION DETECTION - LOOKING AT SPINNER AND THINKING INDICATORS
           const hasSpinner = pageContent.includes('spinner') || pageContent.includes('loading') || pageContent.includes('animate-spin');
           const hasThinking = pageContent.includes('thinking') || pageContent.includes('Thinking');
@@ -553,8 +557,13 @@ Will report results once test instance completes verification.`
           const now = Date.now();
           const timeSinceLastMessage = now - previousMessageTime;
           
-          // Primary detection: UI indicators
-          if (hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating) {
+          // Primary detection: Favicon badge indicates completion
+          if (hasFaviconBadged && lastResponse.length > 0) {
+            // Terragon has completed - favicon badge is shown
+            status = 'completed';
+            completed = true;
+            console.log(`Terragon completed - favicon-badged.png detected`);
+          } else if (hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating) {
             // Terragon is actively working
             status = 'active';
             completed = false;
@@ -616,6 +625,7 @@ Will report results once test instance completes verification.`
             messageCount: currentMessageCount,
             lastMessageTime: currentMessageCount > previousMessageCount ? now : previousMessageTime,
             hasUIActivity: hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating,
+            hasFaviconBadged,
             uiIndicators: {
               spinner: hasSpinner,
               thinking: hasThinking,
