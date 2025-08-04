@@ -1,21 +1,56 @@
 // FRANK'S BRANCH TRACKER - TRACK WHICH BRANCH TERRAGON IS WORKING ON
 
+// FRANK'S FIX: Use environment-based storage for serverless
+// In Vercel, we'll use edge config or KV storage
+// For now, use a simple file-based approach
+const fs = require('fs');
+const path = require('path');
+
+// Storage file path - persists between requests
+const STORAGE_FILE = path.join('/tmp', 'branch-tracker.json');
+
 const branchTracker = {
-  // In-memory storage for branch tracking (would use DB in production)
-  branches: new Map(),
+  // Load branches from persistent storage
+  loadBranches() {
+    try {
+      if (fs.existsSync(STORAGE_FILE)) {
+        const data = fs.readFileSync(STORAGE_FILE, 'utf8');
+        return new Map(JSON.parse(data));
+      }
+    } catch (e) {
+      console.error('Failed to load branch data:', e);
+    }
+    return new Map();
+  },
+  
+  // Save branches to persistent storage
+  saveBranches(branches) {
+    try {
+      const data = JSON.stringify([...branches]);
+      fs.writeFileSync(STORAGE_FILE, data, 'utf8');
+    } catch (e) {
+      console.error('Failed to save branch data:', e);
+    }
+  },
   
   // Record a new branch for a thread
   recordBranch(threadId, branchName) {
-    this.branches.set(threadId, {
+    const branches = this.loadBranches();
+    branches.set(threadId, {
       branch: branchName,
       timestamp: Date.now(),
       status: 'active'
     });
+    this.saveBranches(branches);
+    console.log(`Recorded branch ${branchName} for thread ${threadId}`);
   },
   
   // Get the branch for a thread
   getBranch(threadId) {
-    return this.branches.get(threadId);
+    const branches = this.loadBranches();
+    const result = branches.get(threadId);
+    console.log(`Branch lookup for ${threadId}: ${result ? result.branch : 'not found'}`);
+    return result;
   },
   
   // Extract branch from Terragon's messages
