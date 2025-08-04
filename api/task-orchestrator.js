@@ -6,34 +6,116 @@ import Anthropic from '@anthropic-ai/sdk';
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || '';
 const TERRAGON_AUTH = process.env.TERRAGON_AUTH || 'JTgr3pSvWUN2bNmaO66GnTGo2wrk1zFf.fW4Qo8gvM1lTf%2Fis9Ss%2FJOdlSKJrnLR0CapMdm%2Bcy0U%3D';
 
+// FRANK'S RATE LIMITING
+const rateLimiter = {
+  requests: new Map(),
+  windowMs: 60000, // 1 minute
+  maxRequests: 30, // 30 requests per minute
+  
+  check(key) {
+    const now = Date.now();
+    const userRequests = this.requests.get(key) || [];
+    const recentRequests = userRequests.filter(time => now - time < this.windowMs);
+    
+    if (recentRequests.length >= this.maxRequests) {
+      return false; // Rate limited
+    }
+    
+    recentRequests.push(now);
+    this.requests.set(key, recentRequests);
+    return true;
+  }
+};
+
 class TaskOrchestrator {
   constructor() {
     this.baseUrl = 'https://www.terragonlabs.com';
     this.deploymentId = 'dpl_3hWzkM7LiymSczFN21Z8chju84CV';
     this.anthropic = new Anthropic({ apiKey: CLAUDE_API_KEY });
+    this.startTime = Date.now();
     
     // Track all active instances and their relationships
     this.instances = new Map();
     this.messageStreams = new Map();
     this.decisionHistory = [];
+    
+    // FRANK'S LIMITS: Prevent resource exhaustion
+    this.MAX_INSTANCES = parseInt(process.env.ORCHESTRATOR_MAX_INSTANCES || '50');
+    this.MAX_DECISIONS_PER_INSTANCE = parseInt(process.env.ORCHESTRATOR_MAX_DECISIONS_PER_INSTANCE || '10');
+    this.MAX_CONTEXT_LENGTH = 10000; // chars
+    this.DECISION_COOLDOWN_MS = 30000; // 30s between decisions
+    this.INSTANCE_TTL_MS = 3600000; // 1 hour
+    this.lastDecisionTime = new Map();
+    
+    // Start cleanup timer
+    this.startCleanupTimer();
+  }
+  
+  // FRANK'S CLEANUP: Prevent zombie instances
+  startCleanupTimer() {
+    setInterval(() => {
+      const now = Date.now();
+      const toDelete = [];
+      
+      for (const [id, instance] of this.instances) {
+        // Remove instances older than TTL with no recent activity
+        if (now - instance.lastActivity > this.INSTANCE_TTL_MS) {
+          toDelete.push(id);
+        }
+        
+        // Remove completed/failed instances after 10 minutes
+        if ((instance.status === 'completed' || instance.status === 'failed' || instance.status === 'error') 
+            && now - instance.lastActivity > 600000) {
+          toDelete.push(id);
+        }
+      }
+      
+      for (const id of toDelete) {
+        console.log(`[Orchestrator] Cleaning up stale instance: ${id}`);
+        this.instances.delete(id);
+        this.lastDecisionTime.delete(id);
+      }
+      
+      if (toDelete.length > 0) {
+        console.log(`[Orchestrator] Cleaned up ${toDelete.length} stale instances`);
+      }
+    }, 60000); // Run every minute
   }
 
   // Register a new Terragon instance to monitor
   registerInstance(instanceId, metadata) {
+    // FRANK'S LIMIT: Prevent instance explosion
+    if (this.instances.size >= this.MAX_INSTANCES) {
+      console.error(`[Orchestrator] MAX_INSTANCES limit reached (${this.MAX_INSTANCES})`);
+      throw new Error('Instance limit exceeded');
+    }
+    
+    // FRANK'S VALIDATION: Sanitize metadata
+    const sanitizedMetadata = {
+      type: String(metadata.type || 'unknown').substring(0, 50),
+      parentId: metadata.parentId ? String(metadata.parentId).substring(0, 100) : null,
+      checkpoint: metadata.checkpoint ? {
+        id: String(metadata.checkpoint.id || '').substring(0, 50),
+        name: String(metadata.checkpoint.name || '').substring(0, 200)
+      } : null,
+      branch: String(metadata.branch || 'master').substring(0, 100)
+    };
+    
     this.instances.set(instanceId, {
       id: instanceId,
-      type: metadata.type, // 'main-task', 'test', 'resolver', etc.
-      parentId: metadata.parentId,
-      checkpoint: metadata.checkpoint,
-      branch: metadata.branch,
+      type: sanitizedMetadata.type,
+      parentId: sanitizedMetadata.parentId,
+      checkpoint: sanitizedMetadata.checkpoint,
+      branch: sanitizedMetadata.branch,
       status: 'active',
       messages: [],
+      decisionCount: 0, // Track decisions per instance
       createdAt: Date.now(),
       lastActivity: Date.now(),
-      metadata
+      metadata: sanitizedMetadata
     });
     
-    console.log(`[Orchestrator] Registered ${metadata.type} instance: ${instanceId}`);
+    console.log(`[Orchestrator] Registered ${sanitizedMetadata.type} instance: ${instanceId}`);
   }
 
   // Stream messages from all instances
@@ -105,26 +187,54 @@ class TaskOrchestrator {
     const instance = this.instances.get(instanceId);
     if (!instance) return;
     
+    // FRANK'S COOLDOWN: Prevent decision thrashing
+    const lastDecision = this.lastDecisionTime.get(instanceId) || 0;
+    if (Date.now() - lastDecision < this.DECISION_COOLDOWN_MS) {
+      console.log(`[Orchestrator] Decision cooldown for ${instanceId}`);
+      return;
+    }
+    
+    // FRANK'S LIMIT: Prevent infinite decisions
+    if (instance.decisionCount >= this.MAX_DECISIONS_PER_INSTANCE) {
+      console.error(`[Orchestrator] MAX_DECISIONS limit reached for ${instanceId}`);
+      await this.escalateToHuman({
+        reason: 'Instance exceeded decision limit',
+        context: { instanceId, decisionCount: instance.decisionCount }
+      });
+      return;
+    }
+    
     // Build context for the LLM
     const context = this.buildContext(instanceId);
+    
+    // FRANK'S CONTEXT LIMIT: Prevent token explosion
+    const contextString = JSON.stringify(context);
+    if (contextString.length > this.MAX_CONTEXT_LENGTH) {
+      console.warn(`[Orchestrator] Context too large (${contextString.length} chars), truncating`);
+      // Truncate messages to fit
+      instance.messages = instance.messages.slice(-5);
+    }
     
     try {
       const response = await this.anthropic.messages.create({
         model: 'claude-3-sonnet-20240229',
-        max_tokens: 4096,
+        max_tokens: 1000, // FRANK'S LIMIT: Smaller responses
         messages: [{
           role: 'user',
           content: `You are Uncle Frank's Task Orchestrator, monitoring multiple Terragon instances.
 
 Current Instance: ${instanceId} (${instance.type})
 Status: ${instance.status}
-Latest Messages: ${JSON.stringify(instance.messages.slice(-5), null, 2)}
+Decision Count: ${instance.decisionCount}/${this.MAX_DECISIONS_PER_INSTANCE}
+Latest Messages: ${JSON.stringify(instance.messages.slice(-3), null, 2)}
 
-All Active Instances:
-${this.getInstancesSummary()}
+Active Instances: ${this.instances.size}/${this.MAX_INSTANCES}
 
-Recent Decision History:
-${this.getRecentDecisions()}
+IMPORTANT CONSTRAINTS:
+- Do NOT create instances if near limit
+- Do NOT make decisions in rapid succession
+- PREFER 'wait' action when uncertain
+- ESCALATE early if no clear path forward
 
 Analyze the current situation and decide what actions to take. You can:
 1. Send messages to any instance
@@ -153,10 +263,22 @@ Respond with a JSON decision:
       });
       
       const decision = JSON.parse(response.content[0].text);
+      
+      // FRANK'S VALIDATION: Sanitize decision
+      if (!decision.action || typeof decision.action !== 'string') {
+        throw new Error('Invalid decision format');
+      }
+      
+      // Update counters
+      instance.decisionCount++;
+      this.lastDecisionTime.set(instanceId, Date.now());
+      
       await this.executeDecision(decision);
       
     } catch (error) {
       console.error('[Orchestrator] Decision-making error:', error);
+      // Don't let errors cascade
+      instance.status = 'error';
     }
   }
 
@@ -165,20 +287,45 @@ Respond with a JSON decision:
     const instance = this.instances.get(instanceId);
     const relatedInstances = this.getRelatedInstances(instanceId);
     
+    // FRANK'S LOOP DETECTION
+    const recentDecisions = this.decisionHistory
+      .filter(d => d.targetInstance === instanceId)
+      .slice(-5);
+    
+    const hasRepeatingPattern = this.detectDecisionLoop(recentDecisions);
+    
     return {
       currentInstance: instance,
-      relatedInstances,
-      timeline: this.buildTimeline(instanceId),
+      relatedInstances: relatedInstances.slice(0, 5), // Limit related instances
+      hasRepeatingPattern,
       checkpointStatus: this.getCheckpointStatus(instance),
       testResults: this.getTestResults(instanceId)
     };
   }
+  
+  // FRANK'S LOOP DETECTION
+  detectDecisionLoop(decisions) {
+    if (decisions.length < 3) return false;
+    
+    // Check for repeating actions
+    const actions = decisions.map(d => d.action);
+    const lastTwo = actions.slice(-2).join(',');
+    const previousTwo = actions.slice(-4, -2).join(',');
+    
+    return lastTwo === previousTwo;
+  }
 
   // Execute the LLM's decision
   async executeDecision(decision) {
+    // FRANK'S HISTORY LIMIT: Prevent memory leak
+    if (this.decisionHistory.length > 100) {
+      this.decisionHistory = this.decisionHistory.slice(-50);
+    }
+    
     this.decisionHistory.push({
       ...decision,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      targetInstance: decision.targetInstance
     });
     
     console.log(`[Orchestrator] Executing: ${decision.action} - ${decision.reasoning}`);
@@ -245,6 +392,11 @@ Respond with a JSON decision:
 
   // Create a new Terragon instance
   async createInstance(details) {
+    // FRANK'S GUARD: Check instance limit
+    if (this.instances.size >= this.MAX_INSTANCES) {
+      console.error('[Orchestrator] Cannot create instance - limit reached');
+      throw new Error('Instance limit exceeded');
+    }
     const payload = [{
       message: {
         type: 'user',
@@ -380,6 +532,8 @@ Respond with a JSON decision:
     if (instance) {
       instance.status = 'completed';
       instance.completedAt = Date.now();
+      instance.lastActivity = Date.now();
+      console.log(`[Orchestrator] Instance ${instanceId} marked as complete`);
     }
   }
 
@@ -396,12 +550,15 @@ Respond with a JSON decision:
 }
 
 // API Handler
+// FRANK'S SECURITY: Simple API key auth
+const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATOR_API_KEY || 'test-key-change-in-production';
+
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, X-Orchestrator-Key');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -410,8 +567,21 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+  
+  // FRANK'S AUTH: Simple but effective
+  const authKey = req.headers['x-orchestrator-key'];
+  if (authKey !== ORCHESTRATOR_API_KEY) {
+    console.error('[Orchestrator] Unauthorized access attempt');
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
 
   const { action } = req.body;
+  
+  // FRANK'S RATE LIMITING
+  const clientIp = req.headers['x-forwarded-for'] || req.connection?.remoteAddress || 'unknown';
+  if (!rateLimiter.check(clientIp)) {
+    return res.status(429).json({ error: 'Rate limit exceeded' });
+  }
   
   // Create global orchestrator instance
   const orchestrator = global.taskOrchestrator || new TaskOrchestrator();
@@ -421,13 +591,31 @@ export default async function handler(req, res) {
     switch (action) {
       case 'register': {
         const { instanceId, metadata } = req.body;
-        orchestrator.registerInstance(instanceId, metadata);
         
-        return res.status(200).json({
-          status: 'registered',
-          instanceId,
-          message: 'Instance registered with orchestrator'
-        });
+        // FRANK'S VALIDATION
+        if (!instanceId || typeof instanceId !== 'string' || instanceId.length > 100) {
+          return res.status(400).json({ error: 'Invalid instance ID' });
+        }
+        
+        if (!metadata || typeof metadata !== 'object') {
+          return res.status(400).json({ error: 'Invalid metadata' });
+        }
+        
+        try {
+          orchestrator.registerInstance(instanceId, metadata);
+          
+          return res.status(200).json({
+            status: 'registered',
+            instanceId,
+            message: 'Instance registered with orchestrator',
+            limits: {
+              currentInstances: orchestrator.instances.size,
+              maxInstances: orchestrator.MAX_INSTANCES
+            }
+          });
+        } catch (error) {
+          return res.status(400).json({ error: error.message });
+        }
       }
       
       case 'poll': {
@@ -466,11 +654,29 @@ export default async function handler(req, res) {
       
       case 'status': {
         // Get orchestrator status
+        const instances = Array.from(orchestrator.instances.values());
+        const activeCount = instances.filter(inst => inst.status === 'active').length;
+        
         return res.status(200).json({
-          instances: Array.from(orchestrator.instances.values()),
+          instances: instances.map(inst => ({
+            id: inst.id,
+            type: inst.type,
+            status: inst.status,
+            decisionCount: inst.decisionCount,
+            age: Date.now() - inst.createdAt,
+            lastActivity: Date.now() - inst.lastActivity
+          })),
           decisionHistory: orchestrator.decisionHistory.slice(-10),
-          activeCount: Array.from(orchestrator.instances.values())
-            .filter(inst => inst.status === 'active').length
+          activeCount,
+          limits: {
+            currentInstances: orchestrator.instances.size,
+            maxInstances: orchestrator.MAX_INSTANCES,
+            maxDecisionsPerInstance: orchestrator.MAX_DECISIONS_PER_INSTANCE
+          },
+          health: {
+            status: orchestrator.instances.size < orchestrator.MAX_INSTANCES * 0.8 ? 'healthy' : 'warning',
+            uptime: Date.now() - (orchestrator.startTime || Date.now())
+          }
         });
       }
       

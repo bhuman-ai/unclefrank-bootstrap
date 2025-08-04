@@ -17,11 +17,16 @@
         const { useState, useEffect, useRef, useCallback } = React;
 
         // FRANK'S ORCHESTRATOR INTEGRATION
+        const ORCHESTRATOR_API_KEY = 'test-key-change-in-production'; // Move to env in production
+        
         async function registerWithOrchestrator(instanceId, metadata) {
             try {
                 const response = await fetch('/api/task-orchestrator', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-Orchestrator-Key': ORCHESTRATOR_API_KEY
+                    },
                     body: JSON.stringify({
                         action: 'register',
                         instanceId,
@@ -30,7 +35,20 @@
                 });
                 
                 if (response.ok) {
+                    const result = await response.json();
                     console.log(`[Orchestrator] Registered ${metadata.type} instance: ${instanceId}`);
+                    
+                    // Check if we're near instance limit
+                    if (result.limits && result.limits.currentInstances > result.limits.maxInstances * 0.8) {
+                        console.warn(`[Orchestrator] WARNING: Near instance limit (${result.limits.currentInstances}/${result.limits.maxInstances})`);
+                        addLog(`⚠️ Orchestrator near instance limit`, 'warning');
+                    }
+                } else if (response.status === 429) {
+                    console.error('[Orchestrator] Rate limited');
+                    addLog(`⚠️ Orchestrator rate limit hit - slow down`, 'warning');
+                } else if (response.status === 401) {
+                    console.error('[Orchestrator] Unauthorized');
+                    addLog(`❌ Orchestrator authentication failed`, 'error');
                 }
             } catch (error) {
                 console.error('[Orchestrator] Registration failed:', error);
@@ -46,7 +64,10 @@
                     try {
                         const response = await fetch('/api/task-orchestrator', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'X-Orchestrator-Key': ORCHESTRATOR_API_KEY
+                            },
                             body: JSON.stringify({ action: 'poll' })
                         });
                         
@@ -86,6 +107,25 @@
                         {orchestratorData.instances.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-gray-700">
                                 <p className="text-gray-500 text-xs mb-2">Instances:</p>
+                                {orchestratorData.limits && (
+                                    <div className="mb-2 text-xs">
+                                        <div className="w-full bg-gray-700 rounded-full h-2">
+                                            <div 
+                                                className={`h-2 rounded-full transition-all ${
+                                                    orchestratorData.limits.currentInstances / orchestratorData.limits.maxInstances > 0.8 
+                                                        ? 'bg-red-500' 
+                                                        : orchestratorData.limits.currentInstances / orchestratorData.limits.maxInstances > 0.6 
+                                                        ? 'bg-yellow-500' 
+                                                        : 'bg-green-500'
+                                                }`}
+                                                style={{ width: `${(orchestratorData.limits.currentInstances / orchestratorData.limits.maxInstances) * 100}%` }}
+                                            />
+                                        </div>
+                                        <p className="text-gray-500 mt-1">
+                                            {orchestratorData.limits.currentInstances}/{orchestratorData.limits.maxInstances} instances
+                                        </p>
+                                    </div>
+                                )}
                                 {orchestratorData.instances.slice(0, 5).map((inst, idx) => {
                                     const emoji = inst.type === 'main-task' ? '📋' : 
                                                  inst.type === 'test' ? '🧪' : 
@@ -1365,7 +1405,10 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                         try {
                             const orchestratorResponse = await fetch('/api/task-orchestrator', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 
+                                    'Content-Type': 'application/json',
+                                    'X-Orchestrator-Key': ORCHESTRATOR_API_KEY
+                                },
                                 body: JSON.stringify({
                                     action: 'decide',
                                     instanceId: executionThreadId
