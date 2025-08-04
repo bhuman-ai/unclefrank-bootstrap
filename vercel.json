@@ -11,6 +11,10 @@
     "api/execute.js": {
       "runtime": "@vercel/node@3.0.0",
       "maxDuration": 30
+    },
+    "api/task-orchestrator.js": {
+      "runtime": "@vercel/node@3.0.0",
+      "maxDuration": 30
     }
   }
 }
