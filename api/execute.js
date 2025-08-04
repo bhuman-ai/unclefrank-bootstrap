@@ -556,6 +556,12 @@ Will report results once test instance completes verification.`
           const messageMatches = [...pageContent.matchAll(/"text":"([^"]+)"/g)];
           const currentMessageCount = messageMatches.length;
           
+          // Track message changes (moved here so it's available in all code paths)
+          const previousMessageCount = lastMessageCount || 0;
+          const previousTime = lastMessageTime ? new Date(lastMessageTime).getTime() : Date.now();
+          const now = Date.now();
+          const timeSinceLastMessage = now - previousTime;
+          
           if (messageMatches.length > 0) {
             // Get the last message (most recent)
             const lastMessageMatch = messageMatches[messageMatches.length - 1];
@@ -600,12 +606,6 @@ Will report results once test instance completes verification.`
             const hasGenerating = pageContent.includes('generating') || pageContent.includes('Generating');
             const hasProcessing = pageContent.includes('processing') || pageContent.includes('Processing');
             const hasAnimating = pageContent.includes('animate') && !pageContent.includes('animate-none');
-            
-            // Track message changes
-            const previousMessageCount = lastMessageCount || 0;
-            const previousTime = lastMessageTime ? new Date(lastMessageTime).getTime() : Date.now();
-            const now = Date.now();
-            const timeSinceLastMessage = now - previousTime;
             
             // Secondary detection: Message patterns and activity
             if (hasGitCheckpoint || (hasCompletedPattern && !hasActiveWork)) {
