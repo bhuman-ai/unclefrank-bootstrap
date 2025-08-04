@@ -837,6 +837,9 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                 ...prev,
                                 currentBranch: statusResult.terragonBranch
                             }));
+                            
+                            // FRANK'S BACKUP: Also save to window for persistence
+                            window.lastDetectedBranch = statusResult.terragonBranch;
                         }
                         
                         // Update message tracker
@@ -1181,6 +1184,13 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                 
                 try {
                     addLog(`🎯 Running contextless tests for checkpoint ${checkpointNumber}`, 'info');
+                    
+                    // FRANK'S DIRECT APPROACH: Pass the branch we detected during polling
+                    if (window.lastDetectedBranch) {
+                        checkpoint._detectedBranch = window.lastDetectedBranch;
+                        addLog(`📌 Passing detected branch to tests: ${window.lastDetectedBranch}`, 'info');
+                    }
+                    
                     // Pass the execution thread ID so we test the right branch
                     const testResult = await testCheckpoint(checkpoint, executionThreadId);
                     
@@ -2006,6 +2016,20 @@ After completing these fixes, I will re-run the tests automatically.`;
                             targetBranch = state.currentBranch;
                             console.log(`Using branch from state: ${targetBranch}`);
                             addLog(`📌 Using tracked branch: ${targetBranch}`, 'success');
+                        }
+                        
+                        // FRANK'S FALLBACK: Try to get branch from window/global if available
+                        if (targetBranch === 'master' && window.lastDetectedBranch) {
+                            targetBranch = window.lastDetectedBranch;
+                            console.log(`Using branch from window: ${targetBranch}`);
+                            addLog(`📌 Using last detected branch: ${targetBranch}`, 'info');
+                        }
+                        
+                        // FRANK'S DIRECT: Check if branch was passed through checkpoint
+                        if (targetBranch === 'master' && checkpoint._detectedBranch) {
+                            targetBranch = checkpoint._detectedBranch;
+                            console.log(`Using branch from checkpoint: ${targetBranch}`);
+                            addLog(`📌 Using checkpoint branch: ${targetBranch}`, 'success');
                         }
                         
                         const branchResponse = await fetch('/api/branch-tracker', {
