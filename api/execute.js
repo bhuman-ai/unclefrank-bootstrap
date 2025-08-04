@@ -603,9 +603,9 @@ Will report results once test instance completes verification.`
             
             // Track message changes
             const previousMessageCount = lastMessageCount || 0;
-            const previousMessageTime = lastMessageTime ? new Date(lastMessageTime).getTime() : Date.now();
+            const previousTime = lastMessageTime ? new Date(lastMessageTime).getTime() : Date.now();
             const now = Date.now();
-            const timeSinceLastMessage = now - previousMessageTime;
+            const timeSinceLastMessage = now - previousTime;
             
             // Secondary detection: Message patterns and activity
             if (hasGitCheckpoint || (hasCompletedPattern && !hasActiveWork)) {
@@ -678,7 +678,7 @@ Will report results once test instance completes verification.`
             hasRecentActivity,
             lastResponse,
             messageCount: currentMessageCount,
-            lastMessageTime: currentMessageCount > previousMessageCount ? Date.now() : previousMessageTime,
+            lastMessageTime: currentMessageCount > previousMessageCount ? Date.now() : lastMessageTime,
             terragonStatus, // Include the actual API status field
             url: `https://www.terragonlabs.com/task/${threadId}`,
             message: `Thread ${threadId} is ${status}`,
