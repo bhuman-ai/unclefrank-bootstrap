@@ -1541,13 +1541,14 @@ Please execute this checkpoint and report when complete. I will then run tests t
                     let targetBranch = 'master';
                     
                     // FRANK'S SIMPLE FIX: Just check branch tracker - Terragon is explicit
+                    console.log(`Branch detection for thread: ${mainThreadId}`);
                     try {
                         const branchResponse = await fetch('/api/branch-tracker', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 action: 'get',
-                                threadId: executionThreadId || mainThreadId
+                                threadId: mainThreadId
                             })
                         });
                         
@@ -1558,7 +1559,7 @@ Please execute this checkpoint and report when complete. I will then run tests t
                                 console.log(`Testing on tracked branch: ${targetBranch}`);
                                 addLog(`📌 Testing on branch: ${targetBranch}`, 'info');
                             } else {
-                                addLog(`⚠️ No branch tracked for thread ${executionThreadId || mainThreadId} - using master`, 'warning');
+                                addLog(`⚠️ No branch tracked for thread ${mainThreadId} - using master`, 'warning');
                             }
                         }
                     } catch (e) {
