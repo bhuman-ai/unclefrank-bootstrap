@@ -1655,8 +1655,29 @@ Please execute this checkpoint and report when complete. I will then run tests t
                             if (statusResult.completed) {
                                 addLog(`✅ Test instance ${testThreadId} completed!`, 'success');
                                 
+                                // FRANK'S FIX: RED TEAM found the real bug - API sync delay
+                                // Terragon UI updates before API syncs the full response
+                                addLog(`⏳ Waiting 10s for Terragon API to sync full response...`, 'info');
+                                await new Promise(resolve => setTimeout(resolve, 10000));
+                                
+                                // Re-fetch after sync delay to get complete response
+                                const syncResponse = await fetch('/api/execute', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ 
+                                        action: 'check-terragon-status',
+                                        threadId: testThreadId
+                                    })
+                                });
+                                
+                                if (syncResponse.ok) {
+                                    const syncResult = await syncResponse.json();
+                                    // Use the synced result instead
+                                    statusResult = syncResult;
+                                }
+                                
                                 // FRANK'S DEBUG: Log what we're getting
-                                console.log('Test status result:', statusResult);
+                                console.log('Test status result after sync:', statusResult);
                                 
                                 // Parse the actual test result from Terragon response
                                 // Look for RESULT: PASS/FAIL pattern in the response
@@ -1680,6 +1701,14 @@ Please execute this checkpoint and report when complete. I will then run tests t
                                 }
                                 if (evidenceMatch) {
                                     evidence = evidenceMatch[1].trim();
+                                }
+                                
+                                // FRANK'S RETRY: If still no result, retry with delay
+                                if (result === 'UNKNOWN' && pollCount < 3) {
+                                    console.log('Result not found, retrying in 5s...');
+                                    addLog(`⚠️ Result not found in response, retrying...`, 'warning');
+                                    await new Promise(resolve => setTimeout(resolve, 5000));
+                                    return await pollTestInstanceForResults(testThreadId, maxPolls, pollCount + 1);
                                 }
                                 
                                 return {
