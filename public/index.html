@@ -642,6 +642,199 @@ The system can execute tasks in Terragon, which creates GitHub branches, but the
             ]
         };
 
+        // Search Component with Autocomplete
+        function SearchWithAutocomplete() {
+            const [searchQuery, setSearchQuery] = useState('');
+            const [suggestions, setSuggestions] = useState([]);
+            const [showDropdown, setShowDropdown] = useState(false);
+            const [selectedIndex, setSelectedIndex] = useState(-1);
+            const inputRef = useRef(null);
+            const dropdownRef = useRef(null);
+
+            // Sample data for autocomplete - in a real app this would come from an API
+            const searchData = [
+                'Create new component',
+                'Add authentication',
+                'Fix bug in login',
+                'Update user interface',
+                'Implement search functionality',
+                'Add database migration',
+                'Create API endpoint',
+                'Fix responsive design',
+                'Add unit tests',
+                'Update documentation',
+                'Refactor code structure',
+                'Add error handling',
+                'Implement caching',
+                'Add form validation',
+                'Create user profile page',
+                'Fix performance issues',
+                'Add dark mode toggle',
+                'Implement file upload',
+                'Add notification system',
+                'Create admin dashboard'
+            ];
+
+            // Filter suggestions based on search query
+            const filterSuggestions = useCallback((query) => {
+                if (!query.trim()) return [];
+                return searchData.filter(item => 
+                    item.toLowerCase().includes(query.toLowerCase())
+                ).slice(0, 8); // Limit to 8 suggestions
+            }, []);
+
+            // Handle input change
+            const handleInputChange = (e) => {
+                const value = e.target.value;
+                setSearchQuery(value);
+                
+                const filtered = filterSuggestions(value);
+                setSuggestions(filtered);
+                setShowDropdown(filtered.length > 0);
+                setSelectedIndex(-1);
+            };
+
+            // Handle keyboard navigation
+            const handleKeyDown = (e) => {
+                if (!showDropdown) return;
+
+                switch (e.key) {
+                    case 'ArrowDown':
+                        e.preventDefault();
+                        setSelectedIndex(prev => 
+                            prev < suggestions.length - 1 ? prev + 1 : 0
+                        );
+                        break;
+                    case 'ArrowUp':
+                        e.preventDefault();
+                        setSelectedIndex(prev => 
+                            prev > 0 ? prev - 1 : suggestions.length - 1
+                        );
+                        break;
+                    case 'Enter':
+                        e.preventDefault();
+                        if (selectedIndex >= 0) {
+                            selectSuggestion(suggestions[selectedIndex]);
+                        } else if (searchQuery.trim()) {
+                            handleSearch();
+                        }
+                        break;
+                    case 'Escape':
+                        setShowDropdown(false);
+                        setSelectedIndex(-1);
+                        break;
+                }
+            };
+
+            // Select a suggestion
+            const selectSuggestion = (suggestion) => {
+                setSearchQuery(suggestion);
+                setShowDropdown(false);
+                setSelectedIndex(-1);
+                handleSearch(suggestion);
+            };
+
+            // Handle search execution
+            const handleSearch = (query = searchQuery) => {
+                if (query.trim()) {
+                    console.log('Searching for:', query);
+                    // Here you would typically call an API or filter data
+                    alert(`Searching for: "${query}"`);
+                }
+            };
+
+            // Handle click outside to close dropdown
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                        setShowDropdown(false);
+                        setSelectedIndex(-1);
+                    }
+                };
+
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            return (
+                <div className="relative" ref={dropdownRef}>
+                    <div className="relative">
+                        <input
+                            ref={inputRef}
+                            type="text"
+                            value={searchQuery}
+                            onChange={handleInputChange}
+                            onKeyDown={handleKeyDown}
+                            onFocus={() => {
+                                if (suggestions.length > 0) {
+                                    setShowDropdown(true);
+                                }
+                            }}
+                            className="w-full px-4 py-3 pl-12 bg-gray-700 rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none transition-colors"
+                            placeholder="Search tasks, components, or features..."
+                        />
+                        <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400">
+                            🔍
+                        </div>
+                        {searchQuery && (
+                            <button
+                                onClick={() => {
+                                    setSearchQuery('');
+                                    setSuggestions([]);
+                                    setShowDropdown(false);
+                                    inputRef.current?.focus();
+                                }}
+                                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Autocomplete Dropdown */}
+                    {showDropdown && suggestions.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+                            {suggestions.map((suggestion, index) => (
+                                <div
+                                    key={index}
+                                    onClick={() => selectSuggestion(suggestion)}
+                                    className={`px-4 py-3 cursor-pointer transition-colors flex items-center ${
+                                        index === selectedIndex 
+                                            ? 'bg-blue-600 text-white' 
+                                            : 'hover:bg-gray-600 text-gray-200'
+                                    }`}
+                                >
+                                    <span className="mr-3 opacity-60">🔍</span>
+                                    <span>{suggestion}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Search Button */}
+                    <div className="mt-3 flex gap-2">
+                        <button
+                            onClick={() => handleSearch()}
+                            disabled={!searchQuery.trim()}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors"
+                        >
+                            Search
+                        </button>
+                        <button
+                            onClick={() => {
+                                setSearchQuery('');
+                                setSuggestions([]);
+                                setShowDropdown(false);
+                            }}
+                            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors"
+                        >
+                            Clear
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
         function App() {
             const [state, setState] = useState(initialState);
             const [loading, setLoading] = useState(false);
@@ -3238,6 +3431,12 @@ https://www.terragonlabs.com/task/${task.threadId}
                                         </button>
                                     )}
                                 </div>
+                            </div>
+
+                            {/* Search Component with Autocomplete */}
+                            <div className="bg-gray-800 rounded-lg p-6 mb-6">
+                                <h2 className="text-2xl font-semibold mb-4">🔍 Search</h2>
+                                <SearchWithAutocomplete />
                             </div>
 
                             {/* Task Summary */}
