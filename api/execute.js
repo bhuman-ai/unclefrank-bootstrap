@@ -539,9 +539,9 @@ Will report results once test instance completes verification.`
             lastResponse = lastMessageMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
           }
           
-          // FRANK'S FAVICON-BASED COMPLETION DETECTION
-          // Look for favicon-badged.png requests in the page
-          const hasFaviconBadged = pageContent.includes('favicon-badged.png');
+          // FRANK'S CHECKMARK-BASED COMPLETION DETECTION
+          // Checkmark icon path indicates completion
+          const hasCheckmark = pageContent.includes('M20 6 9 17l-5-5');
           
           // FRANK'S UI-BASED COMPLETION DETECTION - LOOKING FOR TERRAGON'S ACTIVE INDICATORS
           // Flame icon path for active state
@@ -562,17 +562,17 @@ Will report results once test instance completes verification.`
           const now = Date.now();
           const timeSinceLastMessage = now - previousMessageTime;
           
-          // Primary detection: Active indicators vs completion
-          if (hasFlameIcon || hasSpinningCircle) {
+          // Primary detection: Checkmark means completed, flame/spinner means active
+          if (hasCheckmark && lastResponse.length > 0) {
+            // Terragon has completed - checkmark icon is shown
+            status = 'completed';
+            completed = true;
+            console.log(`Terragon completed - checkmark icon detected`);
+          } else if (hasFlameIcon || hasSpinningCircle) {
             // Terragon is actively working - flame or spinning circle visible
             status = 'active';
             completed = false;
             console.log(`Terragon active - flame icon or spinning circle detected`);
-          } else if (hasFaviconBadged && lastResponse.length > 0) {
-            // Terragon has completed - favicon badge is shown
-            status = 'completed';
-            completed = true;
-            console.log(`Terragon completed - favicon-badged.png detected`);
           } else if (hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating) {
             // Terragon is actively working
             status = 'active';
@@ -635,8 +635,9 @@ Will report results once test instance completes verification.`
             messageCount: currentMessageCount,
             lastMessageTime: currentMessageCount > previousMessageCount ? now : previousMessageTime,
             hasUIActivity: hasFlameIcon || hasSpinningCircle || hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating,
-            hasFaviconBadged,
+            hasCheckmark,
             uiIndicators: {
+              checkmark: hasCheckmark,
               flameIcon: hasFlameIcon,
               spinningCircle: hasSpinningCircle,
               spinner: hasSpinner,
