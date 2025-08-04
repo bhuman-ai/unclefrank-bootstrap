@@ -851,7 +851,68 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                         if (statusResult.completed && statusResult.status === 'completed') {
                             addLog(`✅ Terragon completed execution!`, 'success');
                             
-                            // NOW run contextless tests after verified completion
+                            // Wait for Terragon to push changes before testing
+                            addLog(`⏳ Waiting for Terragon to push changes...`, 'info');
+                            
+                            // Poll for branch push confirmation (check if branch exists on GitHub)
+                            const waitForPush = async (branchName, maxAttempts = 10) => {
+                                for (let i = 0; i < maxAttempts; i++) {
+                                    try {
+                                        // Check if branch exists on GitHub
+                                        const checkResponse = await fetch(`https://api.github.com/repos/bhuman-ai/unclefrank-bootstrap/branches/${branchName}`, {
+                                            headers: {
+                                                'Accept': 'application/vnd.github.v3+json'
+                                            }
+                                        });
+                                        
+                                        if (checkResponse.ok) {
+                                            addLog(`✅ Branch ${branchName} pushed to GitHub!`, 'success');
+                                            return true;
+                                        }
+                                    } catch (e) {
+                                        console.error('Error checking branch:', e);
+                                    }
+                                    
+                                    if (i < maxAttempts - 1) {
+                                        addLog(`⏳ Branch not found yet, checking again in 5 seconds... (${i + 1}/${maxAttempts})`, 'info');
+                                        await new Promise(resolve => setTimeout(resolve, 5000));
+                                    }
+                                }
+                                return false;
+                            };
+                            
+                            // Get the branch Terragon is working on
+                            let targetBranch = 'master';
+                            try {
+                                const branchResponse = await fetch('/api/branch-tracker', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        action: 'get',
+                                        threadId: threadId
+                                    })
+                                });
+                                
+                                if (branchResponse.ok) {
+                                    const branchData = await branchResponse.json();
+                                    if (branchData.branch) {
+                                        targetBranch = branchData.branch;
+                                        addLog(`🔍 Detected Terragon branch: ${targetBranch}`, 'info');
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Branch detection failed:', e);
+                            }
+                            
+                            // Wait for push if not on master
+                            if (targetBranch !== 'master') {
+                                const pushed = await waitForPush(targetBranch);
+                                if (!pushed) {
+                                    addLog(`⚠️ Branch ${targetBranch} not pushed after timeout, testing anyway...`, 'warning');
+                                }
+                            }
+                            
+                            // NOW run contextless tests after push confirmed
                             setTimeout(() => {
                                 testCheckpointAndContinue(checkpoint, queue, currentIndex, threadId);
                             }, 1000);
