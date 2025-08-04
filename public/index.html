@@ -1180,7 +1180,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                         const newRetryCount = retryCount + 1;
                         
                         if (newRetryCount < 3) {
-                            addLog(`❌ Checkpoint ${checkpointNumber} FAILED - Retry ${newRetryCount}/3`, 'error');
+                            addLog(`❌ Test-Runner: Checkpoint ${checkpointNumber} FAILED - Retry ${newRetryCount}/3`, 'error');
                             setState(prev => ({
                                 ...prev,
                                 executionStatus: {
@@ -1197,7 +1197,63 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             // Retry same checkpoint
                             setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex, threadId), 3000);
                         } else {
-                            addLog(`🛑 Checkpoint ${checkpointNumber} FAILED after 3 attempts!`, 'error');
+                            // Test-Runner exhausted - invoke Task-LLM-Resolver
+                            addLog(`⚠️ Test-Runner exhausted 3 attempts. Escalating to Task-LLM-Resolver...`, 'warning');
+                            
+                            const resolverResult = await taskLLMResolver(checkpoint, testResult, threadId);
+                            
+                            if (resolverResult.success) {
+                                // Task-LLM-Resolver fixed it!
+                                setState(prev => ({
+                                    ...prev,
+                                    executionStatus: {
+                                        ...prev.executionStatus,
+                                        [checkpoint.id]: {
+                                            ...prev.executionStatus[checkpoint.id],
+                                            status: 'pass',
+                                            testResults: resolverResult.testResult,
+                                            resolvedByLLM: true,
+                                            completedTime: new Date().toISOString()
+                                        }
+                                    }
+                                }));
+                                
+                                addLog(`🎉 Task-LLM-Resolver fixed the issues! Continuing...`, 'success');
+                                
+                                // Continue to next checkpoint
+                                if (currentIndex + 1 < queue.length) {
+                                    setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex + 1, threadId), 2000);
+                                } else {
+                                    addLog('🎉 All checkpoints completed!', 'success');
+                                    await validateTaskCompletion();
+                                    setExecuting(false);
+                                }
+                            } else if (resolverResult.escalate) {
+                                // Task-LLM-Resolver exhausted - need human help
+                                addLog(`🚨 HUMAN ESCALATION REQUIRED for checkpoint ${checkpointNumber}`, 'error');
+                                addLog(`📋 Summary: After 3 Test-Runner attempts and 5 Task-LLM-Resolver attempts, the following issues persist:`, 'error');
+                                testResult.failedTests.forEach(failure => {
+                                    addLog(`  - ${failure.description}: ${failure.details}`, 'error');
+                                });
+                                addLog(`🛑 Execution halted. Human intervention required.`, 'error');
+                                
+                                setState(prev => ({
+                                    ...prev,
+                                    executionStatus: {
+                                        ...prev.executionStatus,
+                                        [checkpoint.id]: {
+                                            ...prev.executionStatus[checkpoint.id],
+                                            status: 'human_escalation',
+                                            requiresHumanIntervention: true,
+                                            escalationReason: 'Test-Runner and Task-LLM-Resolver exhausted',
+                                            failedTime: new Date().toISOString()
+                                        }
+                                    }
+                                }));
+                                
+                                setExecuting(false);
+                            } else {
+                                addLog(`🛑 Checkpoint ${checkpointNumber} FAILED after all attempts!`, 'error');
                             if (checkpoint.blocking) {
                                 addLog(`🚫 This is a BLOCKING checkpoint - execution halted`, 'error');
                             }
@@ -1475,6 +1531,163 @@ Please execute this checkpoint and report when complete. I will then run tests t
                 }
             };
 
+            // FRANK'S TASK-LLM-RESOLVER - ANALYZES AND FIXES TEST FAILURES
+            const taskLLMResolver = async (checkpoint, testResult, executionThreadId, attemptNumber = 1) => {
+                const MAX_ATTEMPTS = 5;
+                
+                if (attemptNumber > MAX_ATTEMPTS) {
+                    addLog(`❌ Task-LLM-Resolver exhausted all ${MAX_ATTEMPTS} attempts`, 'error');
+                    return { success: false, escalate: true };
+                }
+                
+                addLog(`🔧 Task-LLM-Resolver activated (Attempt ${attemptNumber}/${MAX_ATTEMPTS})`, 'warning');
+                addLog(`📊 Analyzing test failures for checkpoint: ${checkpoint.name}`, 'info');
+                
+                // Analyze failure patterns
+                const failureAnalysis = {
+                    failedTests: testResult.failedTests || [],
+                    patterns: [],
+                    proposedFixes: []
+                };
+                
+                // Pattern matching for common failures
+                for (const failure of failureAnalysis.failedTests) {
+                    const description = failure.description.toLowerCase();
+                    const details = (failure.details || '').toLowerCase();
+                    
+                    if (details.includes('no such file') || details.includes('file not found') || details.includes('does not exist')) {
+                        failureAnalysis.patterns.push('MISSING_FILE');
+                        failureAnalysis.proposedFixes.push({
+                            type: 'CREATE_FILE',
+                            description: `Create missing file for: ${failure.description}`
+                        });
+                    } else if (details.includes('no mongodb') || details.includes('connection') || details.includes('mongodb')) {
+                        failureAnalysis.patterns.push('MISSING_DEPENDENCY');
+                        failureAnalysis.proposedFixes.push({
+                            type: 'MOCK_DEPENDENCY',
+                            description: `Mock or skip MongoDB test: ${failure.description}`
+                        });
+                    } else if (details.includes('branch') || details.includes('checkout')) {
+                        failureAnalysis.patterns.push('BRANCH_ISSUE');
+                        failureAnalysis.proposedFixes.push({
+                            type: 'CHECKOUT_BRANCH',
+                            description: `Ensure correct branch for: ${failure.description}`
+                        });
+                    } else if (details.includes('expected') && details.includes('found')) {
+                        failureAnalysis.patterns.push('WRONG_CONTENT');
+                        failureAnalysis.proposedFixes.push({
+                            type: 'UPDATE_CONTENT',
+                            description: `Fix content mismatch for: ${failure.description}`
+                        });
+                    } else {
+                        failureAnalysis.patterns.push('UNKNOWN');
+                        failureAnalysis.proposedFixes.push({
+                            type: 'INVESTIGATE',
+                            description: `Investigate failure: ${failure.description}`
+                        });
+                    }
+                }
+                
+                addLog(`🔍 Identified patterns: ${failureAnalysis.patterns.join(', ')}`, 'info');
+                addLog(`💡 Proposed fixes: ${failureAnalysis.proposedFixes.length}`, 'info');
+                
+                // Build fix message for Terragon
+                const fixMessage = `# TASK-LLM-RESOLVER FIX ATTEMPT ${attemptNumber}
+
+## Test Failures Analysis
+${failureAnalysis.failedTests.map(f => `- **${f.description}**: ${f.details}`).join('\n')}
+
+## Root Cause Analysis
+Patterns identified: ${failureAnalysis.patterns.join(', ')}
+
+## Proposed Fixes
+${failureAnalysis.proposedFixes.map((fix, i) => `${i + 1}. **${fix.type}**: ${fix.description}`).join('\n')}
+
+## Instructions
+Please execute the following fixes to resolve the test failures:
+
+${failureAnalysis.proposedFixes.map(fix => {
+                    switch(fix.type) {
+                        case 'CREATE_FILE':
+                            return `- Create the missing file with appropriate content based on the test requirements`;
+                        case 'MOCK_DEPENDENCY':
+                            return `- Since this is a Document Manager test, MongoDB tests should be skipped or mocked`;
+                        case 'CHECKOUT_BRANCH':
+                            return `- Ensure you're on the correct branch with latest changes`;
+                        case 'UPDATE_CONTENT':
+                            return `- Update file content to match expected values in the test`;
+                        default:
+                            return `- Investigate and fix the issue: ${fix.description}`;
+                    }
+                }).join('\n')}
+
+After completing these fixes, I will re-run the tests automatically.`;
+                
+                try {
+                    // Send fix request to Terragon
+                    addLog(`📤 Sending fix instructions to Terragon...`, 'info');
+                    
+                    const fixResponse = await fetch('/api/execute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'execute',
+                            checkpoint: {
+                                id: `fix-${checkpoint.id}-${attemptNumber}`,
+                                name: `Fix: ${checkpoint.name}`,
+                                objective: `Fix test failures for: ${checkpoint.name}`,
+                                instructions: [fixMessage],
+                                passCriteria: [{
+                                    description: 'Fixes applied successfully',
+                                    testMethod: 'manual'
+                                }]
+                            },
+                            sessionId: executionThreadId
+                        })
+                    });
+                    
+                    if (!fixResponse.ok) {
+                        throw new Error('Failed to send fix instructions');
+                    }
+                    
+                    const fixResult = await fixResponse.json();
+                    addLog(`📝 Fix request sent to thread: ${fixResult.threadId}`, 'info');
+                    
+                    // Wait for fixes to be applied with progressive delay
+                    const waitTime = 15 + attemptNumber * 10;
+                    addLog(`⏳ Waiting ${waitTime}s for fixes to be applied...`, 'info');
+                    await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
+                    
+                    // Re-run the original checkpoint tests
+                    addLog(`🔄 Re-executing checkpoint tests after fixes (Attempt ${attemptNumber})...`, 'info');
+                    
+                    // Call test function again
+                    const retestResult = await testCheckpoint(checkpoint, executionThreadId);
+                    
+                    if (retestResult.passed) {
+                        addLog(`✅ Task-LLM-Resolver SUCCESS! Tests now passing after ${attemptNumber} attempts`, 'success');
+                        return { success: true, testResult: retestResult };
+                    } else {
+                        addLog(`⚠️ Tests still failing after fix attempt ${attemptNumber}`, 'warning');
+                        
+                        // Recursive retry with exponential backoff
+                        await new Promise(resolve => setTimeout(resolve, attemptNumber * 2000));
+                        return await taskLLMResolver(checkpoint, retestResult, executionThreadId, attemptNumber + 1);
+                    }
+                    
+                } catch (error) {
+                    addLog(`❌ Task-LLM-Resolver error: ${error.message}`, 'error');
+                    
+                    // Try again if we have attempts left
+                    if (attemptNumber < MAX_ATTEMPTS) {
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                        return await taskLLMResolver(checkpoint, testResult, executionThreadId, attemptNumber + 1);
+                    }
+                    
+                    return { success: false, error: error.message };
+                }
+            };
+            
             // Test checkpoint pass/fail criteria
             const testCheckpoint = async (checkpoint, executionThreadId) => {
                 addLog(`Running tests for ${checkpoint.name}...`, 'info');
