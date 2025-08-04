@@ -1200,7 +1200,9 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             // Test-Runner exhausted - invoke Task-LLM-Resolver
                             addLog(`⚠️ Test-Runner exhausted 3 attempts. Escalating to Task-LLM-Resolver...`, 'warning');
                             
-                            const resolverResult = await taskLLMResolver(checkpoint, testResult, threadId);
+                            // FRANK'S FIX: Handle async Task-LLM-Resolver properly
+                            try {
+                                const resolverResult = await taskLLMResolver(checkpoint, testResult, executionThreadId || threadId);
                             
                             if (resolverResult.success) {
                                 // Task-LLM-Resolver fixed it!
@@ -1254,6 +1256,16 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                 setExecuting(false);
                             } else {
                                 addLog(`🛑 Checkpoint ${checkpointNumber} FAILED after all attempts!`, 'error');
+                                handleFailedCheckpoint();
+                            }
+                        } catch (resolverError) {
+                            // FRANK'S FIX: Handle Task-LLM-Resolver crashes
+                            addLog(`🚨 Task-LLM-Resolver crashed: ${resolverError.message}`, 'error');
+                            handleFailedCheckpoint();
+                        }
+                        
+                        // Helper function to handle failed checkpoints
+                        function handleFailedCheckpoint() {
                             if (checkpoint.blocking) {
                                 addLog(`🚫 This is a BLOCKING checkpoint - execution halted`, 'error');
                             }
@@ -1279,6 +1291,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                 addLog('Non-blocking checkpoint failed, continuing...', 'info');
                                 setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex + 1, threadId), 2000);
                             }
+                        }
                         }
                     }
                     
