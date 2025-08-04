@@ -1634,7 +1634,7 @@ Please execute this checkpoint and report when complete. I will then run tests t
             };
 
             // FRANK'S REAL TEST INSTANCE POLLING - NO FAKE RESULTS
-            const pollTestInstanceForResults = async (testThreadId, maxPolls = 60) => {
+            const pollTestInstanceForResults = async (testThreadId, maxPolls = 60, retryCount = 0) => {
                 addLog(`🔄 Polling test instance ${testThreadId} for real results...`, 'info');
                 
                 for (let pollCount = 0; pollCount < maxPolls; pollCount++) {
@@ -1650,7 +1650,7 @@ Please execute this checkpoint and report when complete. I will then run tests t
                         });
                         
                         if (statusResponse.ok) {
-                            const statusResult = await statusResponse.json();
+                            let statusResult = await statusResponse.json();
                             
                             if (statusResult.completed) {
                                 addLog(`✅ Test instance ${testThreadId} completed!`, 'success');
@@ -1704,11 +1704,11 @@ Please execute this checkpoint and report when complete. I will then run tests t
                                 }
                                 
                                 // FRANK'S RETRY: If still no result, retry with delay
-                                if (result === 'UNKNOWN' && pollCount < 3) {
-                                    console.log('Result not found, retrying in 5s...');
-                                    addLog(`⚠️ Result not found in response, retrying...`, 'warning');
+                                if (result === 'UNKNOWN' && retryCount < 3) {
+                                    console.log(`Result not found, retry attempt ${retryCount + 1}/3...`);
+                                    addLog(`⚠️ Result not found in response, retrying (${retryCount + 1}/3)...`, 'warning');
                                     await new Promise(resolve => setTimeout(resolve, 5000));
-                                    return await pollTestInstanceForResults(testThreadId, maxPolls, pollCount + 1);
+                                    return await pollTestInstanceForResults(testThreadId, maxPolls, retryCount + 1);
                                 }
                                 
                                 return {
