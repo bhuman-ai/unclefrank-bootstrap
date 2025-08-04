@@ -1975,6 +1975,12 @@ After completing these fixes, I will re-run the tests automatically.`;
                 addLog(`🆕 CONTEXTLESS TEST: ${criteria.description}`, 'info');
                 addLog(`Creating fresh Terragon instance for unbiased testing...`, 'info');
                 
+                // FRANK'S DEBUG: Log all thread IDs
+                console.log('Thread ID debug:');
+                console.log(`  mainThreadId (param): ${mainThreadId}`);
+                console.log(`  state.taskThreadId: ${state.taskThreadId}`);
+                console.log(`  state.sessionId: ${state.sessionId}`);
+                
                 try {
                     // Create NEW Terragon instance for contextless testing
                     // Detect branch for testing using branch tracker
@@ -1985,12 +1991,16 @@ After completing these fixes, I will re-run the tests automatically.`;
                     console.log(`Test criteria: "${criteria.description}"`);
                     
                     try {
+                        // FRANK'S REAL FIX: Use the ORIGINAL Terragon thread ID, not test thread
+                        const originalThreadId = state.taskThreadId || mainThreadId;
+                        console.log(`Looking up branch for original thread: ${originalThreadId}`);
+                        
                         const branchResponse = await fetch('/api/branch-tracker', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 action: 'get',
-                                threadId: mainThreadId
+                                threadId: originalThreadId
                             })
                         });
                         
