@@ -1557,6 +1557,8 @@ Please execute this checkpoint and report when complete. I will then run tests t
                     
                     // FRANK'S SIMPLE FIX: Just check branch tracker - Terragon is explicit
                     console.log(`Branch detection for thread: ${mainThreadId}`);
+                    console.log(`Test criteria: "${criteria.description}"`);
+                    
                     try {
                         const branchResponse = await fetch('/api/branch-tracker', {
                             method: 'POST',
@@ -1573,9 +1575,18 @@ Please execute this checkpoint and report when complete. I will then run tests t
                                 targetBranch = branchData.branch;
                                 console.log(`Testing on tracked branch: ${targetBranch}`);
                                 addLog(`📌 Testing on branch: ${targetBranch}`, 'info');
+                                
+                                // FRANK'S DEBUG: Log if branch seems wrong
+                                if (targetBranch.includes('mongodb') && !criteria.description.toLowerCase().includes('mongodb')) {
+                                    console.warn(`WARNING: Branch mismatch? Testing '${criteria.description}' on MongoDB branch '${targetBranch}'`);
+                                    addLog(`⚠️ Branch name doesn't match test criteria - possible stale branch tracking`, 'warning');
+                                }
                             } else {
+                                console.log(`No branch found for thread ${mainThreadId}`);
                                 addLog(`⚠️ No branch tracked for thread ${mainThreadId} - using master`, 'warning');
                             }
+                        } else {
+                            console.error('Branch tracker request failed:', branchResponse.status);
                         }
                     } catch (e) {
                         console.error('Branch detection failed:', e);
