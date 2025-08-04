@@ -1935,69 +1935,7 @@ ${failureAnalysis.proposedFixes.map(fix => {
 
 After completing these fixes, I will re-run the tests automatically.`;
                 
-                try {
-                    // Send fix request to Terragon
-                    addLog(`📤 Sending fix instructions to Terragon...`, 'info');
-                    
-                    const fixResponse = await fetch('/api/execute', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: 'execute',
-                            checkpoint: {
-                                id: `fix-${checkpoint.id}-${attemptNumber}`,
-                                name: `Fix: ${checkpoint.name}`,
-                                objective: `Fix test failures for: ${checkpoint.name}`,
-                                instructions: [fixMessage],
-                                passCriteria: [{
-                                    description: 'Fixes applied successfully',
-                                    testMethod: 'manual'
-                                }]
-                            },
-                            sessionId: executionThreadId
-                        })
-                    });
-                    
-                    if (!fixResponse.ok) {
-                        throw new Error('Failed to send fix instructions');
-                    }
-                    
-                    const fixResult = await fixResponse.json();
-                    addLog(`📝 Fix request sent to thread: ${fixResult.threadId}`, 'info');
-                    
-                    // Wait for fixes to be applied with progressive delay
-                    const waitTime = 15 + attemptNumber * 10;
-                    addLog(`⏳ Waiting ${waitTime}s for fixes to be applied...`, 'info');
-                    await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
-                    
-                    // Re-run the original checkpoint tests
-                    addLog(`🔄 Re-executing checkpoint tests after fixes (Attempt ${attemptNumber})...`, 'info');
-                    
-                    // Call test function again
-                    const retestResult = await testCheckpoint(checkpoint, executionThreadId);
-                    
-                    if (retestResult.passed) {
-                        addLog(`✅ Task-LLM-Resolver SUCCESS! Tests now passing after ${attemptNumber} attempts`, 'success');
-                        return { success: true, testResult: retestResult };
-                    } else {
-                        addLog(`⚠️ Tests still failing after fix attempt ${attemptNumber}`, 'warning');
-                        
-                        // Recursive retry with exponential backoff
-                        await new Promise(resolve => setTimeout(resolve, attemptNumber * 2000));
-                        return await taskLLMResolver(checkpoint, retestResult, executionThreadId, attemptNumber + 1);
-                    }
-                    
-                } catch (error) {
-                    addLog(`❌ Task-LLM-Resolver error: ${error.message}`, 'error');
-                    
-                    // Try again if we have attempts left
-                    if (attemptNumber < MAX_ATTEMPTS) {
-                        await new Promise(resolve => setTimeout(resolve, 5000));
-                        return await taskLLMResolver(checkpoint, testResult, executionThreadId, attemptNumber + 1);
-                    }
-                    
-                    return { success: false, error: error.message };
-                }
+                return fixMessage;
             };
             
             // Test checkpoint pass/fail criteria
