@@ -3,8 +3,8 @@
 // FRANK'S FIX: Use environment-based storage for serverless
 // In Vercel, we'll use edge config or KV storage
 // For now, use a simple file-based approach
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 // Storage file path - persists between requests
 const STORAGE_FILE = path.join('/tmp', 'branch-tracker.json');
@@ -83,6 +83,7 @@ const branchTracker = {
 };
 
 export default async function handler(req, res) {
+  try {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -177,6 +178,13 @@ export default async function handler(req, res) {
     console.error('Branch Tracker Error:', error);
     return res.status(500).json({ 
       error: error instanceof Error ? error.message : 'Internal server error'
+    });
+  } catch (serverError) {
+    // FRANK'S FAILSAFE: If anything goes wrong, return a safe response
+    console.error('Branch tracker critical error:', serverError);
+    return res.status(500).json({ 
+      error: 'Branch tracker unavailable',
+      branch: null
     });
   }
 }
