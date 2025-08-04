@@ -871,7 +871,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             addLog(`⏳ Waiting for Terragon to push changes...`, 'info');
                             
                             // Poll for branch push confirmation (check if branch exists on GitHub)
-                            const waitForPush = async (branchName, maxAttempts = 10) => {
+                            const waitForPush = async (branchName, maxAttempts = 24) => {
                                 for (let i = 0; i < maxAttempts; i++) {
                                     try {
                                         // Check if branch exists on GitHub
