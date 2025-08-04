@@ -1,36 +1,25 @@
 // FRANK'S BRANCH TRACKER - TRACK WHICH BRANCH TERRAGON IS WORKING ON
 
-// FRANK'S FIX: Use environment-based storage for serverless
-// In Vercel, we'll use edge config or KV storage
-// For now, use a simple file-based approach
-import fs from 'fs';
-import path from 'path';
-
-// Storage file path - persists between requests
-const STORAGE_FILE = path.join('/tmp', 'branch-tracker.json');
+// FRANK'S REAL FIX: Use in-memory cache with fallback
+// In serverless, each request might get a new instance, so we need a better approach
+const globalBranchCache = global.branchCache || new Map();
+global.branchCache = globalBranchCache;
 
 const branchTracker = {
-  // Load branches from persistent storage
+  // Get branches from cache
   loadBranches() {
-    try {
-      if (fs.existsSync(STORAGE_FILE)) {
-        const data = fs.readFileSync(STORAGE_FILE, 'utf8');
-        return new Map(JSON.parse(data));
-      }
-    } catch (e) {
-      console.error('Failed to load branch data:', e);
-    }
-    return new Map();
+    return globalBranchCache;
   },
   
-  // Save branches to persistent storage
+  // Save branches to cache
   saveBranches(branches) {
-    try {
-      const data = JSON.stringify([...branches]);
-      fs.writeFileSync(STORAGE_FILE, data, 'utf8');
-    } catch (e) {
-      console.error('Failed to save branch data:', e);
-    }
+    // Update global cache
+    global.branchCache = branches;
+    
+    // Also log for debugging
+    console.log('Current branch mappings:', [...branches.entries()].map(([k, v]) => 
+      `${k} -> ${v.branch}`
+    ).join(', '));
   },
   
   // Record a new branch for a thread
@@ -48,6 +37,25 @@ const branchTracker = {
   // Get the branch for a thread
   getBranch(threadId) {
     const branches = this.loadBranches();
+    
+    // FRANK'S FALLBACK: Try to extract branch from thread ID if not found
+    // Some Terragon threads include branch info in their IDs
+    if (!branches.has(threadId) && threadId) {
+      console.log(`No branch found for ${threadId}, checking for patterns...`);
+      
+      // Check if thread ID contains branch pattern
+      // e.g., "terragon/setup-base-document-manager-hy0ltw" might be in the ID
+      const branchPattern = /terragon\/[a-z0-9-]+/i;
+      const match = threadId.match(branchPattern);
+      if (match) {
+        console.log(`Extracted branch from thread ID: ${match[0]}`);
+        return {
+          branch: match[0],
+          timestamp: Date.now(),
+          status: 'extracted'
+        };
+      }
+    }
     const result = branches.get(threadId);
     console.log(`Branch lookup for ${threadId}: ${result ? result.branch : 'not found'}`);
     return result;

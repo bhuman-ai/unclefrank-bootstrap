@@ -267,6 +267,11 @@ Please execute this checkpoint and report when complete.`;
         try {
           const description = testDescription || criteria.description;
           
+          // FRANK'S DEBUG: Log what branch we're testing
+          console.log(`Creating test for criteria: "${description}"`);
+          console.log(`Target branch from request: ${targetBranch}`);
+          console.log(`Main thread ID: ${mainThreadId}`);
+          
           // FRANK'S WORKAROUND: Terragon API only accepts master branch
           // So we create on master but instruct it to checkout the feature branch
           const testMessage = targetBranch && targetBranch !== 'master' ? 

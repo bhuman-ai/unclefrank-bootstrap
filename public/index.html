@@ -752,7 +752,8 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                         // FRANK'S REAL FIX: Poll Terragon until actual completion
                         setTimeout(() => {
                             addLog('🔍 Polling Terragon thread for actual completion...', 'info');
-                            pollTerragonForCompletion(threadId, firstCheckpoint, newState.checkpointQueue, 0);
+                            // CRITICAL: Pass threadId as executionThreadId since we're using the same thread
+                            pollTerragonForCompletion(threadId, firstCheckpoint, newState.checkpointQueue, 0, 0, threadId);
                         }, 5000); // Give it 5 seconds to start, then poll
                         
                         return newState;
