@@ -412,6 +412,8 @@
 
         // State management
         const initialState = {
+            activeTab: 'draft',
+            draftContent: '',
             request: 'Implement Task Review UI that shows completed tasks awaiting human review with GitHub integration. This must include: 1) Task Queue view showing tasks with "Awaiting Review" status after Terragon completes them, 2) Display the GitHub branch created by Terragon, 3) Show acceptance criteria as a review checklist, 4) Provide View Changes, Run Tests, Approve, and Request Changes buttons, 5) Integration with GitHub API to detect branches and create PRs, 6) Merge Review Screen showing diffs, 7) Update task status from "sent" through "completed", "awaiting review", to "merged"',
             projectContext: `# Current State
 The system can execute tasks in Terragon, which creates GitHub branches, but there's no UI to review and approve these completed tasks. According to Interface.md, we need screens #3 (Task Queue), #7 (Merge Review), #9 (GitHub Integration), and #15 (Escalation Notifications).
@@ -2097,9 +2099,54 @@ https://www.terragonlabs.com/task/${task.threadId}
                         )}
                     </div>
 
+                    {/* Tab Navigation */}
+                    <div className="flex border-b border-gray-700 mb-6">
+                        <button 
+                            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-t text-white transition"
+                            onClick={() => setState(prev => ({ ...prev, activeTab: 'draft' }))}
+                        >
+                            Draft Mode
+                        </button>
+                        <button 
+                            className="px-6 py-3 bg-gray-600 hover:bg-gray-700 rounded-t text-white transition ml-2"
+                            onClick={() => setState(prev => ({ ...prev, activeTab: 'create' }))}
+                        >
+                            Create Task
+                        </button>
+                    </div>
+
+                    {/* Draft Mode Tab Content */}
+                    <div id="draft-mode" className={`${state.activeTab !== 'draft' ? 'hidden' : ''} mb-6`}>
+                        <div className="bg-gray-800 rounded-lg p-6">
+                            <h2 className="text-2xl font-semibold mb-4">Draft Mode</h2>
+                            <div className="mb-4">
+                                <label className="block text-sm font-medium mb-2">Draft Content</label>
+                                <textarea 
+                                    id="draft-content"
+                                    value={state.draftContent || ''}
+                                    onChange={(e) => setState(prev => ({ ...prev, draftContent: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                                    rows="8"
+                                    placeholder="Enter your draft content here..."
+                                />
+                            </div>
+                            <div className="flex gap-2 mb-4">
+                                <button 
+                                    className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded transition"
+                                    onClick={() => {/* validation logic */}}
+                                >
+                                    Validate Draft
+                                </button>
+                            </div>
+                            <div id="validation-results" className="bg-gray-900 rounded p-3 min-h-[100px]">
+                                <div className="text-gray-500 text-sm">Validation results will appear here...</div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* Left Panel - Input */}
-                        <div>
+                        <div className={`${state.activeTab !== 'create' ? 'hidden' : ''}`}>
                             <div className="bg-gray-800 rounded-lg p-6 mb-6">
                                 <h2 className="text-2xl font-semibold mb-4">Create New Task</h2>
                                 
