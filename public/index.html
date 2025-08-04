@@ -1222,6 +1222,36 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                         
                     } else {
                         addLog(`❌ Checkpoint ${checkpointNumber} FAILED tests!`, 'error');
+                        
+                        // FRANK'S TEST-RUNNER: Retry up to 3 times
+                        const currentRetryCount = checkpoint._retryCount || 0;
+                        if (currentRetryCount < 3) {
+                            addLog(`🔄 TEST-RUNNER: Retrying tests (attempt ${currentRetryCount + 1}/3)...`, 'warning');
+                            checkpoint._retryCount = currentRetryCount + 1;
+                            
+                            // Wait before retry
+                            setTimeout(() => {
+                                testCheckpointAndContinue(checkpoint, queue, currentIndex, executionThreadId);
+                            }, 5000);
+                            return;
+                        }
+                        
+                        // FRANK'S TASK-LLM-RESOLVER: After 3 test retries, try to fix
+                        addLog(`❌ TEST-RUNNER exhausted 3 retries. Activating Task-LLM-Resolver...`, 'error');
+                        
+                        // Send failure info back to main Terragon thread
+                        const resolverResult = await taskLLMResolver(checkpoint, testResult, state.taskThreadId || executionThreadId);
+                        
+                        if (resolverResult.success) {
+                            addLog(`✅ Task-LLM-Resolver fixed the issues! Re-running tests...`, 'success');
+                            checkpoint._retryCount = 0; // Reset for new test run
+                            setTimeout(() => {
+                                testCheckpointAndContinue(checkpoint, queue, currentIndex, executionThreadId);
+                            }, 2000);
+                            return;
+                        }
+                        
+                        // If resolver failed, mark checkpoint as failed
                         setState(prev => ({
                             ...prev,
                             executionStatus: {
@@ -1236,6 +1266,13 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                         }));
                         
                         if (checkpoint.blocking) {
+                            if (resolverResult.escalate) {
+                                addLog('🚨 HUMAN ESCALATION REQUIRED - Task-LLM-Resolver exhausted', 'error');
+                                addLog('📋 Failed tests:', 'error');
+                                testResult.failedTests.forEach(test => {
+                                    addLog(`  - ${test.description}: ${test.details}`, 'error');
+                                });
+                            }
                             addLog('🚫 Blocking checkpoint failed - execution stopped', 'error');
                             setExecuting(false);
                         } else {
@@ -1760,7 +1797,7 @@ Please execute this checkpoint and report when complete. I will then run tests t
             };
 
             // FRANK'S TASK-LLM-RESOLVER - ANALYZES AND FIXES TEST FAILURES
-            const taskLLMResolver = async (checkpoint, testResult, executionThreadId, attemptNumber = 1) => {
+            const taskLLMResolver = async (checkpoint, testResult, mainThreadId, attemptNumber = 1) => {
                 const MAX_ATTEMPTS = 5;
                 
                 if (attemptNumber > MAX_ATTEMPTS) {
@@ -1770,6 +1807,7 @@ Please execute this checkpoint and report when complete. I will then run tests t
                 
                 addLog(`🔧 Task-LLM-Resolver activated (Attempt ${attemptNumber}/${MAX_ATTEMPTS})`, 'warning');
                 addLog(`📊 Analyzing test failures for checkpoint: ${checkpoint.name}`, 'info');
+                addLog(`📍 Sending fixes to Terragon thread: ${mainThreadId}`, 'info');
                 
                 // Analyze failure patterns
                 const failureAnalysis = {
@@ -1819,6 +1857,39 @@ Please execute this checkpoint and report when complete. I will then run tests t
                 addLog(`🔍 Identified patterns: ${failureAnalysis.patterns.join(', ')}`, 'info');
                 addLog(`💡 Proposed fixes: ${failureAnalysis.proposedFixes.length}`, 'info');
                 
+                // Send fix message to Terragon
+                try {
+                    const fixResponse = await fetch('/api/execute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'send-message',
+                            threadId: mainThreadId,
+                            message: buildResolverMessage(failureAnalysis, attemptNumber)
+                        })
+                    });
+                    
+                    if (fixResponse.ok) {
+                        addLog(`✅ Fix instructions sent to Terragon thread`, 'success');
+                        
+                        // Wait for Terragon to implement fixes
+                        addLog(`⏳ Waiting 60 seconds for Terragon to implement fixes...`, 'info');
+                        await new Promise(resolve => setTimeout(resolve, 60000));
+                        
+                        // Continue with success - tests will re-run
+                        return { success: true };
+                    } else {
+                        addLog(`❌ Failed to send fix instructions to Terragon`, 'error');
+                        return { success: false, escalate: attemptNumber >= MAX_ATTEMPTS };
+                    }
+                } catch (error) {
+                    addLog(`❌ Task-LLM-Resolver error: ${error.message}`, 'error');
+                    return { success: false, escalate: attemptNumber >= MAX_ATTEMPTS };
+                }
+            };
+            
+            // Helper to build resolver message
+            const buildResolverMessage = (failureAnalysis, attemptNumber) => {
                 // Build fix message for Terragon
                 const fixMessage = `# TASK-LLM-RESOLVER FIX ATTEMPT ${attemptNumber}
 
@@ -2063,6 +2134,17 @@ After completing these fixes, I will re-run the tests automatically.`;
                     } catch (e) {
                         console.error('Branch detection failed:', e);
                         addLog(`❌ Branch detection error: ${e.message}`, 'error');
+                    }
+                    
+                    // FRANK'S LAST RESORT: If we still don't have a branch, log error
+                    if (!targetBranch || targetBranch === 'master') {
+                        console.error('BRANCH DETECTION FAILED - All methods returned master');
+                        console.error('Available sources:', {
+                            state: state.currentBranch,
+                            window: window.lastDetectedBranch,
+                            checkpoint: checkpoint._detectedBranch,
+                            tracker: 'check logs above'
+                        });
                     }
                     
                     const testResponse = await fetch('/api/execute', {

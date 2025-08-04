@@ -524,6 +524,62 @@ Will report results once test instance completes verification.`
         }
       }
 
+      case 'send-message': {
+        // Send a message to an existing Terragon thread
+        const { threadId, message } = req.body;
+        if (!threadId || !message) {
+          return res.status(400).json({ error: 'Thread ID and message required' });
+        }
+        
+        try {
+          const payload = [{
+            threadId: threadId,
+            message: {
+              type: 'user',
+              model: 'sonnet',
+              parts: [{
+                type: 'rich-text',
+                nodes: [{
+                  type: 'text',
+                  text: message
+                }]
+              }],
+              timestamp: new Date().toISOString()
+            }
+          }];
+
+          const response = await fetch(
+            `https://www.terragonlabs.com/task/${threadId}`,
+            {
+              method: 'POST',
+              headers: {
+                'accept': 'text/x-component',
+                'content-type': 'text/plain;charset=UTF-8',
+                'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
+                'next-action': '7f40cb55e87cce4b3543b51a374228296bc2436c6d',
+                'origin': 'https://www.terragonlabs.com',
+                'referer': `https://www.terragonlabs.com/task/${threadId}`,
+                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+                'x-deployment-id': 'dpl_3hWzkM7LiymSczFN21Z8chju84CV'
+              },
+              body: JSON.stringify(payload)
+            }
+          );
+
+          return res.status(200).json({
+            success: true,
+            threadId,
+            message: 'Message sent to Terragon thread'
+          });
+        } catch (error) {
+          console.error('Failed to send message to Terragon:', error);
+          return res.status(500).json({
+            error: 'Failed to send message',
+            details: error.message
+          });
+        }
+      }
+
       case 'status': {
         // Get status of a thread
         const { threadId } = req.body;
