@@ -261,15 +261,17 @@ Please execute this checkpoint and report when complete.`;
           return res.status(400).json({ error: 'Test criteria required' });
         }
 
-        const { criteria, testDescription, mainThreadId } = req.body;
+        const { criteria, testDescription, mainThreadId, targetBranch } = req.body;
         
         // FRANK'S CONTEXTLESS TESTING - NEW TERRAGON INSTANCE FOR EACH TEST
         try {
           const description = testDescription || criteria.description;
           
           // Create test message for fresh Terragon instance with HARD TERMINATION
+          const branchInfo = targetBranch ? `\n## Target Branch\nTesting on branch: ${targetBranch}\n` : '';
+          
           const testMessage = `# CONTEXTLESS TEST EXECUTION
-
+${branchInfo}
 ## Test Objective
 Verify: ${description}
 
@@ -284,6 +286,7 @@ Check the actual file system / codebase and report:
 1. Does the condition exist or not?
 2. Provide specific evidence found
 3. Be brutally honest - no assumptions
+${targetBranch ? `\nIMPORTANT: You are testing on branch "${targetBranch}" - make sure to checkout this branch first!` : ''}
 
 Test this criteria: "${description}"
 
@@ -386,6 +389,7 @@ Will report results once test instance completes verification.`
             testThreadId: testThreadId,
             testUrl: `https://www.terragonlabs.com/task/${testThreadId}`,
             criteria: description,
+            targetBranch: targetBranch || 'master',
             message: 'Contextless test instance created - results pending',
             timestamp: new Date().toISOString()
           });

@@ -1448,6 +1448,29 @@ Please execute this checkpoint and report when complete. I will then run tests t
                 
                 try {
                     // Create NEW Terragon instance for contextless testing
+                    // Detect branch for testing
+                    let targetBranch = 'master';
+                    try {
+                        const branchResponse = await fetch('/api/test-branch', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'detect-branch',
+                                threadId: mainThreadId
+                            })
+                        });
+                        
+                        if (branchResponse.ok) {
+                            const branchData = await branchResponse.json();
+                            if (branchData.latestTerragonBranch) {
+                                targetBranch = branchData.latestTerragonBranch;
+                                console.log(`Testing on branch: ${targetBranch}`);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Branch detection failed:', e);
+                    }
+                    
                     const testResponse = await fetch('/api/execute', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1455,7 +1478,8 @@ Please execute this checkpoint and report when complete. I will then run tests t
                             action: 'test-real',
                             criteria,
                             testDescription: criteria.description,
-                            mainThreadId: mainThreadId
+                            mainThreadId: mainThreadId,
+                            targetBranch: targetBranch
                         })
                     });
                     
@@ -1468,6 +1492,9 @@ Please execute this checkpoint and report when complete. I will then run tests t
                     
                     if (testResult.testInstanceCreated) {
                         addLog(`✅ Test instance created: ${testResult.testThreadId}`, 'success');
+                        if (testResult.targetBranch && testResult.targetBranch !== 'master') {
+                            addLog(`🔍 Testing on branch: ${testResult.targetBranch}`, 'warning');
+                        }
                         addLog(`🔗 Test URL: ${testResult.testUrl}`, 'info');
                         addLog(`⏳ Polling test instance for REAL results...`, 'info');
                         
