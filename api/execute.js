@@ -286,7 +286,7 @@ Check the actual file system / codebase and report:
 1. Does the condition exist or not?
 2. Provide specific evidence found
 3. Be brutally honest - no assumptions
-${targetBranch ? `\nIMPORTANT: You are testing on branch "${targetBranch}" - make sure to checkout this branch first!` : ''}
+${targetBranch && targetBranch !== 'master' ? `\nIMPORTANT: This test instance is based on branch "${targetBranch}" - you are already on this branch!` : '\nNOTE: Testing on master branch'}
 
 Test this criteria: "${description}"
 
@@ -296,6 +296,9 @@ EVIDENCE: [what you actually found]
 DETAILS: [specific findings]`;
 
           // Create NEW Terragon instance for testing
+          // FRANK'S FIX: Use the actual branch, not master!
+          const baseBranch = targetBranch && targetBranch !== 'master' ? targetBranch : 'master';
+          
           const testPayload = [{
             message: {
               type: 'user',
@@ -310,11 +313,11 @@ DETAILS: [specific findings]`;
               timestamp: new Date().toISOString()
             },
             githubRepoFullName: 'bhuman-ai/unclefrank-bootstrap',
-            repoBaseBranchName: 'master',
+            repoBaseBranchName: baseBranch,
             saveAsDraft: false
           }];
 
-          console.log('Creating NEW Terragon test instance for contextless testing...');
+          console.log(`Creating NEW Terragon test instance for contextless testing on branch: ${baseBranch}`);
           
           const testResponse = await fetch(
             'https://www.terragonlabs.com/dashboard',
@@ -356,6 +359,7 @@ DETAILS: [specific findings]`;
 Fresh Terragon test instance created: ${testThreadId}
 
 Testing criteria: "${description}"
+Testing on branch: ${baseBranch}
 
 Test is running in contextless environment with no knowledge of execution history.
 Will report results once test instance completes verification.`
