@@ -769,6 +769,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
             
             const pollTerragonForCompletion = async (threadId, checkpoint, queue, currentIndex, pollCount = 0, executionThreadId = null) => {
                 const maxPolls = 120; // Max 10 minutes of polling (5 seconds * 120)
+                const minPolls = 36; // FRANK'S FIX: Minimum 3 minutes before allowing tests
                 const checkpointNumber = currentIndex + 1;
                 
                 // Initialize tracker for this thread if needed
@@ -776,7 +777,8 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     messageTracker[threadId] = {
                         lastMessageCount: 0,
                         lastMessageTime: Date.now(),
-                        uiQuietCount: 0 // Track polls without UI activity
+                        uiQuietCount: 0, // Track polls without UI activity
+                        startTime: Date.now() // Track when polling started
                     };
                 }
                 
@@ -882,13 +884,101 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                         }
                         
                         if (statusResult.completed && statusResult.status === 'completed') {
-                            addLog(`✅ Terragon completed execution!`, 'success');
+                            // FRANK'S TIMING CHECK: Don't trust completion too early
+                            const elapsedTime = Date.now() - messageTracker[threadId].startTime;
+                            const elapsedMinutes = Math.floor(elapsedTime / 60000);
+                            
+                            if (pollCount < minPolls) {
+                                addLog(`⚠️ Terragon marked complete but only ${elapsedMinutes} minutes elapsed. Minimum 3 minutes required.`, 'warning');
+                                addLog(`⏳ Continuing to poll (${pollCount}/${minPolls} minimum attempts)...`, 'info');
+                                setTimeout(() => {
+                                    pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
+                                }, 5000);
+                                return;
+                            }
+                            
+                            addLog(`✅ Terragon marked as completed after ${elapsedMinutes} minutes!`, 'success');
+                            
+                            // FRANK'S REAL FIX: Wait for API sync before trusting completion
+                            addLog(`⏳ Waiting 30s for Terragon API to sync full response...`, 'info');
+                            await new Promise(resolve => setTimeout(resolve, 30000));
+                            
+                            // FRANK'S ATOMIC VERIFICATION: Get consistent state snapshot
+                            let verificationPassed = false;
+                            const maxVerifyAttempts = 3;
+                            
+                            for (let verifyAttempt = 0; verifyAttempt < maxVerifyAttempts; verifyAttempt++) {
+                                const verifyResponse = await fetch('/api/execute', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ 
+                                        action: 'check-terragon-status',
+                                        threadId: threadId
+                                    })
+                                });
+                                
+                                if (verifyResponse.ok) {
+                                    const snapshot = await verifyResponse.json();
+                                    
+                                    // Wait 5 seconds and check again for stability
+                                    await new Promise(resolve => setTimeout(resolve, 5000));
+                                    
+                                    const verifyResponse2 = await fetch('/api/execute', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ 
+                                            action: 'check-terragon-status',
+                                            threadId: threadId
+                                        })
+                                    });
+                                    
+                                    if (verifyResponse2.ok) {
+                                        const snapshot2 = await verifyResponse2.json();
+                                        
+                                        // FRANK'S ATOMIC CHECK: State must be stable across two snapshots
+                                        const stateStable = snapshot.status === snapshot2.status &&
+                                                          snapshot.completed === snapshot2.completed &&
+                                                          snapshot.messageCount === snapshot2.messageCount;
+                                        
+                                        const isCompleted = snapshot2.completed && snapshot2.status === 'completed';
+                                        
+                                        if (stateStable && isCompleted) {
+                                            addLog(`✅ Verification attempt ${verifyAttempt + 1}: State stable and completed`, 'success');
+                                            verificationPassed = true;
+                                            break;
+                                        } else {
+                                            addLog(`⚠️ Verification attempt ${verifyAttempt + 1} failed:`, 'warning');
+                                            addLog(`  - State stable: ${stateStable}`, 'warning');
+                                            addLog(`  - Completed: ${isCompleted}`, 'warning');
+                                            addLog(`  - Status: ${snapshot2.status}`, 'warning');
+                                            addLog(`  - Message count: ${snapshot.messageCount} → ${snapshot2.messageCount}`, 'warning');
+                                        }
+                                    }
+                                }
+                                
+                                if (verifyAttempt < maxVerifyAttempts - 1) {
+                                    addLog(`⏳ Waiting 10s before next verification attempt...`, 'info');
+                                    await new Promise(resolve => setTimeout(resolve, 10000));
+                                }
+                            }
+                            
+                            if (!verificationPassed) {
+                                addLog(`❌ Terragon verification failed after ${maxVerifyAttempts} attempts`, 'error');
+                                addLog(`Continuing to poll...`, 'info');
+                                setTimeout(() => {
+                                    pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
+                                }, 5000);
+                                return;
+                            }
+                            
+                            addLog(`✅ Terragon completion verified after sync!`, 'success');
                             
                             // Wait for Terragon to push changes before testing
                             addLog(`⏳ Waiting for Terragon to push changes...`, 'info');
                             
                             // Poll for branch push confirmation (check if branch exists on GitHub)
                             const waitForPush = async (branchName, maxAttempts = 24) => {
+                                let rateLimitHits = 0;
                                 for (let i = 0; i < maxAttempts; i++) {
                                     try {
                                         // Check if branch exists on GitHub
@@ -899,8 +989,28 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                         });
                                         
                                         if (checkResponse.ok) {
-                                            addLog(`✅ Branch ${branchName} pushed to GitHub!`, 'success');
-                                            return true;
+                                            // FRANK'S PARANOID CHECK: Verify branch has actual commits
+                                            const branchData = await checkResponse.json();
+                                            if (branchData.commit && branchData.commit.sha) {
+                                                addLog(`✅ Branch ${branchName} pushed to GitHub with commit ${branchData.commit.sha.substring(0, 7)}!`, 'success');
+                                                return true;
+                                            } else {
+                                                addLog(`⚠️ Branch ${branchName} exists but has no commits`, 'warning');
+                                            }
+                                        } else if (checkResponse.status === 403) {
+                                            // GitHub rate limit hit
+                                            rateLimitHits++;
+                                            const rateLimitRemaining = checkResponse.headers.get('X-RateLimit-Remaining');
+                                            const rateLimitReset = checkResponse.headers.get('X-RateLimit-Reset');
+                                            addLog(`⚠️ GitHub API rate limit hit. Remaining: ${rateLimitRemaining}`, 'warning');
+                                            if (rateLimitReset) {
+                                                const resetTime = new Date(parseInt(rateLimitReset) * 1000);
+                                                addLog(`⏰ Rate limit resets at: ${resetTime.toLocaleTimeString()}`, 'info');
+                                            }
+                                            // FRANK'S EXPONENTIAL BACKOFF
+                                            const waitTime = Math.min(120000, 5000 * Math.pow(2, rateLimitHits));
+                                            addLog(`⏳ Waiting ${waitTime/1000}s due to rate limit (exponential backoff)`, 'info');
+                                            await new Promise(resolve => setTimeout(resolve, waitTime));
                                         }
                                     } catch (e) {
                                         console.error('Error checking branch:', e);
@@ -941,11 +1051,32 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             if (targetBranch !== 'master') {
                                 const pushed = await waitForPush(targetBranch);
                                 if (!pushed) {
-                                    addLog(`⚠️ Branch ${targetBranch} not pushed after timeout, testing anyway...`, 'warning');
+                                    addLog(`❌ TASK FAILED: Branch ${targetBranch} not pushed to GitHub after 2 minutes`, 'error');
+                                    
+                                    // FRANK'S STRICT RULE: No branch = No tests!
+                                    setState(prev => ({
+                                        ...prev,
+                                        executionStatus: {
+                                            ...prev.executionStatus,
+                                            [checkpoint.id]: {
+                                                ...prev.executionStatus[checkpoint.id],
+                                                status: 'failed',
+                                                endTime: new Date().toISOString(),
+                                                error: `Branch ${targetBranch} not found on GitHub after push timeout`,
+                                                logs: [
+                                                    ...prev.executionStatus[checkpoint.id].logs,
+                                                    { message: 'FAILED: Branch not pushed to GitHub - cannot test' }
+                                                ]
+                                            }
+                                        }
+                                    }));
+                                    
+                                    setExecuting(false);
+                                    return; // NEVER continue without branch!
                                 }
                             }
                             
-                            // NOW run contextless tests after push confirmed
+                            // NOW run contextless tests ONLY after push confirmed
                             setTimeout(() => {
                                 testCheckpointAndContinue(checkpoint, queue, currentIndex, executionThreadId);
                             }, 1000);
@@ -972,8 +1103,30 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
                         }, 5000); // Poll every 5 seconds
                     } else {
-                        addLog(`🕐 Max polling time reached (5 minutes). Proceeding with tests anyway...`, 'error');
-                        testCheckpointAndContinue(checkpoint, queue, currentIndex, executionThreadId);
+                        addLog(`🕐 Max polling time reached (10 minutes).`, 'error');
+                        addLog(`❌ TASK FAILED: Terragon did not complete within 10 minutes.`, 'error');
+                        addLog(`📝 Check thread at: https://www.terragonlabs.com/task/${threadId}`, 'info');
+                        
+                        // FRANK'S STRICT RULE: Mark checkpoint as failed if no completion signal
+                        setState(prev => ({
+                            ...prev,
+                            executionStatus: {
+                                ...prev.executionStatus,
+                                [checkpoint.id]: {
+                                    ...prev.executionStatus[checkpoint.id],
+                                    status: 'failed',
+                                    endTime: new Date().toISOString(),
+                                    error: 'Terragon did not complete - timeout after 10 minutes',
+                                    logs: [
+                                        ...prev.executionStatus[checkpoint.id].logs,
+                                        { message: 'FAILED: No completion signal from Terragon after max polling time' }
+                                    ]
+                                }
+                            }
+                        }));
+                        
+                        setExecuting(false);
+                        // NEVER continue without explicit completion!
                     }
                     
                 } catch (error) {
@@ -987,8 +1140,29 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
                         }, 10000);
                     } else {
-                        addLog(`🕐 Max polling time reached after network errors. Proceeding with tests...`, 'error');
-                        testCheckpointAndContinue(checkpoint, queue, currentIndex, executionThreadId);
+                        addLog(`🕐 Max polling time reached after network errors (10 minutes total).`, 'error');
+                        addLog(`❌ TASK FAILED: Cannot verify Terragon completion due to network errors`, 'error');
+                        
+                        // FRANK'S STRICT RULE: Fail on network errors too
+                        setState(prev => ({
+                            ...prev,
+                            executionStatus: {
+                                ...prev.executionStatus,
+                                [checkpoint.id]: {
+                                    ...prev.executionStatus[checkpoint.id],
+                                    status: 'failed',
+                                    endTime: new Date().toISOString(),
+                                    error: 'Network errors prevented Terragon status verification',
+                                    logs: [
+                                        ...prev.executionStatus[checkpoint.id].logs,
+                                        { message: 'FAILED: Network errors after max polling attempts' }
+                                    ]
+                                }
+                            }
+                        }));
+                        
+                        setExecuting(false);
+                        // NEVER continue without verification!
                     }
                 }
             };
