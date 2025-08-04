@@ -1655,9 +1655,18 @@ Please execute this checkpoint and report when complete. I will then run tests t
                             if (statusResult.completed) {
                                 addLog(`✅ Test instance ${testThreadId} completed!`, 'success');
                                 
+                                // FRANK'S DEBUG: Log what we're getting
+                                console.log('Test status result:', statusResult);
+                                
                                 // Parse the actual test result from Terragon response
                                 // Look for RESULT: PASS/FAIL pattern in the response
                                 const testContent = statusResult.lastResponse || statusResult.message || '';
+                                
+                                // If test content is empty, we have a problem
+                                if (!testContent || testContent.length < 10) {
+                                    console.error('Test content is empty or too short:', testContent);
+                                    addLog(`⚠️ Test response appears empty, length: ${testContent.length}`, 'warning');
+                                }
                                 
                                 let result = 'UNKNOWN';
                                 let evidence = 'No evidence found';

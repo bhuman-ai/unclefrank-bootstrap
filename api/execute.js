@@ -613,7 +613,8 @@ Will report results once test instance completes verification.`
           }
           
           // Extract the latest assistant message content
-          const messageMatches = [...pageContent.matchAll(/"text":"([^"]+)"/g)];
+          // FRANK'S FIX: Use a better regex that handles escaped quotes
+          const messageMatches = [...pageContent.matchAll(/"text":"((?:[^"\\]|\\.)*)"/g)];
           const currentMessageCount = messageMatches.length;
           
           // Track message changes (moved here so it's available in all code paths)
@@ -625,7 +626,15 @@ Will report results once test instance completes verification.`
           if (messageMatches.length > 0) {
             // Get the last message (most recent)
             const lastMessageMatch = messageMatches[messageMatches.length - 1];
-            lastResponse = lastMessageMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+            lastResponse = lastMessageMatch[1]
+              .replace(/\\n/g, '\n')
+              .replace(/\\"/g, '"')
+              .replace(/\\\\/g, '\\');
+            
+            // FRANK'S DEBUG: Log if we found test results
+            if (lastResponse.includes('RESULT:')) {
+              console.log('Found test result in response:', lastResponse.substring(0, 200));
+            }
           }
           
           // FRANK'S REAL COMPLETION DETECTION - ONLY USE THE API STATUS FIELD
