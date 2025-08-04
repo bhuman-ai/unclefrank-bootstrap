@@ -539,15 +539,22 @@ Will report results once test instance completes verification.`
             lastResponse = lastMessageMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
           }
           
-          // FRANK'S CHECKMARK-BASED COMPLETION DETECTION
-          // Checkmark icon path indicates completion
-          const hasCheckmark = pageContent.includes('M20 6 9 17l-5-5');
-          
-          // FRANK'S UI-BASED COMPLETION DETECTION - LOOKING FOR TERRAGON'S ACTIVE INDICATORS
-          // Flame icon path for active state
-          const hasFlameIcon = pageContent.includes('M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z');
-          // Spinning dashed circle
-          const hasSpinningCircle = pageContent.includes('circle-dashed') && pageContent.includes('animate-[spin_1.5s_linear_infinite]');
+          // FRANK'S COMPLETION DETECTION - BASED ON ACTUAL RESPONSE PATTERNS
+          // Look for Git Checkpoint message which appears when completed
+          const hasGitCheckpoint = pageContent.includes('Git Checkpoint') || pageContent.includes('git checkpoint');
+          // Look for specific completion patterns in the response
+          const hasCompletedPattern = lastResponse && (
+            lastResponse.includes('checkpoint') && 
+            (lastResponse.includes('completed') || lastResponse.includes('ready') || lastResponse.includes('done'))
+          );
+          // Check if response contains file update notifications
+          const hasFileUpdates = pageContent.includes('Update (') || pageContent.includes('Read (');
+          // Check for active work indicators in the text
+          const hasActiveWork = lastResponse && (
+            lastResponse.includes('Let me') || 
+            lastResponse.includes('I\'ll') || 
+            lastResponse.includes('Now I')
+          );
           // Other indicators
           const hasSpinner = pageContent.includes('spinner') || pageContent.includes('loading') || pageContent.includes('animate-spin');
           const hasThinking = pageContent.includes('thinking') || pageContent.includes('Thinking');
@@ -562,37 +569,36 @@ Will report results once test instance completes verification.`
           const now = Date.now();
           const timeSinceLastMessage = now - previousMessageTime;
           
-          // Primary detection: Checkmark means completed, flame/spinner means active
-          if (hasCheckmark && lastResponse.length > 0) {
-            // Terragon has completed - checkmark icon is shown
+          // Primary detection: Message patterns and activity
+          if (hasGitCheckpoint || (hasCompletedPattern && !hasActiveWork)) {
+            // Terragon has completed - showing completion message
             status = 'completed';
             completed = true;
-            console.log(`Terragon completed - checkmark icon detected`);
-          } else if (hasFlameIcon || hasSpinningCircle) {
-            // Terragon is actively working - flame or spinning circle visible
+            console.log(`Terragon completed - Git Checkpoint or completion pattern detected`);
+          } else if (currentMessageCount > previousMessageCount) {
+            // New message just arrived - still active
             status = 'active';
             completed = false;
-            console.log(`Terragon active - flame icon or spinning circle detected`);
+            console.log(`Terragon active - new message detected (count: ${currentMessageCount})`);
+          } else if (hasActiveWork || hasFileUpdates) {
+            // Still working based on message content
+            status = 'active';
+            completed = false;
+            console.log(`Terragon active - work indicators in message`);
           } else if (hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating) {
             // Terragon is actively working
             status = 'active';
             completed = false;
             console.log(`Terragon active - UI indicators present (spinner: ${hasSpinner}, thinking: ${hasThinking}, processing: ${hasProcessing})`);
           } else if (lastResponse.length > 0) {
-            // No UI activity indicators, has response
-            if (currentMessageCount > previousMessageCount) {
-              // New message just arrived, might still be typing
-              status = 'active';
-              completed = false;
-              messageTracker.lastMessageCount = currentMessageCount;
-              messageTracker.lastMessageTime = now;
-            } else if (timeSinceLastMessage > 10000) {
-              // No UI activity and no new messages for 10 seconds - completed
+            // Has messages, check for completion based on stability
+            if (timeSinceLastMessage > 15000 && currentMessageCount === previousMessageCount) {
+              // No new messages for 15 seconds - likely completed
               status = 'completed';
               completed = true;
-              console.log(`Terragon completed - no UI activity and no new messages for ${timeSinceLastMessage/1000}s`);
+              console.log(`Terragon completed - no new messages for ${timeSinceLastMessage/1000}s`);
             } else {
-              // Wait a bit more to be sure
+              // Still might be working
               status = 'active';
               completed = false;
             }
@@ -634,12 +640,14 @@ Will report results once test instance completes verification.`
             lastResponse,
             messageCount: currentMessageCount,
             lastMessageTime: currentMessageCount > previousMessageCount ? now : previousMessageTime,
-            hasUIActivity: hasFlameIcon || hasSpinningCircle || hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating,
-            hasCheckmark,
+            hasUIActivity: hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating,
+            hasGitCheckpoint,
+            hasCompletedPattern,
             uiIndicators: {
-              checkmark: hasCheckmark,
-              flameIcon: hasFlameIcon,
-              spinningCircle: hasSpinningCircle,
+              gitCheckpoint: hasGitCheckpoint,
+              completedPattern: hasCompletedPattern,
+              activeWork: hasActiveWork,
+              fileUpdates: hasFileUpdates,
               spinner: hasSpinner,
               thinking: hasThinking,
               generating: hasGenerating,
