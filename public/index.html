@@ -979,13 +979,15 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                 } catch (error) {
                     addLog(`Polling error: ${error.message}`, 'error');
                     
-                    // If polling fails, wait a bit more and continue
-                    if (pollCount < 5) {
+                    // FRANK'S FIX: Don't give up on fetch errors - Terragon might still be working!
+                    // Network errors shouldn't trigger premature testing
+                    if (pollCount < maxPolls) {
+                        addLog(`⚠️ Network error, will retry in 10s (attempt ${pollCount}/${maxPolls})...`, 'warning');
                         setTimeout(() => {
                             pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
                         }, 10000);
                     } else {
-                        addLog(`Polling failed multiple times, proceeding with tests...`, 'error');
+                        addLog(`🕐 Max polling time reached after network errors. Proceeding with tests...`, 'error');
                         testCheckpointAndContinue(checkpoint, queue, currentIndex, executionThreadId);
                     }
                 }
