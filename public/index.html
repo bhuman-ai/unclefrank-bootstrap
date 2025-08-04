@@ -1657,8 +1657,8 @@ Please execute this checkpoint and report when complete. I will then run tests t
                                 
                                 // FRANK'S FIX: RED TEAM found the real bug - API sync delay
                                 // Terragon UI updates before API syncs the full response
-                                addLog(`⏳ Waiting 10s for Terragon API to sync full response...`, 'info');
-                                await new Promise(resolve => setTimeout(resolve, 10000));
+                                addLog(`⏳ Waiting 30s for Terragon API to sync full response...`, 'info');
+                                await new Promise(resolve => setTimeout(resolve, 30000));
                                 
                                 // Re-fetch after sync delay to get complete response
                                 const syncResponse = await fetch('/api/execute', {
