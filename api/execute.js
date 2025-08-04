@@ -267,12 +267,46 @@ Please execute this checkpoint and report when complete.`;
         try {
           const description = testDescription || criteria.description;
           
-          // Create test message for fresh Terragon instance with HARD TERMINATION
-          const branchInfo = targetBranch && targetBranch !== 'master' ? `\n## Target Branch\nTesting on branch: ${targetBranch}\n` : '\n## Target Branch\nTesting on master branch';
-          
-          const testMessage = `# CONTEXTLESS TEST EXECUTION
-${branchInfo}
+          // FRANK'S WORKAROUND: Terragon API only accepts master branch
+          // So we create on master but instruct it to checkout the feature branch
+          const testMessage = targetBranch && targetBranch !== 'master' ? 
+            `# CONTEXTLESS TEST EXECUTION
+
+## CRITICAL: CHECKOUT FEATURE BRANCH FIRST
+**EXECUTE THESE COMMANDS IMMEDIATELY:**
+\`\`\`bash
+git fetch origin
+git checkout ${targetBranch}
+\`\`\`
+
 ## Test Objective
+Verify: ${description}
+
+## Sacred Testing Principles
+- NO CONTEXT from execution
+- NO assumptions about what happened  
+- ONLY check actual system state
+- Report OBJECTIVE findings
+
+## Instructions
+1. FIRST checkout branch ${targetBranch} as shown above
+2. THEN check if the condition exists or not
+3. Provide specific evidence found
+4. Be brutally honest - no assumptions
+
+Test this criteria: "${description}"
+
+Return result in format:
+RESULT: [PASS/FAIL]
+BRANCH: [confirm which branch you tested on]
+EVIDENCE: [what you actually found]
+DETAILS: [specific findings]` :
+            `# CONTEXTLESS TEST EXECUTION
+
+## Target Branch
+Testing on master branch
+
+## Test Objective  
 Verify: ${description}
 
 ## Sacred Testing Principles
@@ -286,7 +320,6 @@ Check the actual file system / codebase and report:
 1. Does the condition exist or not?
 2. Provide specific evidence found
 3. Be brutally honest - no assumptions
-${targetBranch && targetBranch !== 'master' ? `\nIMPORTANT: This test instance is based on branch "${targetBranch}" - you are already on this branch!` : '\nNOTE: Testing on master branch'}
 
 Test this criteria: "${description}"
 
@@ -296,8 +329,9 @@ EVIDENCE: [what you actually found]
 DETAILS: [specific findings]`;
 
           // Create NEW Terragon instance for testing
-          // FRANK'S FIX: Use the actual branch, not master!
-          const baseBranch = targetBranch && targetBranch !== 'master' ? targetBranch : 'master';
+          // FRANK'S DISCOVERY: Terragon API only accepts master branch!
+          // We'll create on master and instruct it to checkout the feature branch
+          const baseBranch = 'master'; // API limitation - only master works
           
           const testPayload = [{
             message: {
@@ -317,7 +351,7 @@ DETAILS: [specific findings]`;
             saveAsDraft: false
           }];
 
-          console.log(`Creating NEW Terragon test instance for contextless testing on branch: ${baseBranch}`);
+          console.log(`Creating NEW Terragon test instance (API requires master, will checkout ${targetBranch || 'master'})`);
           
           const testResponse = await fetch(
             'https://www.terragonlabs.com/dashboard',
@@ -338,6 +372,16 @@ DETAILS: [specific findings]`;
           );
 
           const testResponseText = await testResponse.text();
+          
+          // FRANK'S DEBUG: Log the full response
+          console.log('Terragon test response status:', testResponse.status);
+          console.log('Response headers:', testResponse.headers);
+          if (testResponseText.length < 1000) {
+            console.log('Response text:', testResponseText);
+          } else {
+            console.log('Response text (first 500 chars):', testResponseText.substring(0, 500));
+          }
+          
           const testThreadMatch = testResponseText.match(/"id":"([^"]+)"/);
           const testThreadId = testThreadMatch ? testThreadMatch[1] : 'test-pending';
           
