@@ -186,6 +186,10 @@ ${checkpoint.instructions.map((inst, i) => `${i + 1}. ${inst}`).join('\n')}
 ## Pass Criteria (All must pass)
 ${checkpoint.passCriteria.map(pc => `✓ ${pc.description}`).join('\n')}
 
+## IMPORTANT: Branch Reporting
+When you create or work on a branch, please report it in your first message like:
+"Working on branch: terragon/[branch-name]"
+
 Please execute this checkpoint and report when complete.`;
 
         try {
@@ -268,7 +272,7 @@ Please execute this checkpoint and report when complete.`;
           const description = testDescription || criteria.description;
           
           // Create test message for fresh Terragon instance with HARD TERMINATION
-          const branchInfo = targetBranch ? `\n## Target Branch\nTesting on branch: ${targetBranch}\n` : '';
+          const branchInfo = targetBranch && targetBranch !== 'master' ? `\n## Target Branch\nTesting on branch: ${targetBranch}\n` : '\n## Target Branch\nTesting on master branch';
           
           const testMessage = `# CONTEXTLESS TEST EXECUTION
 ${branchInfo}

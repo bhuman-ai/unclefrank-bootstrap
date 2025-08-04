@@ -838,6 +838,28 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                         console.error('Branch extraction failed:', e);
                                     }
                                 }
+                                
+                                // FRANK'S AGGRESSIVE BRANCH DETECTION
+                                // Also check the full page content for branch info
+                                if (!messageTracker[threadId].branchDetected && statusResult.messageCount > 0) {
+                                    // Look for any terragon branch pattern in responses
+                                    const branchPattern = /terragon\/[\w-]+/;
+                                    const match = statusResult.lastResponse?.match(branchPattern);
+                                    if (match) {
+                                        const detectedBranch = match[0];
+                                        await fetch('/api/branch-tracker', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                                action: 'record',
+                                                threadId: threadId,
+                                                branchName: detectedBranch
+                                            })
+                                        });
+                                        messageTracker[threadId].branchDetected = true;
+                                        addLog(`🎯 Auto-detected Terragon branch: ${detectedBranch}`, 'warning');
+                                    }
+                                }
                             }
                         }
                         
@@ -1538,13 +1560,16 @@ Please execute this checkpoint and report when complete. I will then run tests t
                     // Create NEW Terragon instance for contextless testing
                     // Detect branch for testing using branch tracker
                     let targetBranch = 'master';
+                    
+                    // FRANK'S FIX: Try multiple methods to get the branch
                     try {
+                        // Method 1: Check branch tracker with execution thread ID
                         const branchResponse = await fetch('/api/branch-tracker', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 action: 'get',
-                                threadId: mainThreadId
+                                threadId: executionThreadId || mainThreadId
                             })
                         });
                         
@@ -1553,10 +1578,36 @@ Please execute this checkpoint and report when complete. I will then run tests t
                             if (branchData.branch) {
                                 targetBranch = branchData.branch;
                                 console.log(`Testing on tracked branch: ${targetBranch}`);
+                                addLog(`📌 Using tracked branch: ${targetBranch}`, 'info');
+                            }
+                        }
+                        
+                        // Method 2: If no branch found, check GitHub for recent Terragon branches
+                        if (targetBranch === 'master') {
+                            addLog(`⚠️ No branch tracked for thread ${executionThreadId || mainThreadId}`, 'warning');
+                            
+                            // List recent branches to find the latest Terragon branch
+                            const branchesResponse = await fetch('https://api.github.com/repos/bhuman-ai/unclefrank-bootstrap/branches?per_page=20', {
+                                headers: {
+                                    'Accept': 'application/vnd.github.v3+json'
+                                }
+                            });
+                            
+                            if (branchesResponse.ok) {
+                                const branches = await branchesResponse.json();
+                                const terragonBranches = branches.filter(b => b.name.startsWith('terragon/'));
+                                
+                                if (terragonBranches.length > 0) {
+                                    // Use the most recent Terragon branch
+                                    targetBranch = terragonBranches[0].name;
+                                    addLog(`🔍 Found recent Terragon branch: ${targetBranch}`, 'warning');
+                                    addLog(`⚠️ Using this branch for testing (may not be the right one)`, 'warning');
+                                }
                             }
                         }
                     } catch (e) {
-                        console.error('Branch tracking failed:', e);
+                        console.error('Branch detection failed:', e);
+                        addLog(`❌ Branch detection error: ${e.message}`, 'error');
                     }
                     
                     const testResponse = await fetch('/api/execute', {

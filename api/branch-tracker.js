@@ -26,13 +26,24 @@ const branchTracker = {
       /branch[:\s]+([^\s]+)/i,
       /checkout -b ([^\s]+)/,
       /switched to.*branch '([^']+)'/i,
-      /terragon\/([^\s]+)/
+      /terragon\/([^\s]+)/,
+      /on branch[:\s]+([^\s]+)/i,
+      /current branch[:\s]+([^\s]+)/i,
+      /working on[:\s]+([^\s]+)/i,
+      /pushed to[:\s]+([^\s]+)/i,
+      /git push.*origin ([^\s]+)/
     ];
     
     for (const pattern of patterns) {
       const match = message.match(pattern);
       if (match) {
-        return match[1];
+        // Clean up branch name
+        let branch = match[1];
+        // If it's just the suffix, add terragon/ prefix
+        if (!branch.includes('/') && !branch.includes('master') && !branch.includes('main')) {
+          branch = `terragon/${branch}`;
+        }
+        return branch;
       }
     }
     
