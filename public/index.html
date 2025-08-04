@@ -959,13 +959,14 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
             };
 
             // FRANK'S REAL TEST AND CONTINUE FUNCTION
-            const testCheckpointAndContinue = async (checkpoint, queue, currentIndex, threadId) => {
+            const testCheckpointAndContinue = async (checkpoint, queue, currentIndex, executionThreadId) => {
                 const checkpointNumber = currentIndex + 1;
                 addLog(`🧪 Testing checkpoint ${checkpointNumber}: ${checkpoint.name}`, 'info');
                 
                 try {
                     addLog(`🎯 Running contextless tests for checkpoint ${checkpointNumber}`, 'info');
-                    const testResult = await testCheckpoint(checkpoint);
+                    // Pass the execution thread ID so we test the right branch
+                    const testResult = await testCheckpoint(checkpoint, executionThreadId);
                     
                     if (testResult.passed) {
                         // Mark as passed and move to next
@@ -1459,7 +1460,7 @@ Please execute this checkpoint and report when complete. I will then run tests t
             };
 
             // Test checkpoint pass/fail criteria
-            const testCheckpoint = async (checkpoint) => {
+            const testCheckpoint = async (checkpoint, executionThreadId) => {
                 addLog(`Running tests for ${checkpoint.name}...`, 'info');
                 
                 try {
@@ -1480,7 +1481,8 @@ Please execute this checkpoint and report when complete. I will then run tests t
                         
                         try {
                             // FRANK'S CONTEXTLESS TEST - NEW TERRAGON INSTANCE
-                            const testPassed = await executeContextlessTest(criteria, checkpoint, state.taskThreadId);
+                            // Use execution thread ID, not task thread ID!
+                            const testPassed = await executeContextlessTest(criteria, checkpoint, executionThreadId || state.taskThreadId);
                             
                             if (testPassed) {
                                 testResults.passedTests.push({
