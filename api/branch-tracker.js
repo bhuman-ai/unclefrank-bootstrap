@@ -20,30 +20,26 @@ const branchTracker = {
   
   // Extract branch from Terragon's messages
   extractBranchFromMessage(message) {
-    // Look for branch creation patterns
-    const patterns = [
+    // FRANK'S SIMPLIFIED APPROACH - Terragon is explicit!
+    // Just look for terragon/ branches
+    const terragonBranchPattern = /terragon\/[\w-]+/;
+    const match = message.match(terragonBranchPattern);
+    
+    if (match) {
+      return match[0];
+    }
+    
+    // Fallback: Look for explicit branch statements
+    const explicitPatterns = [
       /creating branch[:\s]+([^\s]+)/i,
-      /branch[:\s]+([^\s]+)/i,
       /checkout -b ([^\s]+)/,
-      /switched to.*branch '([^']+)'/i,
-      /terragon\/([^\s]+)/,
-      /on branch[:\s]+([^\s]+)/i,
-      /current branch[:\s]+([^\s]+)/i,
-      /working on[:\s]+([^\s]+)/i,
-      /pushed to[:\s]+([^\s]+)/i,
-      /git push.*origin ([^\s]+)/
+      /Working on branch[:\s]+([^\s]+)/i
     ];
     
-    for (const pattern of patterns) {
+    for (const pattern of explicitPatterns) {
       const match = message.match(pattern);
       if (match) {
-        // Clean up branch name
-        let branch = match[1];
-        // If it's just the suffix, add terragon/ prefix
-        if (!branch.includes('/') && !branch.includes('master') && !branch.includes('main')) {
-          branch = `terragon/${branch}`;
-        }
-        return branch;
+        return match[1];
       }
     }
     

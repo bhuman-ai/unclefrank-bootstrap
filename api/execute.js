@@ -186,10 +186,6 @@ ${checkpoint.instructions.map((inst, i) => `${i + 1}. ${inst}`).join('\n')}
 ## Pass Criteria (All must pass)
 ${checkpoint.passCriteria.map(pc => `✓ ${pc.description}`).join('\n')}
 
-## IMPORTANT: Branch Reporting
-When you create or work on a branch, please report it in your first message like:
-"Working on branch: terragon/[branch-name]"
-
 Please execute this checkpoint and report when complete.`;
 
         try {
