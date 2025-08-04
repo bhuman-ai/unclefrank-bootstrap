@@ -16,6 +16,102 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useCallback } = React;
 
+        // FRANK'S ORCHESTRATOR INTEGRATION
+        async function registerWithOrchestrator(instanceId, metadata) {
+            try {
+                const response = await fetch('/api/task-orchestrator', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'register',
+                        instanceId,
+                        metadata
+                    })
+                });
+                
+                if (response.ok) {
+                    console.log(`[Orchestrator] Registered ${metadata.type} instance: ${instanceId}`);
+                }
+            } catch (error) {
+                console.error('[Orchestrator] Registration failed:', error);
+            }
+        }
+        
+        // Orchestrator Status Component
+        function OrchestratorStatus() {
+            const [orchestratorData, setOrchestratorData] = useState(null);
+            
+            useEffect(() => {
+                const pollOrchestrator = async () => {
+                    try {
+                        const response = await fetch('/api/task-orchestrator', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'poll' })
+                        });
+                        
+                        if (response.ok) {
+                            const result = await response.json();
+                            setOrchestratorData(result);
+                        }
+                    } catch (error) {
+                        console.error('[Orchestrator] Polling failed:', error);
+                    }
+                };
+                
+                // Poll immediately and then every 5 seconds
+                pollOrchestrator();
+                const interval = setInterval(pollOrchestrator, 5000);
+                
+                return () => clearInterval(interval);
+            }, []);
+            
+            if (!orchestratorData) return null;
+            
+            const activeCount = orchestratorData.instances.filter(i => i.status === 'active').length;
+            
+            return (
+                <div className="fixed top-4 right-4 bg-gray-800 border border-gray-700 rounded-lg p-4 w-64 shadow-lg z-50">
+                    <h3 className="text-purple-400 font-semibold mb-3 flex items-center">
+                        <span className="text-xl mr-2">🧠</span> Task Orchestrator
+                    </h3>
+                    <div className="space-y-2 text-sm">
+                        <p className="text-gray-400">
+                            Active: <span className="text-white">{activeCount}</span>
+                        </p>
+                        <p className="text-gray-400">
+                            Total: <span className="text-white">{orchestratorData.instanceCount}</span>
+                        </p>
+                        
+                        {orchestratorData.instances.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-gray-700">
+                                <p className="text-gray-500 text-xs mb-2">Instances:</p>
+                                {orchestratorData.instances.slice(0, 5).map((inst, idx) => {
+                                    const emoji = inst.type === 'main-task' ? '📋' : 
+                                                 inst.type === 'test' ? '🧪' : 
+                                                 inst.type === 'resolver' ? '🔧' : '📦';
+                                    const statusColor = inst.status === 'active' ? 'text-green-400' : 
+                                                       inst.status === 'completed' ? 'text-blue-400' : 
+                                                       inst.status === 'failed' ? 'text-red-400' : 'text-gray-400';
+                                    
+                                    return (
+                                        <div key={idx} className="text-xs ml-2 flex items-center space-x-2">
+                                            <span>{emoji}</span>
+                                            <span className="text-gray-300">{inst.type}:</span>
+                                            <span className={statusColor}>{inst.status}</span>
+                                        </div>
+                                    );
+                                })}
+                                {orchestratorData.instances.length > 5 && (
+                                    <p className="text-gray-500 text-xs mt-1 ml-2">+{orchestratorData.instances.length - 5} more</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+        
         // GitHub API Service
         const GitHubService = {
             baseUrl: 'https://api.github.com',
@@ -725,6 +821,13 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     addLog(`✅ Checkpoint 1 sent to Terragon thread: ${threadId}`, 'success');
                     addLog(`Monitor at: ${threadUrl}`, 'info');
                     
+                    // Register main task with orchestrator
+                    await registerWithOrchestrator(threadId, {
+                        type: 'main-task',
+                        task: dashboardPayload[0].message.parts[0].nodes[0].text,
+                        branch: 'master'
+                    });
+                    
                     // Initialize state - mark checkpoint 1 as executing (since we just sent it)
                     setState(prev => {
                         const firstCheckpoint = prev.checkpoints[0];
@@ -1244,53 +1347,130 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             return;
                         }
                         
-                        // FRANK'S DIRECT APPROACH: Skip retries for deterministic failures
-                        if (!hasRetryableFailures && currentRetryCount === 0) {
-                            addLog(`🎯 Skipping retries - these failures need fixes, not retries`, 'info');
-                        }
+                        // FRANK'S ORCHESTRATOR INTEGRATION - Let the brain decide
+                        addLog(`🧠 Notifying Task Orchestrator of test failures...`, 'info');
                         
-                        // Activate Task-LLM-Resolver immediately for fixable issues
-                        addLog(`🔧 Activating Task-LLM-Resolver to fix issues...`, 'warning');
+                        // Register test results with orchestrator
+                        await registerWithOrchestrator(`test-${checkpoint.id}-${Date.now()}`, {
+                            type: 'test-result',
+                            parentId: executionThreadId,
+                            checkpoint: checkpoint,
+                            branch: state.currentBranch || window.lastDetectedBranch || 'master',
+                            testResult: testResult,
+                            retryCount: currentRetryCount,
+                            hasRetryableFailures: hasRetryableFailures
+                        });
                         
-                        // Send failure info back to main Terragon thread
-                        const resolverResult = await taskLLMResolver(checkpoint, testResult, state.taskThreadId || executionThreadId);
-                        
-                        if (resolverResult.success) {
-                            addLog(`✅ Task-LLM-Resolver fixed the issues! Re-running tests...`, 'success');
-                            checkpoint._retryCount = 0; // Reset for new test run
-                            setTimeout(() => {
-                                testCheckpointAndContinue(checkpoint, queue, currentIndex, executionThreadId);
-                            }, 2000);
-                            return;
-                        }
-                        
-                        // If resolver failed, mark checkpoint as failed
-                        setState(prev => ({
-                            ...prev,
-                            executionStatus: {
-                                ...prev.executionStatus,
-                                [checkpoint.id]: {
-                                    ...prev.executionStatus[checkpoint.id],
-                                    status: 'fail',
-                                    testResults: testResult,
-                                    failedTime: new Date().toISOString()
+                        // Force orchestrator decision
+                        try {
+                            const orchestratorResponse = await fetch('/api/task-orchestrator', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    action: 'decide',
+                                    instanceId: executionThreadId
+                                })
+                            });
+                            
+                            if (orchestratorResponse.ok) {
+                                const decision = await orchestratorResponse.json();
+                                const lastDecision = decision.lastDecision;
+                                
+                                if (lastDecision) {
+                                    addLog(`🤖 Orchestrator decision: ${lastDecision.action} - ${lastDecision.reasoning}`, 'info');
+                                    
+                                    // Update UI based on decision
+                                    switch (lastDecision.action) {
+                                        case 'escalate':
+                                            addLog('🚨 HUMAN ESCALATION REQUIRED', 'error');
+                                            addLog('📋 Failed tests:', 'error');
+                                            testResult.failedTests.forEach(test => {
+                                                addLog(`  - ${test.description}: ${test.details}`, 'error');
+                                            });
+                                            
+                                            setState(prev => ({
+                                                ...prev,
+                                                executionStatus: {
+                                                    ...prev.executionStatus,
+                                                    [checkpoint.id]: {
+                                                        ...prev.executionStatus[checkpoint.id],
+                                                        status: 'escalated',
+                                                        escalationReason: lastDecision.reasoning,
+                                                        failedTime: new Date().toISOString()
+                                                    }
+                                                }
+                                            }));
+                                            
+                                            if (checkpoint.blocking) {
+                                                addLog('🚫 Blocking checkpoint - execution stopped', 'error');
+                                                setExecuting(false);
+                                            } else {
+                                                addLog('⚡ Non-blocking - continuing despite escalation', 'info');
+                                                setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex + 1, threadId), 2000);
+                                            }
+                                            break;
+                                            
+                                        case 'send_message':
+                                        case 'create_instance':
+                                            addLog(`🔧 Orchestrator is working on fixes...`, 'info');
+                                            
+                                            setState(prev => ({
+                                                ...prev,
+                                                executionStatus: {
+                                                    ...prev.executionStatus,
+                                                    [checkpoint.id]: {
+                                                        ...prev.executionStatus[checkpoint.id],
+                                                        status: 'resolving',
+                                                        orchestratorActive: true
+                                                    }
+                                                }
+                                            }));
+                                            
+                                            // Wait for orchestrator to work
+                                            addLog(`⏳ Waiting 60 seconds for orchestrator actions...`, 'info');
+                                            setTimeout(() => {
+                                                checkpoint._retryCount = 0; // Reset for re-test
+                                                testCheckpointAndContinue(checkpoint, queue, currentIndex, executionThreadId);
+                                            }, 60000);
+                                            break;
+                                            
+                                        case 'wait':
+                                            addLog(`⏳ Orchestrator waiting for more data...`, 'info');
+                                            setTimeout(() => {
+                                                testCheckpointAndContinue(checkpoint, queue, currentIndex, executionThreadId);
+                                            }, 10000);
+                                            break;
+                                            
+                                        default:
+                                            addLog(`🤷 Unknown orchestrator action: ${lastDecision.action}`, 'warning');
+                                            if (checkpoint.blocking) {
+                                                setExecuting(false);
+                                            } else {
+                                                setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex + 1, threadId), 2000);
+                                            }
+                                    }
+                                } else {
+                                    addLog(`⚠️ No decision from orchestrator`, 'warning');
+                                    // Fallback to basic behavior
+                                    if (checkpoint.blocking) {
+                                        addLog('🚫 Blocking checkpoint failed - execution stopped', 'error');
+                                        setExecuting(false);
+                                    } else {
+                                        addLog('⚡ Non-blocking checkpoint failed - continuing', 'info');
+                                        setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex + 1, threadId), 2000);
+                                    }
                                 }
                             }
-                        }));
-                        
-                        if (checkpoint.blocking) {
-                            if (resolverResult.escalate) {
-                                addLog('🚨 HUMAN ESCALATION REQUIRED - Task-LLM-Resolver exhausted', 'error');
-                                addLog('📋 Failed tests:', 'error');
-                                testResult.failedTests.forEach(test => {
-                                    addLog(`  - ${test.description}: ${test.details}`, 'error');
-                                });
+                        } catch (error) {
+                            addLog(`❌ Orchestrator error: ${error.message}`, 'error');
+                            // Fallback to stopping on blocking checkpoints
+                            if (checkpoint.blocking) {
+                                addLog('🚫 Blocking checkpoint failed - execution stopped', 'error');
+                                setExecuting(false);
+                            } else {
+                                addLog('⚡ Non-blocking checkpoint failed - continuing', 'info');
+                                setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex + 1, threadId), 2000);
                             }
-                            addLog('🚫 Blocking checkpoint failed - execution stopped', 'error');
-                            setExecuting(false);
-                        } else {
-                            addLog('⚡ Non-blocking checkpoint failed - continuing', 'info');
-                            setTimeout(() => executeNextCheckpointWithQueue(queue, currentIndex + 1, threadId), 2000);
                         }
                     }
                 } catch (error) {
@@ -1389,6 +1569,14 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     // FRANK'S CRITICAL FIX: execData.threadId is the EXECUTION thread, not task thread!
                     const executionThreadId = execData.threadId || threadId;
                     addLog(`Checkpoint sent to execution thread: ${executionThreadId}`, 'info');
+                    
+                    // Register checkpoint execution with orchestrator
+                    await registerWithOrchestrator(executionThreadId, {
+                        type: 'checkpoint-execution',
+                        parentId: state.taskThreadId || threadId,
+                        checkpoint: checkpoint,
+                        branch: state.currentBranch || window.lastDetectedBranch || 'master'
+                    });
                     
                     // Update status to executing with EXECUTION thread ID
                     setState(prev => ({
@@ -2119,6 +2307,15 @@ After completing these fixes, I will re-run the tests automatically.`;
                     
                     if (testResult.testInstanceCreated) {
                         addLog(`✅ Test instance created: ${testResult.testThreadId}`, 'success');
+                        
+                        // Register test instance with orchestrator
+                        await registerWithOrchestrator(testResult.testThreadId, {
+                            type: 'test',
+                            parentId: executionThreadId || mainThreadId,
+                            checkpoint: checkpoint,
+                            branch: testResult.targetBranch,
+                            criteria: criteria.description
+                        });
                         
                         // FRANK'S WARNING: Check what branch was actually used
                         const actualBranch = testResult.targetBranch || 'master';
@@ -2951,6 +3148,9 @@ https://www.terragonlabs.com/task/${task.threadId}
                         onClose={() => setDiffViewerOpen(false)}
                         task={selectedTask}
                     />
+                    
+                    {/* Orchestrator Status */}
+                    <OrchestratorStatus />
                 </div>
             );
         }
