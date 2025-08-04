@@ -191,6 +191,62 @@
             );
         }
         
+        // User Profile Component
+        function UserProfile({ user }) {
+            if (!user) {
+                return null;
+            }
+            
+            return (
+                <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 max-w-md">
+                    <div className="flex items-center space-x-4 mb-4">
+                        <div className="relative">
+                            <img 
+                                src={user.avatar || '/api/placeholder/64/64'} 
+                                alt={`${user.name}'s avatar`}
+                                className="w-16 h-16 rounded-full object-cover border-2 border-gray-600"
+                                onError={(e) => {
+                                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=6b7280&color=fff&size=64`;
+                                }}
+                            />
+                            <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 border-2 border-gray-800 rounded-full"></div>
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-xl font-semibold text-white">{user.name}</h3>
+                            <p className="text-gray-400 text-sm">@{user.username || user.name?.toLowerCase().replace(/\s+/g, '_')}</p>
+                        </div>
+                    </div>
+                    
+                    {user.bio && (
+                        <div className="mb-4">
+                            <p className="text-gray-300 text-sm leading-relaxed">{user.bio}</p>
+                        </div>
+                    )}
+                    
+                    <div className="flex space-x-3 text-sm text-gray-400">
+                        {user.location && (
+                            <span className="flex items-center space-x-1">
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                                </svg>
+                                <span>{user.location}</span>
+                            </span>
+                        )}
+                        {user.website && (
+                            <span className="flex items-center space-x-1">
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M4.083 9h1.946c.089-1.546.383-2.97.837-4.118A6.004 6.004 0 004.083 9zM10 2a8 8 0 100 16 8 8 0 000-16zm0 2c-.076 0-.232.032-.465.262-.238.234-.497.623-.737 1.182-.389.907-.673 2.142-.766 3.556h3.936c-.093-1.414-.377-2.649-.766-3.556-.24-.559-.499-.948-.737-1.182C10.232 4.032 10.076 4 10 4zm3.971 5c-.089-1.546-.383-2.97-.837-4.118A6.004 6.004 0 0115.917 9h-1.946zm-2.003 2H8.032c.093 1.414.377 2.649.766 3.556.24.559.499.948.737 1.182.233.23.389.262.465.262.076 0 .232-.032.465-.262.238-.234.497-.623.737-1.182.389-.907.673-2.142.766-3.556zm1.166 4.118c.454-1.147.748-2.572.837-4.118h1.946a6.004 6.004 0 01-2.783 4.118zm-6.268 0C6.412 13.97 6.118 12.546 6.03 11H4.083a6.004 6.004 0 002.783 4.118z" clipRule="evenodd" />
+                                </svg>
+                                <a href={user.website} target="_blank" rel="noopener noreferrer" className="hover:text-blue-400 transition-colors">
+                                    {user.website.replace(/^https?:\/\//, '')}
+                                </a>
+                            </span>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+        
         // GitHub API Service
         const GitHubService = {
             baseUrl: 'https://api.github.com',
@@ -3164,6 +3220,31 @@ https://www.terragonlabs.com/task/${task.threadId}
                 <div className="container mx-auto px-4 py-8 max-w-6xl">
                     <h1 className="text-4xl font-bold mb-2">🔨 Uncle Frank's Bootstrap Core</h1>
                     <p className="text-gray-400 mb-8">No BS Autonomous LLM Development Platform</p>
+
+                    {/* User Profile Demo */}
+                    <div className="mb-8">
+                        <h2 className="text-2xl font-bold mb-4">User Profile Component Demo</h2>
+                        <div className="flex flex-wrap gap-6">
+                            <UserProfile user={{
+                                name: "Uncle Frank",
+                                username: "uncle_frank",
+                                avatar: "https://ui-avatars.com/api/?name=Uncle+Frank&background=6b7280&color=fff&size=64",
+                                bio: "No-nonsense, sharp-witted guy from Brooklyn who gets shit done. Zero patience for over-complication or corporate buzzwords.",
+                                location: "Brooklyn, NY",
+                                website: "https://github.com/bhuman-ai/unclefrank-bootstrap"
+                            }} />
+                            <UserProfile user={{
+                                name: "Jane Developer",
+                                avatar: "https://ui-avatars.com/api/?name=Jane+Developer&background=3b82f6&color=fff&size=64",
+                                bio: "Full-stack developer passionate about building great user experiences. Love working with React, TypeScript, and modern web technologies.",
+                                location: "San Francisco, CA"
+                            }} />
+                            <UserProfile user={{
+                                name: "Alex Smith",
+                                bio: "AI researcher and software engineer. Working on the future of autonomous development tools."
+                            }} />
+                        </div>
+                    </div>
 
                     {/* Task Review Queue */}
                     <div className="mb-6">
