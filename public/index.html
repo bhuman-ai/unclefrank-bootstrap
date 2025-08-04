@@ -16,6 +16,186 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useCallback } = React;
 
+        // Responsive Navigation Component
+        function ResponsiveNavigation() {
+            const [isMenuOpen, setIsMenuOpen] = useState(false);
+            const [activeDropdown, setActiveDropdown] = useState(null);
+            
+            const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
+            const toggleDropdown = (dropdownName) => {
+                setActiveDropdown(activeDropdown === dropdownName ? null : dropdownName);
+            };
+            
+            const closeMenus = () => {
+                setIsMenuOpen(false);
+                setActiveDropdown(null);
+            };
+            
+            // Close menu when clicking outside
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (!event.target.closest('.nav-container')) {
+                        closeMenus();
+                    }
+                };
+                
+                document.addEventListener('click', handleClickOutside);
+                return () => document.removeEventListener('click', handleClickOutside);
+            }, []);
+            
+            const navItems = [
+                { name: 'Dashboard', href: '#dashboard' },
+                { 
+                    name: 'Tasks', 
+                    href: '#tasks',
+                    dropdown: [
+                        { name: 'Create Task', href: '#create-task' },
+                        { name: 'Task Queue', href: '#task-queue' },
+                        { name: 'Review Tasks', href: '#review-tasks' },
+                        { name: 'Task History', href: '#task-history' }
+                    ]
+                },
+                {
+                    name: 'Development',
+                    href: '#development',
+                    dropdown: [
+                        { name: 'Code Review', href: '#code-review' },
+                        { name: 'Pull Requests', href: '#pull-requests' },
+                        { name: 'Branches', href: '#branches' },
+                        { name: 'Deployment', href: '#deployment' }
+                    ]
+                },
+                {
+                    name: 'Orchestrator',
+                    href: '#orchestrator',
+                    dropdown: [
+                        { name: 'Instance Monitor', href: '#instances' },
+                        { name: 'Task Distribution', href: '#distribution' },
+                        { name: 'Performance', href: '#performance' }
+                    ]
+                },
+                { name: 'Settings', href: '#settings' }
+            ];
+            
+            return (
+                <nav className="nav-container bg-gray-800 border-b border-gray-700 mb-8 sticky top-0 z-40">
+                    <div className="container mx-auto px-4">
+                        <div className="flex justify-between items-center h-16">
+                            {/* Logo/Brand */}
+                            <div className="flex items-center space-x-4">
+                                <div className="text-xl font-bold text-orange-400">🔨 Uncle Frank</div>
+                            </div>
+                            
+                            {/* Desktop Menu */}
+                            <div className="hidden md:flex items-center space-x-1">
+                                {navItems.map((item) => (
+                                    <div key={item.name} className="relative">
+                                        <button
+                                            onClick={() => item.dropdown ? toggleDropdown(item.name) : window.location.hash = item.href}
+                                            className="flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-200"
+                                        >
+                                            {item.name}
+                                            {item.dropdown && (
+                                                <svg 
+                                                    className={`ml-1 h-4 w-4 transition-transform duration-200 ${activeDropdown === item.name ? 'rotate-180' : ''}`}
+                                                    fill="none" 
+                                                    viewBox="0 0 24 24" 
+                                                    stroke="currentColor"
+                                                >
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                            )}
+                                        </button>
+                                        
+                                        {/* Desktop Dropdown */}
+                                        {item.dropdown && activeDropdown === item.name && (
+                                            <div className="absolute left-0 mt-2 w-48 bg-gray-700 border border-gray-600 rounded-md shadow-lg py-1 z-50">
+                                                {item.dropdown.map((dropdownItem) => (
+                                                    <a
+                                                        key={dropdownItem.name}
+                                                        href={dropdownItem.href}
+                                                        onClick={closeMenus}
+                                                        className="block px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-600 transition-colors duration-200"
+                                                    >
+                                                        {dropdownItem.name}
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            {/* Mobile menu button */}
+                            <div className="md:hidden">
+                                <button
+                                    onClick={toggleMenu}
+                                    className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
+                                    aria-expanded={isMenuOpen}
+                                >
+                                    <span className="sr-only">Open main menu</span>
+                                    <svg 
+                                        className={`h-6 w-6 transition-transform duration-200 ${isMenuOpen ? 'rotate-45' : ''}`}
+                                        fill="none" 
+                                        viewBox="0 0 24 24" 
+                                        stroke="currentColor"
+                                    >
+                                        {isMenuOpen ? (
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        ) : (
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                        )}
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {/* Mobile Menu */}
+                        <div className={`md:hidden transition-all duration-300 ease-in-out ${isMenuOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                            <div className="px-2 pt-2 pb-3 space-y-1 bg-gray-800 border-t border-gray-700">
+                                {navItems.map((item) => (
+                                    <div key={item.name}>
+                                        <button
+                                            onClick={() => item.dropdown ? toggleDropdown(item.name) : (closeMenus(), window.location.hash = item.href)}
+                                            className="flex items-center justify-between w-full px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-200"
+                                        >
+                                            <span>{item.name}</span>
+                                            {item.dropdown && (
+                                                <svg 
+                                                    className={`h-4 w-4 transition-transform duration-200 ${activeDropdown === item.name ? 'rotate-180' : ''}`}
+                                                    fill="none" 
+                                                    viewBox="0 0 24 24" 
+                                                    stroke="currentColor"
+                                                >
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                            )}
+                                        </button>
+                                        
+                                        {/* Mobile Dropdown */}
+                                        {item.dropdown && activeDropdown === item.name && (
+                                            <div className="pl-4 space-y-1">
+                                                {item.dropdown.map((dropdownItem) => (
+                                                    <a
+                                                        key={dropdownItem.name}
+                                                        href={dropdownItem.href}
+                                                        onClick={closeMenus}
+                                                        className="block px-3 py-2 rounded-md text-sm text-gray-400 hover:text-white hover:bg-gray-600 transition-colors duration-200"
+                                                    >
+                                                        {dropdownItem.name}
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </nav>
+            );
+        }
+
         // FRANK'S ORCHESTRATOR INTEGRATION
         let orchestratorEnabled = false;
         
@@ -3161,9 +3341,11 @@ https://www.terragonlabs.com/task/${task.threadId}
             };
 
             return (
-                <div className="container mx-auto px-4 py-8 max-w-6xl">
-                    <h1 className="text-4xl font-bold mb-2">🔨 Uncle Frank's Bootstrap Core</h1>
-                    <p className="text-gray-400 mb-8">No BS Autonomous LLM Development Platform</p>
+                <div>
+                    <ResponsiveNavigation />
+                    <div className="container mx-auto px-4 py-8 max-w-6xl">
+                        <h1 className="text-4xl font-bold mb-2">🔨 Uncle Frank's Bootstrap Core</h1>
+                        <p className="text-gray-400 mb-8">No BS Autonomous LLM Development Platform</p>
 
                     {/* Task Review Queue */}
                     <div className="mb-6">
@@ -3342,6 +3524,7 @@ https://www.terragonlabs.com/task/${task.threadId}
                     
                     {/* Orchestrator Status */}
                     <OrchestratorStatus />
+                    </div>
                 </div>
             );
         }
