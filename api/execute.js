@@ -1,7 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || '';
-const TERRAGON_AUTH = process.env.TERRAGON_AUTH || 'JTgr3pSvWUN2bNmaO66GnTGo2wrk1zFf.fW4Qo8gvM1lTf%2Fis9Ss%2FJOdlSKJrnLR0CapMdm%2Bcy0U%3D';
+const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY;
+const TERRAGON_AUTH = process.env.TERRAGON_AUTH;
+
+if (!CLAUDE_API_KEY) {
+  console.error('[Execute] CLAUDE_API_KEY not configured');
+}
+if (!TERRAGON_AUTH) {
+  console.error('[Execute] TERRAGON_AUTH not configured');
+}
 
 class TerragonExecutor {
   constructor() {

@@ -2,6 +2,23 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 const execAsync = promisify(exec);
 
+// FRANK'S SECURITY: Validate and escape shell inputs
+function validateBranchName(branch) {
+  // Only allow alphanumeric, dash, underscore, and forward slash
+  const validPattern = /^[a-zA-Z0-9\-_\/]+$/;
+  if (!validPattern.test(branch)) {
+    throw new Error('Invalid branch name format');
+  }
+  if (branch.length > 100) {
+    throw new Error('Branch name too long');
+  }
+  return branch;
+}
+
+function escapeShell(cmd) {
+  return cmd.replace(/(["$`\\])/g, '\\$1');
+}
+
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -84,12 +101,15 @@ export default async function handler(req, res) {
           // Store current branch
           const { stdout: currentBranch } = await execAsync('git branch --show-current');
           
-          // Checkout the target branch
-          console.log(`Checking out branch: ${branchName}`);
-          await execAsync(`git checkout ${branchName}`);
+          // Validate branch name first
+          const safeBranch = validateBranchName(branchName);
+          
+          // Checkout the target branch safely
+          console.log(`Checking out branch: ${safeBranch}`);
+          await execAsync(`git checkout "${escapeShell(safeBranch)}"`);
           
           // Pull latest changes
-          await execAsync('git pull origin ' + branchName);
+          await execAsync(`git pull origin "${escapeShell(safeBranch)}"`);
           
           // Run the actual test
           let testResult = {

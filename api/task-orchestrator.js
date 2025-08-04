@@ -4,7 +4,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || '';
-const TERRAGON_AUTH = process.env.TERRAGON_AUTH || 'JTgr3pSvWUN2bNmaO66GnTGo2wrk1zFf.fW4Qo8gvM1lTf%2Fis9Ss%2FJOdlSKJrnLR0CapMdm%2Bcy0U%3D';
+const TERRAGON_AUTH = process.env.TERRAGON_AUTH;
+if (!TERRAGON_AUTH) {
+  console.error('[Orchestrator] TERRAGON_AUTH not configured');
+  throw new Error('TERRAGON_AUTH environment variable required');
+}
 
 // FRANK'S RATE LIMITING
 const rateLimiter = {
@@ -262,11 +266,24 @@ Respond with a JSON decision:
         }]
       });
       
-      const decision = JSON.parse(response.content[0].text);
+      // FRANK'S SAFE JSON PARSING
+      let decision;
+      try {
+        const rawDecision = response.content[0].text;
+        // Remove any potential code execution attempts
+        const sanitized = rawDecision.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+        decision = JSON.parse(sanitized);
+      } catch (parseError) {
+        console.error('[Orchestrator] Failed to parse LLM response:', parseError);
+        // Default to safe wait action
+        decision = { action: 'wait', reasoning: 'Failed to parse LLM response' };
+      }
       
       // FRANK'S VALIDATION: Sanitize decision
-      if (!decision.action || typeof decision.action !== 'string') {
-        throw new Error('Invalid decision format');
+      const allowedActions = ['send_message', 'create_instance', 'mark_complete', 'escalate', 'wait'];
+      if (!decision.action || typeof decision.action !== 'string' || !allowedActions.includes(decision.action)) {
+        console.warn(`[Orchestrator] Invalid action: ${decision.action}`);
+        decision = { action: 'wait', reasoning: 'Invalid action requested' };
       }
       
       // Update counters
@@ -550,8 +567,12 @@ Respond with a JSON decision:
 }
 
 // API Handler
-// FRANK'S SECURITY: Simple API key auth
-const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATOR_API_KEY || 'test-key-change-in-production';
+// FRANK'S SECURITY: API key auth
+const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATOR_API_KEY;
+if (!ORCHESTRATOR_API_KEY) {
+  console.error('[Orchestrator] ORCHESTRATOR_API_KEY not configured');
+  throw new Error('ORCHESTRATOR_API_KEY environment variable required');
+}
 
 export default async function handler(req, res) {
   // Enable CORS
@@ -685,8 +706,10 @@ export default async function handler(req, res) {
     }
   } catch (error) {
     console.error('Task Orchestrator Error:', error);
+    // FRANK'S SECURITY: Never expose internal errors
     return res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Internal server error'
+      error: 'Internal server error',
+      requestId: `${Date.now()}-${Math.random().toString(36).substring(7)}`
     });
   }
 }

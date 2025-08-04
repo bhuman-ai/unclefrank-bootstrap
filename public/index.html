@@ -17,7 +17,27 @@
         const { useState, useEffect, useRef, useCallback } = React;
 
         // FRANK'S ORCHESTRATOR INTEGRATION
-        const ORCHESTRATOR_API_KEY = 'test-key-change-in-production'; // Move to env in production
+        // API key fetched from server config
+        let ORCHESTRATOR_API_KEY = null;
+        let orchestratorEnabled = false;
+        
+        // Fetch configuration on load
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                if (response.ok) {
+                    const config = await response.json();
+                    ORCHESTRATOR_API_KEY = config.orchestratorKey;
+                    orchestratorEnabled = config.orchestratorEnabled;
+                    console.log('[Config] Orchestrator enabled:', orchestratorEnabled);
+                }
+            } catch (error) {
+                console.error('[Config] Failed to load configuration:', error);
+            }
+        }
+        
+        // Load config immediately
+        loadConfig();
         
         async function registerWithOrchestrator(instanceId, metadata) {
             try {
@@ -33,6 +53,11 @@
                         metadata
                     })
                 });
+                
+                if (!ORCHESTRATOR_API_KEY || !orchestratorEnabled) {
+                    console.warn('[Orchestrator] Not enabled or no API key');
+                    return;
+                }
                 
                 if (response.ok) {
                     const result = await response.json();
