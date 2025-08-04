@@ -543,7 +543,12 @@ Will report results once test instance completes verification.`
           // Look for favicon-badged.png requests in the page
           const hasFaviconBadged = pageContent.includes('favicon-badged.png');
           
-          // FRANK'S UI-BASED COMPLETION DETECTION - LOOKING AT SPINNER AND THINKING INDICATORS
+          // FRANK'S UI-BASED COMPLETION DETECTION - LOOKING FOR TERRAGON'S ACTIVE INDICATORS
+          // Flame icon path for active state
+          const hasFlameIcon = pageContent.includes('M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z');
+          // Spinning dashed circle
+          const hasSpinningCircle = pageContent.includes('circle-dashed') && pageContent.includes('animate-[spin_1.5s_linear_infinite]');
+          // Other indicators
           const hasSpinner = pageContent.includes('spinner') || pageContent.includes('loading') || pageContent.includes('animate-spin');
           const hasThinking = pageContent.includes('thinking') || pageContent.includes('Thinking');
           const hasCursorBlink = pageContent.includes('cursor-blink') || pageContent.includes('animate-pulse');
@@ -557,8 +562,13 @@ Will report results once test instance completes verification.`
           const now = Date.now();
           const timeSinceLastMessage = now - previousMessageTime;
           
-          // Primary detection: Favicon badge indicates completion
-          if (hasFaviconBadged && lastResponse.length > 0) {
+          // Primary detection: Active indicators vs completion
+          if (hasFlameIcon || hasSpinningCircle) {
+            // Terragon is actively working - flame or spinning circle visible
+            status = 'active';
+            completed = false;
+            console.log(`Terragon active - flame icon or spinning circle detected`);
+          } else if (hasFaviconBadged && lastResponse.length > 0) {
             // Terragon has completed - favicon badge is shown
             status = 'completed';
             completed = true;
@@ -624,9 +634,11 @@ Will report results once test instance completes verification.`
             lastResponse,
             messageCount: currentMessageCount,
             lastMessageTime: currentMessageCount > previousMessageCount ? now : previousMessageTime,
-            hasUIActivity: hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating,
+            hasUIActivity: hasFlameIcon || hasSpinningCircle || hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating,
             hasFaviconBadged,
             uiIndicators: {
+              flameIcon: hasFlameIcon,
+              spinningCircle: hasSpinningCircle,
               spinner: hasSpinner,
               thinking: hasThinking,
               generating: hasGenerating,
