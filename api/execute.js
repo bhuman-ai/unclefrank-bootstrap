@@ -560,6 +560,14 @@ Will report results once test instance completes verification.`
             }
           }
           
+          // FRANK'S FIX: Extract branch name from response
+          let terragonBranch = null;
+          const branchMatch = pageContent.match(/"branchName":"([^"]+)"/);
+          if (branchMatch) {
+            terragonBranch = branchMatch[1];
+            console.log(`Terragon branch: ${terragonBranch}`);
+          }
+          
           // Extract the latest assistant message content
           const messageMatches = [...pageContent.matchAll(/"text":"([^"]+)"/g)];
           const currentMessageCount = messageMatches.length;
@@ -633,6 +641,7 @@ Will report results once test instance completes verification.`
             messageCount: currentMessageCount,
             lastMessageTime: currentMessageCount > previousMessageCount ? Date.now() : lastMessageTime,
             terragonStatus, // Include the actual API status field
+            terragonBranch, // Include the branch name
             url: `https://www.terragonlabs.com/task/${threadId}`,
             message: `Thread ${threadId} is ${status}`,
             timestamp: new Date().toISOString()

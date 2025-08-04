@@ -798,6 +798,21 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     if (statusResponse.ok) {
                         const statusResult = await statusResponse.json();
                         
+                        // FRANK'S FIX: Auto-record branch from API response
+                        if (statusResult.terragonBranch && !messageTracker[threadId].branchRecorded) {
+                            await fetch('/api/branch-tracker', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    action: 'record',
+                                    threadId: threadId,
+                                    branchName: statusResult.terragonBranch
+                                })
+                            });
+                            messageTracker[threadId].branchRecorded = true;
+                            addLog(`🎯 Detected Terragon branch: ${statusResult.terragonBranch}`, 'success');
+                        }
+                        
                         // Update message tracker
                         if (statusResult.messageCount !== undefined) {
                             if (statusResult.messageCount > messageTracker[threadId].lastMessageCount) {
