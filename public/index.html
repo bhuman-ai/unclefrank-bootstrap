@@ -767,7 +767,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
             // FRANK'S UI-BASED COMPLETION DETECTION - TRACK UI INDICATORS
             const messageTracker = {}; // Store message state per thread
             
-            const pollTerragonForCompletion = async (threadId, checkpoint, queue, currentIndex, pollCount = 0) => {
+            const pollTerragonForCompletion = async (threadId, checkpoint, queue, currentIndex, pollCount = 0, executionThreadId = null) => {
                 const maxPolls = 120; // Max 10 minutes of polling (5 seconds * 120)
                 const checkpointNumber = currentIndex + 1;
                 
@@ -800,6 +800,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                         
                         // FRANK'S FIX: Auto-record branch from API response
                         if (statusResult.terragonBranch && !messageTracker[threadId].branchRecorded) {
+                            // Record for the task thread ID
                             await fetch('/api/branch-tracker', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -809,6 +810,22 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                     branchName: statusResult.terragonBranch
                                 })
                             });
+                            
+                            // FRANK'S CRITICAL FIX: Also record for execution thread ID
+                            // Tests use executionThreadId, not threadId!
+                            if (executionThreadId && executionThreadId !== threadId) {
+                                await fetch('/api/branch-tracker', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        action: 'record',
+                                        threadId: executionThreadId,
+                                        branchName: statusResult.terragonBranch
+                                    })
+                                });
+                                console.log(`Also recorded branch for execution thread: ${executionThreadId}`);
+                            }
+                            
                             messageTracker[threadId].branchRecorded = true;
                             addLog(`🎯 Detected Terragon branch: ${statusResult.terragonBranch}`, 'success');
                         }
@@ -930,7 +947,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             
                             // NOW run contextless tests after push confirmed
                             setTimeout(() => {
-                                testCheckpointAndContinue(checkpoint, queue, currentIndex, threadId);
+                                testCheckpointAndContinue(checkpoint, queue, currentIndex, executionThreadId);
                             }, 1000);
                             return;
                         } else if (statusResult.completed && statusResult.status === 'error') {
@@ -952,11 +969,11 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     // Continue polling if not complete and under max attempts
                     if (pollCount < maxPolls) {
                         setTimeout(() => {
-                            pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1);
+                            pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
                         }, 5000); // Poll every 5 seconds
                     } else {
                         addLog(`🕐 Max polling time reached (5 minutes). Proceeding with tests anyway...`, 'error');
-                        testCheckpointAndContinue(checkpoint, queue, currentIndex, threadId);
+                        testCheckpointAndContinue(checkpoint, queue, currentIndex, executionThreadId);
                     }
                     
                 } catch (error) {
@@ -965,11 +982,11 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     // If polling fails, wait a bit more and continue
                     if (pollCount < 5) {
                         setTimeout(() => {
-                            pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1);
+                            pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
                         }, 10000);
                     } else {
                         addLog(`Polling failed multiple times, proceeding with tests...`, 'error');
-                        testCheckpointAndContinue(checkpoint, queue, currentIndex, threadId);
+                        testCheckpointAndContinue(checkpoint, queue, currentIndex, executionThreadId);
                     }
                 }
             };
@@ -1125,9 +1142,12 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     }
                     
                     const execData = await execResponse.json();
-                    addLog(`Checkpoint sent to thread: ${execData.threadId}`, 'info');
                     
-                    // Update status to executing
+                    // FRANK'S CRITICAL FIX: execData.threadId is the EXECUTION thread, not task thread!
+                    const executionThreadId = execData.threadId || threadId;
+                    addLog(`Checkpoint sent to execution thread: ${executionThreadId}`, 'info');
+                    
+                    // Update status to executing with EXECUTION thread ID
                     setState(prev => ({
                         ...prev,
                         executionStatus: {
@@ -1135,22 +1155,24 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             [checkpoint.id]: {
                                 ...prev.executionStatus[checkpoint.id],
                                 status: 'executing',
-                                threadId: threadId,
+                                threadId: executionThreadId,  // Store execution thread ID
+                                executionThreadId: executionThreadId,  // Also store explicitly
+                                taskThreadId: threadId,  // Keep task thread ID too
                                 logs: [{ 
-                                    message: `Executing in thread: ${threadId}`,
-                                    url: `https://www.terragonlabs.com/task/${threadId}`
+                                    message: `Executing in thread: ${executionThreadId}`,
+                                    url: `https://www.terragonlabs.com/task/${executionThreadId}`
                                 }]
                             }
                         }
                     }));
                     
-                    addLog(`✅ Checkpoint ${checkpointNumber} sent to Terragon thread: ${threadId}`, 'success');
-                    addLog(`Monitor at: https://www.terragonlabs.com/task/${threadId}`, 'info');
+                    addLog(`✅ Checkpoint ${checkpointNumber} sent to Terragon execution thread: ${executionThreadId}`, 'success');
+                    addLog(`Monitor at: https://www.terragonlabs.com/task/${executionThreadId}`, 'info');
                     
-                    // FRANK'S REAL POLLING - NO FAKE TIMING
+                    // FRANK'S REAL POLLING - Pass both thread IDs
                     addLog(`🔍 Waiting for Terragon to complete checkpoint ${checkpointNumber}...`, 'info');
                     setTimeout(() => {
-                        pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex);
+                        pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, 0, executionThreadId);
                     }, 2000); // Small delay before polling starts
                     
                     return; // Exit here - polling will handle the rest
