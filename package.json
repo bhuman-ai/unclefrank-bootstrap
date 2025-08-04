@@ -20,6 +20,7 @@
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "inquirer": "^11.1.0",
+    "mongodb": "^6.18.0",
     "uuid": "^11.0.3"
   },
   "devDependencies": {
