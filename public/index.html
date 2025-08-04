@@ -782,43 +782,108 @@ The system can execute tasks in Terragon, which creates GitHub branches, but the
                 setLoading(false);
             };
 
-            // Decompose task
+            // Decompose task - Creates a new Terragon task that will be decomposed by orchestrator
             const decomposeTask = async () => {
                 if (!state.request) {
                     alert('Please enter a request');
                     return;
                 }
                 setLoading(true);
-                addLog('Decomposing task into checkpoints...', 'info');
+                addLog('Creating new task in Terragon...', 'info');
                 
                 try {
-                    const response = await fetch(API_URL, {
+                    // Create the task message for Terragon
+                    const taskMessage = `# New Task Request
+
+${state.request}
+
+${state.projectContext ? `## Project Context
+${state.projectContext}` : ''}
+
+Please help me implement this task.`;
+
+                    // Create task in Terragon via execute API
+                    const taskPayload = [{
+                        message: {
+                            type: 'user',
+                            model: 'sonnet',
+                            parts: [{
+                                type: 'rich-text',
+                                nodes: [{
+                                    type: 'text',
+                                    text: taskMessage
+                                }]
+                            }],
+                            timestamp: new Date().toISOString()
+                        },
+                        githubRepoFullName: 'bhuman-ai/unclefrank-bootstrap',
+                        repoBaseBranchName: 'master',
+                        saveAsDraft: false
+                    }];
+                    
+                    const response = await fetch('/api/execute', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
-                            action: 'decompose', 
-                            request: state.request, 
-                            projectContext: state.projectContext 
+                            action: 'create-task',
+                            payload: taskPayload
                         })
                     });
                     
                     const data = await response.json();
-                    if (response.ok) {
+                    if (response.ok && data.threadId) {
+                        const threadId = data.threadId;
+                        const threadUrl = `https://www.terragonlabs.com/task/${threadId}`;
+                        
+                        addLog(`✅ Task created in Terragon: ${threadId}`, 'success');
+                        addLog(`Monitor at: ${threadUrl}`, 'info');
+                        
+                        // Register with orchestrator - it will decompose automatically
+                        await registerWithOrchestrator(threadId, {
+                            type: 'main-task',
+                            task: state.request,
+                            branch: 'master'
+                        });
+                        
+                        if (orchestratorEnabled) {
+                            addLog('🧠 Task Orchestrator is now monitoring this task...', 'info');
+                            addLog('📋 Task Agent will decompose into checkpoints...', 'info');
+                            
+                            // Poll orchestrator to trigger decomposition
+                            setTimeout(async () => {
+                                try {
+                                    const pollResponse = await fetch('/api/task-orchestrator', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ action: 'poll' })
+                                    });
+                                    
+                                    if (pollResponse.ok) {
+                                        const pollData = await pollResponse.json();
+                                        addLog(`🔄 Orchestrator polling ${pollData.instanceCount} instances`, 'info');
+                                    }
+                                } catch (e) {
+                                    console.error('Orchestrator poll error:', e);
+                                }
+                            }, 2000);
+                        }
+                        
+                        // Clear the form
                         setState(prev => ({
                             ...prev,
-                            task: data.task,
-                            checkpoints: data.checkpoints,
-                            executionStatus: data.checkpoints.reduce((acc, cp) => ({
-                                ...acc,
-                                [cp.id]: { status: 'pending', logs: [] }
-                            }), {})
+                            request: '',
+                            projectContext: '',
+                            taskThreadId: threadId
                         }));
-                        addLog(`Task decomposed into ${data.checkpoints.length} checkpoints`, 'success');
+                        
+                        // Open the task in a new tab
+                        window.open(threadUrl, '_blank');
+                        
                     } else {
-                        addLog(data.error || 'Decomposition failed', 'error');
+                        addLog(data.error || 'Failed to create task', 'error');
                     }
                 } catch (error) {
-                    addLog(error.message, 'error');
+                    addLog(`Error: ${error.message}`, 'error');
                 }
                 setLoading(false);
             };
