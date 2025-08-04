@@ -127,6 +127,8 @@ class TaskOrchestrator {
     const instance = this.instances.get(instanceId);
     if (!instance) return;
     
+    console.log(`[Orchestrator] 🔄 Checking ${instanceId} (${instance.type})...`);
+    
     try {
       const response = await fetch(
         `${this.baseUrl}/task/${instanceId}`,
@@ -152,13 +154,23 @@ class TaskOrchestrator {
       const messages = this.extractMessages(content);
       const status = this.extractStatus(content);
       
+      // Check for changes
+      const hasNewMessages = messages.length > instance.messages.length;
+      const statusChanged = status !== instance.status;
+      
       // Update instance state
       instance.messages = messages;
       instance.status = status;
       instance.lastActivity = Date.now();
       
-      // Trigger decision making if needed
-      await this.analyzeAndDecide(instanceId);
+      if (hasNewMessages || statusChanged) {
+        console.log(`[Orchestrator] 📢 Changes detected in ${instanceId}:`);
+        if (hasNewMessages) console.log(`[Orchestrator]   - New messages: ${messages.length - instance.messages.length}`);
+        if (statusChanged) console.log(`[Orchestrator]   - Status changed: ${instance.status} → ${status}`);
+        
+        // Trigger decision making if needed
+        await this.analyzeAndDecide(instanceId);
+      }
       
     } catch (error) {
       console.error(`[Orchestrator] Error streaming from ${instanceId}:`, error);
@@ -191,10 +203,15 @@ class TaskOrchestrator {
     const instance = this.instances.get(instanceId);
     if (!instance) return;
     
+    console.log(`\n[Orchestrator] 🧠 THINKING about instance ${instanceId} (${instance.type})`);
+    console.log(`[Orchestrator] 📊 Current status: ${instance.status}`);
+    console.log(`[Orchestrator] 📈 Decision count: ${instance.decisionCount}/${this.MAX_DECISIONS_PER_INSTANCE}`);
+    
     // FRANK'S COOLDOWN: Prevent decision thrashing
     const lastDecision = this.lastDecisionTime.get(instanceId) || 0;
-    if (Date.now() - lastDecision < this.DECISION_COOLDOWN_MS) {
-      console.log(`[Orchestrator] Decision cooldown for ${instanceId}`);
+    const timeSinceLastDecision = Date.now() - lastDecision;
+    if (timeSinceLastDecision < this.DECISION_COOLDOWN_MS) {
+      console.log(`[Orchestrator] ⏳ WAITING: Cooldown active (${Math.round((this.DECISION_COOLDOWN_MS - timeSinceLastDecision) / 1000)}s remaining)`);
       return;
     }
     
@@ -209,17 +226,32 @@ class TaskOrchestrator {
     }
     
     // Build context for the LLM
+    console.log(`[Orchestrator] 🔍 ANALYZING: Building context...`);
     const context = this.buildContext(instanceId);
+    
+    // Log what we're seeing
+    if (context.hasRepeatingPattern) {
+      console.log(`[Orchestrator] ⚠️ PATTERN DETECTED: Decision loop identified!`);
+    }
+    
+    const relatedCount = context.relatedInstances?.length || 0;
+    console.log(`[Orchestrator] 🔗 Related instances: ${relatedCount}`);
+    
+    if (instance.messages.length > 0) {
+      console.log(`[Orchestrator] 💬 Latest message: "${instance.messages[instance.messages.length - 1]?.text?.substring(0, 100)}..."`);
+    }
     
     // FRANK'S CONTEXT LIMIT: Prevent token explosion
     const contextString = JSON.stringify(context);
     if (contextString.length > this.MAX_CONTEXT_LENGTH) {
-      console.warn(`[Orchestrator] Context too large (${contextString.length} chars), truncating`);
+      console.warn(`[Orchestrator] 📏 TRIMMING: Context too large (${contextString.length} chars)`);
       // Truncate messages to fit
       instance.messages = instance.messages.slice(-5);
     }
     
     try {
+      console.log(`[Orchestrator] 🤔 CONSULTING: Asking Claude for decision...`);
+      
       const response = await this.anthropic.messages.create({
         model: 'claude-3-sonnet-20240229',
         max_tokens: 1000, // FRANK'S LIMIT: Smaller responses
@@ -270,11 +302,16 @@ Respond with a JSON decision:
       let decision;
       try {
         const rawDecision = response.content[0].text;
+        console.log(`[Orchestrator] 📝 RAW RESPONSE: ${rawDecision.substring(0, 200)}...`);
+        
         // Remove any potential code execution attempts
         const sanitized = rawDecision.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
         decision = JSON.parse(sanitized);
+        
+        console.log(`[Orchestrator] 🎯 DECISION: ${decision.action}`);
+        console.log(`[Orchestrator] 💭 REASONING: ${decision.reasoning}`);
       } catch (parseError) {
-        console.error('[Orchestrator] Failed to parse LLM response:', parseError);
+        console.error('[Orchestrator] ❌ PARSE ERROR:', parseError.message);
         // Default to safe wait action
         decision = { action: 'wait', reasoning: 'Failed to parse LLM response' };
       }
@@ -290,13 +327,16 @@ Respond with a JSON decision:
       instance.decisionCount++;
       this.lastDecisionTime.set(instanceId, Date.now());
       
+      console.log(`[Orchestrator] 🚀 EXECUTING: ${decision.action} action...`);
       await this.executeDecision(decision);
       
     } catch (error) {
-      console.error('[Orchestrator] Decision-making error:', error);
+      console.error('[Orchestrator] 🚨 ERROR in decision-making:', error.message);
       // Don't let errors cascade
       instance.status = 'error';
     }
+    
+    console.log(`[Orchestrator] ✅ DONE: Finished thinking about ${instanceId}\n`);
   }
 
   // Build comprehensive context
@@ -345,27 +385,41 @@ Respond with a JSON decision:
       targetInstance: decision.targetInstance
     });
     
-    console.log(`[Orchestrator] Executing: ${decision.action} - ${decision.reasoning}`);
+    console.log(`[Orchestrator] ⚡ ACTION DETAILS:`);
+    console.log(`[Orchestrator]   - Action: ${decision.action}`);
+    console.log(`[Orchestrator]   - Target: ${decision.targetInstance || 'N/A'}`);
+    console.log(`[Orchestrator]   - Reason: ${decision.reasoning}`);
+    if (decision.details) {
+      console.log(`[Orchestrator]   - Details:`, JSON.stringify(decision.details, null, 2));
+    }
     
     switch (decision.action) {
       case 'send_message':
+        console.log(`[Orchestrator] 📤 SENDING MESSAGE to ${decision.targetInstance}`);
+        console.log(`[Orchestrator]   Message: "${decision.details.message.substring(0, 100)}..."`);
         await this.sendMessage(decision.targetInstance, decision.details.message);
+        console.log(`[Orchestrator] ✅ Message sent successfully`);
         break;
         
       case 'create_instance':
+        console.log(`[Orchestrator] 🏗️ CREATING new ${decision.details.metadata?.type || 'unknown'} instance`);
         await this.createInstance(decision.details);
+        console.log(`[Orchestrator] ✅ Instance created successfully`);
         break;
         
       case 'mark_complete':
+        console.log(`[Orchestrator] ✅ MARKING ${decision.targetInstance} as complete`);
         await this.markComplete(decision.targetInstance);
         break;
         
       case 'escalate':
+        console.log(`[Orchestrator] 🚨 ESCALATING to human!`);
         await this.escalateToHuman(decision.details);
         break;
         
       case 'wait':
-        // Do nothing, just wait for more data
+        console.log(`[Orchestrator] ⏸️ WAITING for more data...`);
+        console.log(`[Orchestrator]   Reason: ${decision.reasoning}`);
         break;
     }
   }
@@ -643,10 +697,16 @@ export default async function handler(req, res) {
         // Poll all registered instances
         const instances = Array.from(orchestrator.instances.keys());
         
-        // Stream messages from all instances in parallel
-        await Promise.all(
-          instances.map(id => orchestrator.streamMessages(id))
-        );
+        if (instances.length > 0) {
+          console.log(`\n[Orchestrator] 📊 POLLING ${instances.length} instances...`);
+          
+          // Stream messages from all instances in parallel
+          await Promise.all(
+            instances.map(id => orchestrator.streamMessages(id))
+          );
+          
+          console.log(`[Orchestrator] ✅ Polling complete\n`);
+        }
         
         return res.status(200).json({
           status: 'polled',
@@ -664,6 +724,7 @@ export default async function handler(req, res) {
       case 'decide': {
         // Force a decision for a specific instance
         const { instanceId } = req.body;
+        console.log(`\n[Orchestrator] 🎯 DECISION REQUESTED for instance: ${instanceId}`);
         await orchestrator.analyzeAndDecide(instanceId);
         
         return res.status(200).json({
