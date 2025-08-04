@@ -17,15 +17,11 @@ export default async function handler(req, res) {
   }
 
   // FRANK'S APPROACH: Provide configuration without exposing secrets
-  // In production, this would use proper authentication
   const config = {
-    orchestratorEnabled: !!process.env.ORCHESTRATOR_API_KEY,
-    // In production, use a session-based token instead
-    orchestratorKey: process.env.NODE_ENV === 'development' 
-      ? process.env.ORCHESTRATOR_API_KEY 
-      : 'use-proper-auth-flow',
+    // Orchestrator is enabled if Claude API key exists
+    orchestratorEnabled: !!process.env.CLAUDE_API_KEY,
     features: {
-      orchestrator: true,
+      orchestrator: !!process.env.CLAUDE_API_KEY,
       taskReview: true,
       contextlessTests: true
     }

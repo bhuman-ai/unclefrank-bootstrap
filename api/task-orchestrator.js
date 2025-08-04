@@ -265,6 +265,7 @@ Decision Count: ${instance.decisionCount}/${this.MAX_DECISIONS_PER_INSTANCE}
 Latest Messages: ${JSON.stringify(instance.messages.slice(-3), null, 2)}
 
 Active Instances: ${this.instances.size}/${this.MAX_INSTANCES}
+Has Decomposition: ${instance.decomposition ? 'YES' : 'NO'}
 
 IMPORTANT CONSTRAINTS:
 - Do NOT create instances if near limit
@@ -278,6 +279,12 @@ Analyze the current situation and decide what actions to take. You can:
 3. Mark instances as complete
 4. Escalate to human
 5. Wait for more information
+6. Decompose task into checkpoints (for new tasks)
+
+Context about task decomposition:
+- You have the ability to decompose tasks into checkpoints
+- Instance type 'main-task' means this is a primary task instance
+- Has Decomposition field shows if task has been broken down yet
 
 Consider:
 - Has the main task made progress?
@@ -285,10 +292,11 @@ Consider:
 - Do we need to retry or fix something?
 - Should we create a resolver instance?
 - Is human intervention needed?
+- Does this task need to be broken down into checkpoints?
 
 Respond with a JSON decision:
 {
-  "action": "send_message|create_instance|mark_complete|escalate|wait",
+  "action": "send_message|create_instance|mark_complete|escalate|wait|decompose_task",
   "targetInstance": "instance-id",
   "details": {
     // Action-specific details
@@ -317,7 +325,7 @@ Respond with a JSON decision:
       }
       
       // FRANK'S VALIDATION: Sanitize decision
-      const allowedActions = ['send_message', 'create_instance', 'mark_complete', 'escalate', 'wait'];
+      const allowedActions = ['send_message', 'create_instance', 'mark_complete', 'escalate', 'wait', 'decompose_task'];
       if (!decision.action || typeof decision.action !== 'string' || !allowedActions.includes(decision.action)) {
         console.warn(`[Orchestrator] Invalid action: ${decision.action}`);
         decision = { action: 'wait', reasoning: 'Invalid action requested' };
@@ -420,6 +428,11 @@ Respond with a JSON decision:
       case 'wait':
         console.log(`[Orchestrator] ⏸️ WAITING for more data...`);
         console.log(`[Orchestrator]   Reason: ${decision.reasoning}`);
+        break;
+        
+      case 'decompose_task':
+        console.log(`[Orchestrator] 📋 DECOMPOSING TASK into checkpoints`);
+        await this.decomposeTask(decision.targetInstance, decision.details);
         break;
     }
   }
@@ -608,6 +621,141 @@ Respond with a JSON decision:
     }
   }
 
+  // Decompose task into checkpoints
+  async decomposeTask(instanceId, details) {
+    const instance = this.instances.get(instanceId);
+    if (!instance) return;
+    
+    console.log(`[Orchestrator] 🧠 TASK DECOMPOSITION STARTING for ${instanceId}`);
+    console.log(`[Orchestrator] 📝 Task context:`, JSON.stringify(details, null, 2));
+    
+    try {
+      // Extract task details from instance messages
+      const taskMessages = instance.messages.map(m => m.text).join('\n');
+      
+      console.log(`[Orchestrator] 🔍 ANALYZING: Extracting task requirements...`);
+      console.log(`[Orchestrator] 📊 Message count: ${instance.messages.length}`);
+      
+      // Ask Claude to decompose the task
+      console.log(`[Orchestrator] 🤔 CONSULTING: Asking Claude to decompose task into checkpoints...`);
+      
+      const response = await this.anthropic.messages.create({
+        model: 'claude-3-sonnet-20240229',
+        max_tokens: 2000, // More tokens for detailed decomposition
+        messages: [{
+          role: 'user',
+          content: `You are Uncle Frank's Task Orchestrator. Break down this task into granular checkpoints.
+
+Task Messages:
+${taskMessages.substring(0, 2000)}
+
+FRANK'S CHECKPOINT RULES:
+1. Each checkpoint must be atomic (single responsibility)
+2. Each checkpoint must have clear Pass/Fail criteria
+3. Checkpoints can have dependencies (blocking: true/false)
+4. Be SPECIFIC - no vague objectives
+5. Include test criteria that can be verified
+
+Respond with a JSON structure:
+{
+  "taskSummary": "One-line task summary",
+  "checkpoints": [
+    {
+      "id": "cp1",
+      "name": "Checkpoint name",
+      "objective": "What to achieve",
+      "blocking": true/false,
+      "dependencies": ["cp_ids"],
+      "instructions": ["Step 1", "Step 2"],
+      "passCriteria": [
+        {"type": "file_exists", "description": "File X exists at path Y"},
+        {"type": "api_responds", "description": "API endpoint Z returns 200"},
+        {"type": "code_compiles", "description": "No TypeScript errors"}
+      ]
+    }
+  ],
+  "estimatedDuration": "X minutes",
+  "riskFactors": ["Potential issues"]
+}`
+        }]
+      });
+
+      let decomposition;
+      try {
+        const rawDecomposition = response.content[0].text;
+        console.log(`[Orchestrator] 📝 RAW DECOMPOSITION:`, rawDecomposition.substring(0, 500) + '...');
+        
+        decomposition = JSON.parse(rawDecomposition);
+        
+        console.log(`[Orchestrator] ✅ DECOMPOSITION COMPLETE:`);
+        console.log(`[Orchestrator]   - Task: ${decomposition.taskSummary}`);
+        console.log(`[Orchestrator]   - Checkpoints: ${decomposition.checkpoints.length}`);
+        console.log(`[Orchestrator]   - Duration: ${decomposition.estimatedDuration}`);
+        console.log(`[Orchestrator]   - Risks: ${decomposition.riskFactors?.length || 0}`);
+        
+        // Log each checkpoint
+        decomposition.checkpoints.forEach((cp, idx) => {
+          console.log(`[Orchestrator] 📍 Checkpoint ${idx + 1}/${decomposition.checkpoints.length}:`);
+          console.log(`[Orchestrator]     ID: ${cp.id}`);
+          console.log(`[Orchestrator]     Name: ${cp.name}`);
+          console.log(`[Orchestrator]     Blocking: ${cp.blocking ? 'YES' : 'NO'}`);
+          console.log(`[Orchestrator]     Dependencies: ${cp.dependencies?.join(', ') || 'None'}`);
+          console.log(`[Orchestrator]     Pass Criteria: ${cp.passCriteria?.length || 0} tests`);
+        });
+        
+      } catch (parseError) {
+        console.error('[Orchestrator] ❌ DECOMPOSITION PARSE ERROR:', parseError.message);
+        decomposition = {
+          taskSummary: 'Failed to decompose task',
+          checkpoints: [],
+          error: parseError.message
+        };
+      }
+      
+      // Send decomposition back to Terragon instance
+      const decompositionMessage = `# TASK DECOMPOSITION COMPLETE
+
+## Task Summary
+${decomposition.taskSummary}
+
+## Estimated Duration
+${decomposition.estimatedDuration || 'Unknown'}
+
+## Risk Factors
+${(decomposition.riskFactors || []).map(r => `- ${r}`).join('\n') || 'None identified'}
+
+## Checkpoints (${decomposition.checkpoints.length})
+${decomposition.checkpoints.map((cp, idx) => `
+### ${idx + 1}. ${cp.name}
+- **ID:** ${cp.id}
+- **Objective:** ${cp.objective}
+- **Blocking:** ${cp.blocking ? 'Yes' : 'No'}
+- **Dependencies:** ${cp.dependencies?.join(', ') || 'None'}
+
+**Instructions:**
+${cp.instructions.map((inst, i) => `${i + 1}. ${inst}`).join('\n')}
+
+**Pass Criteria:**
+${cp.passCriteria.map(pc => `✓ ${pc.description}`).join('\n')}
+`).join('\n')}
+
+Ready to begin execution. Will start with checkpoint: ${decomposition.checkpoints[0]?.name || 'Unknown'}`;
+
+      console.log(`[Orchestrator] 📤 SENDING decomposition to Terragon instance ${instanceId}`);
+      await this.sendMessage(instanceId, decompositionMessage);
+      
+      // Store decomposition in instance metadata
+      instance.decomposition = decomposition;
+      instance.lastActivity = Date.now();
+      
+      console.log(`[Orchestrator] ✅ DECOMPOSITION SENT - Task ready for execution`);
+      
+    } catch (error) {
+      console.error('[Orchestrator] 🚨 DECOMPOSITION ERROR:', error.message);
+      await this.sendMessage(instanceId, `ERROR: Failed to decompose task - ${error.message}`);
+    }
+  }
+
   // Escalate to human
   async escalateToHuman(details) {
     console.log('[ORCHESTRATOR] HUMAN ESCALATION REQUIRED');
@@ -621,19 +769,12 @@ Respond with a JSON decision:
 }
 
 // API Handler
-// FRANK'S SECURITY: API key auth
-const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATOR_API_KEY;
-if (!ORCHESTRATOR_API_KEY) {
-  console.error('[Orchestrator] ORCHESTRATOR_API_KEY not configured');
-  throw new Error('ORCHESTRATOR_API_KEY environment variable required');
-}
-
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, X-Orchestrator-Key');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -641,13 +782,6 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
-  }
-  
-  // FRANK'S AUTH: Simple but effective
-  const authKey = req.headers['x-orchestrator-key'];
-  if (authKey !== ORCHESTRATOR_API_KEY) {
-    console.error('[Orchestrator] Unauthorized access attempt');
-    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const { action } = req.body;
