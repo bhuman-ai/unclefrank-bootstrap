@@ -19,6 +19,10 @@
     "api/config.js": {
       "runtime": "@vercel/node@3.0.0",
       "maxDuration": 10
+    },
+    "api/hello-uncle-frank.js": {
+      "runtime": "@vercel/node@3.0.0",
+      "maxDuration": 10
     }
   }
 }
