@@ -268,9 +268,11 @@ Please execute this checkpoint and report when complete.`;
           const description = testDescription || criteria.description;
           
           // FRANK'S DEBUG: Log what branch we're testing
+          console.log('=== TEST CREATION DEBUG ===');
           console.log(`Creating test for criteria: "${description}"`);
           console.log(`Target branch from request: ${targetBranch}`);
           console.log(`Main thread ID: ${mainThreadId}`);
+          console.log(`Full request body:`, JSON.stringify(req.body, null, 2));
           
           // FRANK'S WORKAROUND: Terragon API only accepts master branch
           // So we create on master but instruct it to checkout the feature branch

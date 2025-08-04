@@ -831,6 +831,12 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             
                             messageTracker[threadId].branchRecorded = true;
                             addLog(`🎯 Detected Terragon branch: ${statusResult.terragonBranch}`, 'success');
+                            
+                            // FRANK'S FIX: Save branch to state for tests to use
+                            setState(prev => ({
+                                ...prev,
+                                currentBranch: statusResult.terragonBranch
+                            }));
                         }
                         
                         // Update message tracker
@@ -1995,6 +2001,13 @@ After completing these fixes, I will re-run the tests automatically.`;
                         const originalThreadId = state.taskThreadId || mainThreadId;
                         console.log(`Looking up branch for original thread: ${originalThreadId}`);
                         
+                        // FRANK'S WORKAROUND: Also check if we have the branch in state
+                        if (state.currentBranch) {
+                            targetBranch = state.currentBranch;
+                            console.log(`Using branch from state: ${targetBranch}`);
+                            addLog(`📌 Using tracked branch: ${targetBranch}`, 'success');
+                        }
+                        
                         const branchResponse = await fetch('/api/branch-tracker', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -2049,8 +2062,16 @@ After completing these fixes, I will re-run the tests automatically.`;
                     
                     if (testResult.testInstanceCreated) {
                         addLog(`✅ Test instance created: ${testResult.testThreadId}`, 'success');
-                        if (testResult.targetBranch && testResult.targetBranch !== 'master') {
-                            addLog(`🔍 Testing on branch: ${testResult.targetBranch}`, 'warning');
+                        
+                        // FRANK'S WARNING: Check what branch was actually used
+                        const actualBranch = testResult.targetBranch || 'master';
+                        if (actualBranch === 'master' && targetBranch && targetBranch !== 'master') {
+                            addLog(`❌ WARNING: Test created on MASTER but should be on ${targetBranch}!`, 'error');
+                            addLog(`🔍 Branch detection failed - targetBranch was: ${targetBranch}`, 'error');
+                        } else if (testResult.targetBranch && testResult.targetBranch !== 'master') {
+                            addLog(`✅ Testing on branch: ${testResult.targetBranch}`, 'success');
+                        } else {
+                            addLog(`⚠️ Testing on master branch (no feature branch detected)`, 'warning');
                         }
                         addLog(`🔗 Test URL: ${testResult.testUrl}`, 'info');
                         addLog(`⏳ Polling test instance for REAL results...`, 'info');
