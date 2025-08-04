@@ -841,24 +841,15 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             }
                         }
                         
-                        // UI-based completion detection
+                        // Status-based updates
                         if (statusResult.status === 'starting') {
-                            addLog(`⏳ Terragon is starting up (waiting for sandbox)...`, 'info');
-                            messageTracker[threadId].uiQuietCount = 0;
-                        } else if (statusResult.status === 'active') {
-                            // Check for UI activity in the response
-                            if (statusResult.lastResponse && statusResult.lastResponse.includes('spinner')) {
-                                addLog(`⚡ Terragon is actively working (UI indicators present)`, 'info');
-                                messageTracker[threadId].uiQuietCount = 0;
-                            } else {
-                                messageTracker[threadId].uiQuietCount++;
-                                addLog(`⏸️ No UI activity detected (quiet count: ${messageTracker[threadId].uiQuietCount})`, 'info');
-                            }
+                            addLog(`⏳ Terragon is starting up...`, 'info');
+                        } else if (statusResult.status === 'checkpointing') {
+                            addLog(`💾 Terragon is creating a checkpoint...`, 'info');
                         }
                         
                         if (statusResult.completed && statusResult.status === 'completed') {
-                            addLog(`✅ Terragon completed - no UI activity and stable message count!`, 'success');
-                            addLog(`📝 UI indicators disappeared and messages stable for 10+ seconds`, 'info');
+                            addLog(`✅ Terragon completed execution!`, 'success');
                             
                             // NOW run contextless tests after verified completion
                             setTimeout(() => {
@@ -871,10 +862,11 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             addLog(`🚫 Checkpoint execution failed - stopping`, 'error');
                             setExecuting(false);
                             return;
-                        } else if (statusResult.status === 'starting') {
-                            addLog(`⏳ Terragon starting up... (waiting for sandbox)`, 'info');
-                        } else {
-                            addLog(`⏳ Terragon working on checkpoint ${checkpointNumber}... (${statusResult.status})`, 'info');
+                        } else if (statusResult.status === 'error') {
+                            addLog(`❌ Terragon encountered an error`, 'error');
+                            clearInterval(pollInterval);
+                            reject(new Error('Terragon execution failed'));
+                            return;
                         }
                     } else {
                         addLog(`⚠️ Could not check Terragon status, assuming still working...`, 'info');
