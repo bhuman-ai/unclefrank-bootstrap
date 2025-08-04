@@ -805,6 +805,39 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                 addLog(`📝 New message detected (${statusResult.messageCount} total messages)`, 'info');
                                 messageTracker[threadId].lastMessageCount = statusResult.messageCount;
                                 messageTracker[threadId].lastMessageTime = statusResult.lastMessageTime;
+                                
+                                // Try to detect branch from message
+                                if (statusResult.lastResponse) {
+                                    try {
+                                        const branchExtract = await fetch('/api/branch-tracker', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                                action: 'extract',
+                                                message: statusResult.lastResponse
+                                            })
+                                        });
+                                        
+                                        if (branchExtract.ok) {
+                                            const branchData = await branchExtract.json();
+                                            if (branchData.branch) {
+                                                // Record the branch for this thread
+                                                await fetch('/api/branch-tracker', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({
+                                                        action: 'record',
+                                                        threadId: threadId,
+                                                        branchName: branchData.branch
+                                                    })
+                                                });
+                                                addLog(`🔍 Detected branch: ${branchData.branch}`, 'info');
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.error('Branch extraction failed:', e);
+                                    }
+                                }
                             }
                         }
                         
@@ -1448,27 +1481,27 @@ Please execute this checkpoint and report when complete. I will then run tests t
                 
                 try {
                     // Create NEW Terragon instance for contextless testing
-                    // Detect branch for testing
+                    // Detect branch for testing using branch tracker
                     let targetBranch = 'master';
                     try {
-                        const branchResponse = await fetch('/api/test-branch', {
+                        const branchResponse = await fetch('/api/branch-tracker', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                action: 'detect-branch',
+                                action: 'get',
                                 threadId: mainThreadId
                             })
                         });
                         
                         if (branchResponse.ok) {
                             const branchData = await branchResponse.json();
-                            if (branchData.latestTerragonBranch) {
-                                targetBranch = branchData.latestTerragonBranch;
-                                console.log(`Testing on branch: ${targetBranch}`);
+                            if (branchData.branch) {
+                                targetBranch = branchData.branch;
+                                console.log(`Testing on tracked branch: ${targetBranch}`);
                             }
                         }
                     } catch (e) {
-                        console.error('Branch detection failed:', e);
+                        console.error('Branch tracking failed:', e);
                     }
                     
                     const testResponse = await fetch('/api/execute', {
