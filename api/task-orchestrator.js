@@ -130,6 +130,7 @@ class TaskOrchestrator {
     console.log(`[Orchestrator] 🔄 Checking ${instanceId} (${instance.type})...`);
     
     try {
+      console.log(`[Orchestrator] 📡 Fetching from: ${this.baseUrl}/task/${instanceId}`);
       const response = await fetch(
         `${this.baseUrl}/task/${instanceId}`,
         {
@@ -149,6 +150,13 @@ class TaskOrchestrator {
       );
 
       const content = await response.text();
+      
+      // Log response for debugging
+      if (content.length < 1000) {
+        console.log(`[Orchestrator] 📄 Response: ${content}`);
+      } else {
+        console.log(`[Orchestrator] 📄 Response (first 500 chars): ${content.substring(0, 500)}...`);
+      }
       
       // Extract messages and status
       const messages = this.extractMessages(content);
@@ -320,6 +328,7 @@ Respond with a JSON decision:
         console.log(`[Orchestrator] 💭 REASONING: ${decision.reasoning}`);
       } catch (parseError) {
         console.error('[Orchestrator] ❌ PARSE ERROR:', parseError.message);
+        console.error('[Orchestrator] 📝 RAW RESPONSE WAS:', rawDecision.substring(0, 500));
         // Default to safe wait action
         decision = { action: 'wait', reasoning: 'Failed to parse LLM response' };
       }
