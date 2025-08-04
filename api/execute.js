@@ -507,17 +507,22 @@ Will report results once test instance completes verification.`
         }
 
         try {
-          // FRANK'S REAL TERRAGON STATUS CHECK - NO FAKE BULLSHIT
+          // FRANK'S REAL TERRAGON STATUS CHECK - USE POST LIKE IN THE HAR FILE
           const response = await fetch(
             `https://www.terragonlabs.com/task/${threadId}`,
             {
-              method: 'GET',
+              method: 'POST',
               headers: {
-                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'accept': 'text/x-component',
+                'content-type': 'text/plain;charset=UTF-8',
                 'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
-                'referer': 'https://www.terragonlabs.com/dashboard',
-                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
-              }
+                'next-action': '7f40cb55e87cce4b3543b51a374228296bc2436c6d',
+                'origin': 'https://www.terragonlabs.com',
+                'referer': `https://www.terragonlabs.com/task/${threadId}`,
+                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+                'x-deployment-id': 'dpl_3hWzkM7LiymSczFN21Z8chju84CV'
+              },
+              body: JSON.stringify([threadId])
             }
           );
 
@@ -528,6 +533,24 @@ Will report results once test instance completes verification.`
           let completed = false;
           let hasRecentActivity = false;
           let lastResponse = '';
+          let terragonStatus = null;
+          
+          // Extract status from the response - look for the main thread status
+          // The response format is like: 1:{"id":"...","status":"complete",...}
+          // We need to find the status field that comes after the thread ID
+          const threadPattern = new RegExp(`"id":"${threadId}"[^}]*"status":"([^"]+)"`);
+          const statusMatch = pageContent.match(threadPattern);
+          if (statusMatch) {
+            terragonStatus = statusMatch[1];
+            console.log(`Terragon thread status: ${terragonStatus}`);
+          } else {
+            // Fallback: look for any status after line 1:
+            const lineStatusMatch = pageContent.match(/^1:\{[^}]*"status":"([^"]+)"/m);
+            if (lineStatusMatch) {
+              terragonStatus = lineStatusMatch[1];
+              console.log(`Terragon status (from line 1): ${terragonStatus}`);
+            }
+          }
           
           // Extract the latest assistant message content
           const messageMatches = [...pageContent.matchAll(/"text":"([^"]+)"/g)];
@@ -539,96 +562,112 @@ Will report results once test instance completes verification.`
             lastResponse = lastMessageMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
           }
           
-          // FRANK'S COMPLETION DETECTION - BASED ON ACTUAL RESPONSE PATTERNS
-          // Look for Git Checkpoint message which appears when completed
-          const hasGitCheckpoint = pageContent.includes('Git Checkpoint') || pageContent.includes('git checkpoint');
-          // Look for specific completion patterns in the response
-          const hasCompletedPattern = lastResponse && (
-            lastResponse.includes('checkpoint') && 
-            (lastResponse.includes('completed') || lastResponse.includes('ready') || lastResponse.includes('done'))
-          );
-          // Check if response contains file update notifications
-          const hasFileUpdates = pageContent.includes('Update (') || pageContent.includes('Read (');
-          // Check for active work indicators in the text
-          const hasActiveWork = lastResponse && (
-            lastResponse.includes('Let me') || 
-            lastResponse.includes('I\'ll') || 
-            lastResponse.includes('Now I')
-          );
-          // Other indicators
-          const hasSpinner = pageContent.includes('spinner') || pageContent.includes('loading') || pageContent.includes('animate-spin');
-          const hasThinking = pageContent.includes('thinking') || pageContent.includes('Thinking');
-          const hasCursorBlink = pageContent.includes('cursor-blink') || pageContent.includes('animate-pulse');
-          const hasGenerating = pageContent.includes('generating') || pageContent.includes('Generating');
-          const hasProcessing = pageContent.includes('processing') || pageContent.includes('Processing');
-          const hasAnimating = pageContent.includes('animate') && !pageContent.includes('animate-none');
-          
-          // Track message changes
-          const previousMessageCount = lastMessageCount || 0;
-          const previousMessageTime = lastMessageTime ? new Date(lastMessageTime).getTime() : Date.now();
-          const now = Date.now();
-          const timeSinceLastMessage = now - previousMessageTime;
-          
-          // Primary detection: Message patterns and activity
-          if (hasGitCheckpoint || (hasCompletedPattern && !hasActiveWork)) {
-            // Terragon has completed - showing completion message
+          // FRANK'S COMPLETION DETECTION - BASED ON API STATUS FIELD FROM HAR FILE
+          // Primary detection: Check the actual API status field
+          if (terragonStatus === 'completed' || terragonStatus === 'complete' || terragonStatus === 'done' || terragonStatus === 'finished') {
             status = 'completed';
             completed = true;
-            console.log(`Terragon completed - Git Checkpoint or completion pattern detected`);
-          } else if (currentMessageCount > previousMessageCount) {
-            // New message just arrived - still active
+            console.log(`Terragon completed - API status field is '${terragonStatus}'`);
+          } else if (terragonStatus === 'working' || terragonStatus === 'active' || terragonStatus === 'running' || terragonStatus === 'in_progress') {
             status = 'active';
             completed = false;
-            console.log(`Terragon active - new message detected (count: ${currentMessageCount})`);
-          } else if (hasActiveWork || hasFileUpdates) {
-            // Still working based on message content
-            status = 'active';
+            console.log(`Terragon active - API status field is '${terragonStatus}'`);
+          } else if (terragonStatus === 'checkpointing') {
+            status = 'checkpointing';
             completed = false;
-            console.log(`Terragon active - work indicators in message`);
-          } else if (hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating) {
-            // Terragon is actively working
-            status = 'active';
-            completed = false;
-            console.log(`Terragon active - UI indicators present (spinner: ${hasSpinner}, thinking: ${hasThinking}, processing: ${hasProcessing})`);
-          } else if (lastResponse.length > 0) {
-            // Has messages, check for completion based on stability
-            if (timeSinceLastMessage > 15000 && currentMessageCount === previousMessageCount) {
-              // No new messages for 15 seconds - likely completed
+            console.log(`Terragon at checkpoint - API status field is '${terragonStatus}'`);
+          } else {
+            // Fallback to pattern-based detection if status field not found
+            // Look for Git Checkpoint message which appears when completed
+            const hasGitCheckpoint = pageContent.includes('Git Checkpoint') || pageContent.includes('git checkpoint');
+            // Look for specific completion patterns in the response
+            const hasCompletedPattern = lastResponse && (
+              lastResponse.includes('checkpoint') && 
+              (lastResponse.includes('completed') || lastResponse.includes('ready') || lastResponse.includes('done'))
+            );
+            // Check if response contains file update notifications
+            const hasFileUpdates = pageContent.includes('Update (') || pageContent.includes('Read (');
+            // Check for active work indicators in the text
+            const hasActiveWork = lastResponse && (
+              lastResponse.includes('Let me') || 
+              lastResponse.includes('I\'ll') || 
+              lastResponse.includes('Now I')
+            );
+            // Other indicators
+            const hasSpinner = pageContent.includes('spinner') || pageContent.includes('loading') || pageContent.includes('animate-spin');
+            const hasThinking = pageContent.includes('thinking') || pageContent.includes('Thinking');
+            const hasCursorBlink = pageContent.includes('cursor-blink') || pageContent.includes('animate-pulse');
+            const hasGenerating = pageContent.includes('generating') || pageContent.includes('Generating');
+            const hasProcessing = pageContent.includes('processing') || pageContent.includes('Processing');
+            const hasAnimating = pageContent.includes('animate') && !pageContent.includes('animate-none');
+            
+            // Track message changes
+            const previousMessageCount = lastMessageCount || 0;
+            const previousMessageTime = lastMessageTime ? new Date(lastMessageTime).getTime() : Date.now();
+            const now = Date.now();
+            const timeSinceLastMessage = now - previousMessageTime;
+            
+            // Secondary detection: Message patterns and activity
+            if (hasGitCheckpoint || (hasCompletedPattern && !hasActiveWork)) {
+              // Terragon has completed - showing completion message
               status = 'completed';
               completed = true;
-              console.log(`Terragon completed - no new messages for ${timeSinceLastMessage/1000}s`);
-            } else {
-              // Still might be working
+              console.log(`Terragon completed - Git Checkpoint or completion pattern detected`);
+            } else if (currentMessageCount > previousMessageCount) {
+              // New message just arrived - still active
               status = 'active';
               completed = false;
-            }
-          } else if (pageContent.includes('Waiting for') || pageContent.includes('provisioning') || pageContent.includes('Sandbox')) {
-            // Terragon is starting up
-            status = 'starting';
-            completed = false;
-          } else {
-            // Look for recent message activity - if Terragon replied recently, likely still working
-            const messagePattern = /"timestamp":\s*"([^"]+)"/g;
-            const timestamps = [...pageContent.matchAll(messagePattern)];
-            
-            if (timestamps.length > 0) {
-              const latestTimestamp = timestamps[timestamps.length - 1][1];
-              const latestTime = new Date(latestTimestamp).getTime();
-              const now = new Date().getTime();
-              const timeDiff = now - latestTime;
-              
-              // If last activity was within 2 minutes, consider it active
-              if (timeDiff < 120000) {
-                status = 'active';
-                hasRecentActivity = true;
-                completed = false;
-              } else {
-                status = 'idle';
-                completed = true; // Consider idle threads as completed for polling
-              }
-            } else {
-              status = 'waiting';
+              console.log(`Terragon active - new message detected (count: ${currentMessageCount})`);
+            } else if (hasActiveWork || hasFileUpdates) {
+              // Still working based on message content
+              status = 'active';
               completed = false;
+              console.log(`Terragon active - work indicators in message`);
+            } else if (hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating) {
+              // Terragon is actively working
+              status = 'active';
+              completed = false;
+              console.log(`Terragon active - UI indicators present`);
+            } else if (lastResponse.length > 0) {
+              // Has messages, check for completion based on stability
+              if (timeSinceLastMessage > 15000 && currentMessageCount === previousMessageCount) {
+                // No new messages for 15 seconds - likely completed
+                status = 'completed';
+                completed = true;
+                console.log(`Terragon completed - no new messages for ${timeSinceLastMessage/1000}s`);
+              } else {
+                // Still might be working
+                status = 'active';
+                completed = false;
+              }
+            } else if (pageContent.includes('Waiting for') || pageContent.includes('provisioning') || pageContent.includes('Sandbox')) {
+              // Terragon is starting up
+              status = 'starting';
+              completed = false;
+            } else {
+              // Look for recent message activity
+              const messagePattern = /"timestamp":\s*"([^"]+)"/g;
+              const timestamps = [...pageContent.matchAll(messagePattern)];
+              
+              if (timestamps.length > 0) {
+                const latestTimestamp = timestamps[timestamps.length - 1][1];
+                const latestTime = new Date(latestTimestamp).getTime();
+                const now = new Date().getTime();
+                const timeDiff = now - latestTime;
+                
+                // If last activity was within 2 minutes, consider it active
+                if (timeDiff < 120000) {
+                  status = 'active';
+                  hasRecentActivity = true;
+                  completed = false;
+                } else {
+                  status = 'idle';
+                  completed = true; // Consider idle threads as completed for polling
+                }
+              } else {
+                status = 'waiting';
+                completed = false;
+              }
             }
           }
           
@@ -639,22 +678,8 @@ Will report results once test instance completes verification.`
             hasRecentActivity,
             lastResponse,
             messageCount: currentMessageCount,
-            lastMessageTime: currentMessageCount > previousMessageCount ? now : previousMessageTime,
-            hasUIActivity: hasSpinner || hasThinking || hasGenerating || hasCursorBlink || hasProcessing || hasAnimating,
-            hasGitCheckpoint,
-            hasCompletedPattern,
-            uiIndicators: {
-              gitCheckpoint: hasGitCheckpoint,
-              completedPattern: hasCompletedPattern,
-              activeWork: hasActiveWork,
-              fileUpdates: hasFileUpdates,
-              spinner: hasSpinner,
-              thinking: hasThinking,
-              generating: hasGenerating,
-              cursorBlink: hasCursorBlink,
-              processing: hasProcessing,
-              animating: hasAnimating
-            },
+            lastMessageTime: currentMessageCount > previousMessageCount ? Date.now() : previousMessageTime,
+            terragonStatus, // Include the actual API status field
             url: `https://www.terragonlabs.com/task/${threadId}`,
             message: `Thread ${threadId} is ${status}`,
             timestamp: new Date().toISOString()
