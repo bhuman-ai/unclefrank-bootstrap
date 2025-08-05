@@ -24,7 +24,20 @@ export default async function handler(req, res) {
       case 'create-task': {
         // Extract task from request
         const taskData = Array.isArray(payload) ? payload[0] : payload;
-        const taskMessage = taskData.message?.parts?.[0]?.text || taskData.message;
+        
+        // Handle different message formats
+        let taskMessage = '';
+        if (typeof taskData.message === 'string') {
+          taskMessage = taskData.message;
+        } else if (taskData.message?.parts?.[0]?.text) {
+          taskMessage = taskData.message.parts[0].text;
+        } else if (taskData.message?.parts?.[0]?.nodes) {
+          // Handle rich text format from UI
+          const nodes = taskData.message.parts[0].nodes;
+          taskMessage = nodes.map(node => node.text || '').join('');
+        } else {
+          taskMessage = JSON.stringify(taskData.message);
+        }
         
         // Parse task to extract checkpoints
         const checkpoints = extractCheckpoints(taskMessage);
@@ -251,7 +264,8 @@ Start with Checkpoint 1 now. Create real files!`
 // Helper functions (same as before)
 function extractCheckpoints(taskMessage) {
   const checkpoints = [];
-  const lines = taskMessage.split('\n');
+  const messageStr = typeof taskMessage === 'string' ? taskMessage : JSON.stringify(taskMessage);
+  const lines = messageStr.split('\n');
   
   let inCheckpoint = false;
   let currentCheckpoint = null;
