@@ -2,6 +2,7 @@
 // Full GitHub integration - real files, real commits, real code!
 
 const CLAUDE_EXECUTOR_URL = process.env.CLAUDE_EXECUTOR_URL || 'https://uncle-frank-claude.fly.dev';
+const CLAUDE_FALLBACK_MODE = process.env.CLAUDE_FALLBACK_MODE === 'true' || false;
 
 // Session manager to track Claude sessions by task
 const sessionManager = new Map();
@@ -21,7 +22,57 @@ export default async function handler(req, res) {
 
   try {
     switch (action) {
+      case 'health-check': {
+        // Check if Claude executor is running
+        try {
+          const healthResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/health`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(5000) // 5 second timeout
+          });
+          
+          if (healthResponse.ok) {
+            const health = await healthResponse.json();
+            return res.status(200).json({
+              success: true,
+              status: 'online',
+              executor: CLAUDE_EXECUTOR_URL,
+              ...health
+            });
+          } else {
+            throw new Error(`Health check failed: ${healthResponse.status}`);
+          }
+        } catch (error) {
+          return res.status(503).json({
+            success: false,
+            status: 'offline',
+            executor: CLAUDE_EXECUTOR_URL,
+            error: `Claude executor at ${CLAUDE_EXECUTOR_URL} is not responding. The fly.io service appears to be down.`,
+            solution: 'Please check if the Claude executor is deployed and running on fly.io'
+          });
+        }
+      }
+      
       case 'create-task': {
+        // First check if Claude executor is available
+        try {
+          const healthCheck = await fetch(`${CLAUDE_EXECUTOR_URL}/health`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(3000)
+          });
+          if (!healthCheck.ok) {
+            throw new Error('Health check failed');
+          }
+        } catch (error) {
+          console.error('[Claude Integration] Executor is offline:', error.message);
+          return res.status(503).json({
+            success: false,
+            error: 'Claude executor service is not available',
+            details: `The Claude executor at ${CLAUDE_EXECUTOR_URL} is not responding. This is required to execute tasks.`,
+            solution: 'The fly.io deployment appears to be down. Please contact the administrator to restart the service.',
+            executor: CLAUDE_EXECUTOR_URL
+          });
+        }
+        
         // Extract task from request
         const taskData = Array.isArray(payload) ? payload[0] : payload;
         

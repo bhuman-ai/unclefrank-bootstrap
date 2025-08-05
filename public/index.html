@@ -1134,6 +1134,7 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
             checkpointQueue: [], // Queue of checkpoints to execute
             currentCheckpointIndex: 0, // Current position in queue
             githubConnected: false, // GitHub connection status
+            claudeExecutorOnline: false, // Claude executor status
             reviewTasks: [
                 {
                     id: 'task-1',
@@ -1184,6 +1185,7 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
             useEffect(() => {
                 loadTasksFromGitHub();
                 checkGitHubConnection();
+                checkClaudeExecutor();
             }, []);
             
             // Check GitHub connection status
@@ -1200,6 +1202,31 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                     setState(prev => ({
                         ...prev,
                         githubConnected: false
+                    }));
+                }
+            };
+            
+            // Check Claude executor status
+            const checkClaudeExecutor = async () => {
+                try {
+                    const response = await fetch('/api/claude-executor-integration', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'health-check' })
+                    });
+                    const data = await response.json();
+                    setState(prev => ({
+                        ...prev,
+                        claudeExecutorOnline: data.success && data.status === 'online'
+                    }));
+                    if (!data.success) {
+                        addLog(`⚠️ Claude executor is offline: ${data.error}`, 'warning');
+                    }
+                } catch (error) {
+                    console.error('Failed to check Claude executor:', error);
+                    setState(prev => ({
+                        ...prev,
+                        claudeExecutorOnline: false
                     }));
                 }
             };
@@ -1587,7 +1614,15 @@ Please help me implement this task.`;
                         // Task is running in Claude - no new tabs needed!
                         
                     } else {
-                        addLog(data.error || 'Failed to create task', 'error');
+                        // Check if it's a Claude executor offline error
+                        if (data.error && data.error.includes('Claude executor service is not available')) {
+                            addLog(`❌ Claude executor is offline`, 'error');
+                            addLog(`📍 ${data.details}`, 'error');
+                            addLog(`💡 ${data.solution}`, 'warning');
+                            alert('Claude executor is offline!\n\nThe fly.io service is not running. Tasks cannot be executed until the service is restarted.');
+                        } else {
+                            addLog(data.error || 'Failed to create task', 'error');
+                        }
                     }
                 } catch (error) {
                     addLog(`Error: ${error.message}`, 'error');
@@ -3878,10 +3913,19 @@ Claude Session ID: ${task.threadId}
                                     GitHub: {state.githubConnected ? 'Connected' : 'Disconnected'}
                                 </span>
                             </div>
+                            <div className="flex items-center gap-2 px-3 py-1 bg-gray-800 rounded">
+                                <div className={`w-2 h-2 rounded-full ${state.claudeExecutorOnline ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                <span className="text-sm text-gray-400">
+                                    Claude: {state.claudeExecutorOnline ? 'Online' : 'Offline'}
+                                </span>
+                            </div>
                             <button 
-                                onClick={checkGitHubConnection}
+                                onClick={() => {
+                                    checkGitHubConnection();
+                                    checkClaudeExecutor();
+                                }}
                                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded transition text-sm"
-                                title="Refresh GitHub connection status"
+                                title="Refresh connection status"
                             >
                                 🔄 Refresh
                             </button>
