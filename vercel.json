@@ -23,6 +23,10 @@
     "api/github.js": {
       "runtime": "@vercel/node@3.0.0",
       "maxDuration": 30
+    },
+    "api/github-diagnostics.js": {
+      "runtime": "@vercel/node@3.0.0",
+      "maxDuration": 10
     }
   }
 }
