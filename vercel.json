@@ -2,28 +2,5 @@
   "buildCommand": "echo 'No build required'",
   "outputDirectory": "public",
   "framework": null,
-  "installCommand": "npm install",
-  "functions": {
-    "api/task.js": {
-      "maxDuration": 30
-    },
-    "api/execute.js": {
-      "maxDuration": 30
-    },
-    "api/task-orchestrator.js": {
-      "maxDuration": 30
-    },
-    "api/config.js": {
-      "maxDuration": 10
-    },
-    "api/github.js": {
-      "maxDuration": 30
-    },
-    "api/github-diagnostics.js": {
-      "maxDuration": 10
-    },
-    "api/test.js": {
-      "maxDuration": 10
-    }
-  }
+  "installCommand": "npm install"
 }

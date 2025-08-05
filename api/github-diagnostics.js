@@ -11,7 +11,7 @@ module.exports = (req, res) => {
     const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
     
     // Return diagnostic info
-    return res.status(200).json({
+    res.status(200).json({
         timestamp: new Date().toISOString(),
         environment: {
             hasToken: !!GITHUB_TOKEN,
