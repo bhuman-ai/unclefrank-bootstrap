@@ -2,7 +2,6 @@
   "name": "unclefrank-bootstrap",
   "version": "0.0.1",
   "description": "Uncle Frank's Autonomous LLM Dev Platform - Bootstrap Core",
-  "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "run": "tsx src/index.ts",
