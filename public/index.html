@@ -1226,9 +1226,10 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                         ...prev,
                         claudeExecutorOnline: data.success && data.status === 'online'
                     }));
-                    if (!data.success) {
-                        addLog(`⚠️ Claude executor is offline: ${data.error}`, 'warning');
-                    }
+                    // Don't log warnings on every check - just update the status indicator
+                    // if (!data.success) {
+                    //     addLog(`⚠️ Claude executor is offline: ${data.error}`, 'warning');
+                    // }
                 } catch (error) {
                     console.error('Failed to check Claude executor:', error);
                     setState(prev => ({
@@ -4142,8 +4143,8 @@ Claude Session ID: ${task.threadId}
                         task={selectedTask}
                     />
                     
-                    {/* Orchestrator Status */}
-                    <OrchestratorStatus />
+                    {/* Orchestrator Status - Disabled (annoying box) */}
+                    {/* <OrchestratorStatus /> */}
                     
                     {/* Session Viewer Modal */}
                     {sessionViewerOpen && (
