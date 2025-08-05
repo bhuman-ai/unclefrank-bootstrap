@@ -566,16 +566,27 @@
 
             async makeRequest(endpoint, method = 'GET', body = null) {
                 try {
+                    console.log('Making GitHub API request:', { endpoint, method });
                     const response = await fetch(this.baseUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ method, endpoint, body })
                     });
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error || `GitHub API error: ${response.status}`);
+                    
+                    let data;
+                    try {
+                        data = await response.json();
+                    } catch (e) {
+                        console.error('Failed to parse response:', e);
+                        throw new Error(`Invalid response from GitHub API: ${response.status}`);
                     }
-                    return await response.json();
+                    
+                    if (!response.ok) {
+                        console.error('GitHub API error:', response.status, data);
+                        throw new Error(data.error || data.message || `GitHub API error: ${response.status}`);
+                    }
+                    
+                    return data;
                 } catch (error) {
                     console.error('GitHub API request failed:', error);
                     throw error;
