@@ -3,6 +3,7 @@
 
 const CLAUDE_EXECUTOR_URL = process.env.CLAUDE_EXECUTOR_URL || 'https://uncle-frank-claude.fly.dev';
 const CLAUDE_FALLBACK_MODE = process.env.CLAUDE_FALLBACK_MODE === 'true' || false;
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-opus-4-1-20250805'; // Latest Opus model
 
 // Session manager to track Claude sessions by task
 const sessionManager = new Map();
@@ -134,7 +135,7 @@ export default async function handler(req, res) {
         // Parse task to extract checkpoints
         const checkpoints = extractCheckpoints(taskMessage);
         
-        // Create Claude session with GitHub repo
+        // Create Claude session with GitHub repo using latest Opus model
         const sessionResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -156,7 +157,8 @@ Your job:
 - Report REAL results
 
 Remember: Every checkpoint MUST have actual, testable outcomes. No BS.`,
-            model: 'claude-3-opus-20240229'
+            model: CLAUDE_MODEL,  // Use configured model
+            modelCommand: `/model ${CLAUDE_MODEL}`  // Set model command first
           })
         });
 
@@ -179,12 +181,26 @@ Remember: Every checkpoint MUST have actual, testable outcomes. No BS.`,
           githubUrl: session.githubUrl
         });
 
+        // First set the model to latest Opus
+        const setModelResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${session.sessionId}/execute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: `/model ${CLAUDE_MODEL}`
+          })
+        });
+        
+        if (!setModelResponse.ok) {
+          console.warn('[Claude Integration] Failed to set model, continuing anyway');
+        }
+        
         // Send task with explicit GitHub context
         const executeResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${session.sessionId}/execute`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: `# TASK EXECUTION REQUEST
+Using model: ${CLAUDE_MODEL} (Latest Opus)
 
 ${taskMessage}
 
