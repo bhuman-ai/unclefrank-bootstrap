@@ -143,7 +143,7 @@
                             Total: <span className="text-white">{orchestratorData.instanceCount}</span>
                         </p>
                         
-                        {orchestratorData.instances.length > 0 && (
+                        {orchestratorData.instances?.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-gray-700">
                                 <p className="text-gray-500 text-xs mb-2">Instances:</p>
                                 {orchestratorData.limits && (
@@ -165,7 +165,7 @@
                                         </p>
                                     </div>
                                 )}
-                                {orchestratorData.instances.slice(0, 5).map((inst, idx) => {
+                                {orchestratorData.instances?.slice(0, 5).map((inst, idx) => {
                                     const emoji = inst.type === 'main-task' ? '📋' : 
                                                  inst.type === 'test' ? '🧪' : 
                                                  inst.type === 'resolver' ? '🔧' : '📦';
@@ -181,8 +181,8 @@
                                         </div>
                                     );
                                 })}
-                                {orchestratorData.instances.length > 5 && (
-                                    <p className="text-gray-500 text-xs mt-1 ml-2">+{orchestratorData.instances.length - 5} more</p>
+                                {orchestratorData.instances?.length > 5 && (
+                                    <p className="text-gray-500 text-xs mt-1 ml-2">+{orchestratorData.instances?.length - 5} more</p>
                                 )}
                             </div>
                         )}
