@@ -626,6 +626,60 @@
 
             getBranchUrl(branchName) {
                 return `https://github.com/${this.owner}/${this.repo}/tree/${branchName}`;
+            },
+
+            async createIssue(title, body, labels = ['task', 'claude']) {
+                try {
+                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/issues`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            // Note: In production, you'd need proper authentication
+                        },
+                        body: JSON.stringify({
+                            title,
+                            body,
+                            labels
+                        })
+                    });
+                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    console.error('Failed to create issue:', error);
+                    return null;
+                }
+            },
+
+            async getIssue(issueNumber) {
+                try {
+                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/issues/${issueNumber}`);
+                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    console.error('Failed to fetch issue:', error);
+                    return null;
+                }
+            },
+
+            async updateIssue(issueNumber, updates) {
+                try {
+                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/issues/${issueNumber}`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(updates)
+                    });
+                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    console.error('Failed to update issue:', error);
+                    return null;
+                }
+            },
+
+            getIssueUrl(issueNumber) {
+                return `https://github.com/${this.owner}/${this.repo}/issues/${issueNumber}`;
             }
         };
 
@@ -918,6 +972,15 @@
                                                 ) : (
                                                     <span className="text-gray-500 text-xs">No branch</span>
                                                 )}
+                                                {task.issueUrl && (
+                                                    <a 
+                                                        href={task.issueUrl}
+                                                        target="_blank"
+                                                        className="text-blue-400 hover:underline text-xs block"
+                                                    >
+                                                        Issue #{task.issueNumber} →
+                                                    </a>
+                                                )}
                                                 {task.prUrl && (
                                                     <a 
                                                         href={task.prUrl}
@@ -1033,9 +1096,34 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
             // Load tasks by checking GitHub PR status
             const loadTasksFromGitHub = async () => {
                 setLoadingTasks(true);
-                addLog('Loading task status from GitHub PRs...', 'info');
+                addLog('Loading tasks from GitHub...', 'info');
                 
                 try {
+                    // First, load all open issues with 'task' label
+                    const issuesResponse = await fetch('https://api.github.com/repos/bhuman-ai/unclefrank-bootstrap/issues?labels=task&state=all');
+                    const issues = await issuesResponse.json();
+                    
+                    const tasksByIssue = new Map();
+                    
+                    // Process issues first
+                    for (const issue of issues || []) {
+                        const claudeSessionMatch = issue.body?.match(/Claude Session: ([a-f0-9-]+)/);
+                        const claudeSession = claudeSessionMatch ? claudeSessionMatch[1] : null;
+                        
+                        const task = {
+                            id: `issue-${issue.number}`,
+                            name: issue.title.replace('Task: ', ''),
+                            objective: issue.body?.split('\n')[2] || '', // Extract from body
+                            status: issue.state === 'closed' ? 'Completed' : 'In Progress',
+                            issueNumber: issue.number,
+                            issueUrl: issue.html_url,
+                            threadId: claudeSession,
+                            created: issue.created_at
+                        };
+                        
+                        tasksByIssue.set(issue.number, task);
+                    }
+                    
                     // Get list of branches that match claude pattern
                     const branches = await GitHubService.getBranches();
                     const claudeBranches = branches.filter(branch => 
@@ -1095,13 +1183,38 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                         }
                     }
                     
-                    // Update state with GitHub-sourced tasks
+                    // Merge issue tasks with branch tasks
+                    const allTasks = Array.from(tasksByIssue.values());
+                    
+                    // Add branch tasks that don't have corresponding issues
+                    for (const branchTask of updatedTasks) {
+                        const existingTask = allTasks.find(t => t.threadId === branchTask.threadId);
+                        if (!existingTask) {
+                            allTasks.push(branchTask);
+                        } else {
+                            // Update existing task with branch info
+                            Object.assign(existingTask, {
+                                branch: branchTask.branch,
+                                prUrl: branchTask.prUrl,
+                                status: branchTask.status // PR status takes precedence
+                            });
+                        }
+                    }
+                    
+                    // Sort by creation date (newest first)
+                    allTasks.sort((a, b) => {
+                        const dateA = new Date(a.created || 0);
+                        const dateB = new Date(b.created || 0);
+                        return dateB - dateA;
+                    });
+                    
+                    // Update state with all tasks
                     setState(prev => ({
                         ...prev,
-                        reviewTasks: updatedTasks
+                        reviewTasks: allTasks
                     }));
                     
-                    addLog(`Loaded ${updatedTasks.length} tasks from GitHub`, 'success');
+                    addLog(`Loaded ${allTasks.length} tasks (${tasksByIssue.size} issues, ${updatedTasks.length} branches)`, 'success');
                     
                 } catch (error) {
                     addLog(`Failed to load tasks from GitHub: ${error.message}`, 'error');
@@ -1187,9 +1300,33 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                     return;
                 }
                 setLoading(true);
-                addLog('Creating new task in Claude...', 'info');
+                addLog('Creating new task...', 'info');
                 
                 try {
+                    // First, create a GitHub issue to track this task
+                    const issueBody = `## Task Request
+${state.request}
+
+${state.projectContext ? `## Project Context
+${state.projectContext}` : ''}
+
+## Status
+- Created: ${new Date().toISOString()}
+- Status: 🔄 Processing
+- Claude Session: _pending_
+
+---
+This issue tracks the task from creation through completion.`;
+
+                    const issue = await GitHubService.createIssue(
+                        `Task: ${state.request.substring(0, 100)}${state.request.length > 100 ? '...' : ''}`,
+                        issueBody
+                    );
+
+                    if (issue) {
+                        addLog(`✅ Created GitHub issue #${issue.number}`, 'success');
+                        addLog(`📍 Issue URL: ${issue.html_url}`, 'info');
+                    }
                     // Create the task message for Claude
                     const taskMessage = `# New Task Request
 
@@ -1234,11 +1371,21 @@ Please help me implement this task.`;
                         addLog(`✅ Task created in Claude: ${threadId}`, 'success', threadId);
                         addLog(`📍 Claude session ID: ${threadId}`, 'info', threadId);
                         
+                        // Update GitHub issue with Claude session ID
+                        if (issue) {
+                            const updatedBody = issueBody.replace('- Claude Session: _pending_', `- Claude Session: ${threadId}`);
+                            await GitHubService.updateIssue(issue.number, {
+                                body: updatedBody
+                            });
+                            addLog(`📝 Updated issue #${issue.number} with Claude session`, 'info');
+                        }
+                        
                         // Register with orchestrator - it will decompose automatically
                         await registerWithOrchestrator(threadId, {
                             type: 'main-task',
                             task: state.request,
-                            branch: 'master'
+                            branch: 'master',
+                            issueNumber: issue?.number
                         });
                         
                         if (orchestratorEnabled) {
