@@ -5,27 +5,24 @@
   "installCommand": "npm install",
   "functions": {
     "api/task.js": {
-      "runtime": "@vercel/node@3.0.0",
       "maxDuration": 30
     },
     "api/execute.js": {
-      "runtime": "@vercel/node@3.0.0",
       "maxDuration": 30
     },
     "api/task-orchestrator.js": {
-      "runtime": "@vercel/node@3.0.0",
       "maxDuration": 30
     },
     "api/config.js": {
-      "runtime": "@vercel/node@3.0.0",
       "maxDuration": 10
     },
     "api/github.js": {
-      "runtime": "@vercel/node@3.0.0",
       "maxDuration": 30
     },
     "api/github-diagnostics.js": {
-      "runtime": "@vercel/node@3.0.0",
+      "maxDuration": 10
+    },
+    "api/test.js": {
       "maxDuration": 10
     }
   }
