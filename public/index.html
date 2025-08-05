@@ -1186,6 +1186,13 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                 loadTasksFromGitHub();
                 checkGitHubConnection();
                 checkClaudeExecutor();
+                
+                // Set up periodic health check for Claude executor
+                const healthCheckInterval = setInterval(() => {
+                    checkClaudeExecutor();
+                }, 30000); // Check every 30 seconds
+                
+                return () => clearInterval(healthCheckInterval);
             }, []);
             
             // Check GitHub connection status
@@ -1614,12 +1621,29 @@ Please help me implement this task.`;
                         // Task is running in Claude - no new tabs needed!
                         
                     } else {
-                        // Check if it's a Claude executor offline error
-                        if (data.error && data.error.includes('Claude executor service is not available')) {
+                        // Handle different error scenarios
+                        if (data.error && data.error.includes('Claude executor is restarting')) {
+                            addLog(`🔄 Claude executor is restarting automatically`, 'warning');
+                            addLog(`⏳ ${data.details}`, 'info');
+                            addLog(`🔄 Please retry in ${data.retryAfter || 30} seconds`, 'info');
+                            
+                            // Auto-retry after the specified time
+                            setTimeout(() => {
+                                addLog('🔄 Retrying task creation...', 'info');
+                                decomposeTask();
+                            }, (data.retryAfter || 30) * 1000);
+                            
+                        } else if (data.error && data.error.includes('restart failed multiple times')) {
+                            addLog(`❌ Claude executor restart failed`, 'error');
+                            addLog(`📍 ${data.details}`, 'error');
+                            addLog(`⏰ Next retry: ${new Date(data.nextRetry).toLocaleTimeString()}`, 'warning');
+                            alert('Claude executor is experiencing issues!\n\nMultiple restart attempts have failed. The system will retry later.');
+                            
+                        } else if (data.error && data.error.includes('Claude executor service is not available')) {
                             addLog(`❌ Claude executor is offline`, 'error');
                             addLog(`📍 ${data.details}`, 'error');
-                            addLog(`💡 ${data.solution}`, 'warning');
-                            alert('Claude executor is offline!\n\nThe fly.io service is not running. Tasks cannot be executed until the service is restarted.');
+                            alert('Claude executor is offline and could not be restarted automatically.');
+                            
                         } else {
                             addLog(data.error || 'Failed to create task', 'error');
                         }

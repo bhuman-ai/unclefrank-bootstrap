@@ -54,21 +54,62 @@ export default async function handler(req, res) {
       
       case 'create-task': {
         // First check if Claude executor is available
+        let executorHealthy = false;
         try {
           const healthCheck = await fetch(`${CLAUDE_EXECUTOR_URL}/health`, {
             method: 'GET',
             signal: AbortSignal.timeout(3000)
           });
-          if (!healthCheck.ok) {
-            throw new Error('Health check failed');
-          }
+          executorHealthy = healthCheck.ok;
         } catch (error) {
           console.error('[Claude Integration] Executor is offline:', error.message);
+          executorHealthy = false;
+        }
+        
+        // If not healthy, attempt auto-restart
+        if (!executorHealthy) {
+          console.log('[Claude Integration] Executor offline, attempting auto-restart...');
+          
+          try {
+            // Check if we can auto-restart
+            const flyResponse = await fetch(
+              `${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/flyio-manager`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'check-health' })
+              }
+            );
+            
+            if (flyResponse.ok) {
+              const flyStatus = await flyResponse.json();
+              
+              if (flyStatus.status === 'restarting') {
+                return res.status(503).json({
+                  success: false,
+                  error: 'Claude executor is restarting',
+                  details: 'The service was down and has been automatically restarted. Please try again in 30-60 seconds.',
+                  retry: true,
+                  retryAfter: 30
+                });
+              } else if (flyStatus.circuitBreaker === 'open') {
+                return res.status(503).json({
+                  success: false,
+                  error: 'Claude executor restart failed multiple times',
+                  details: flyStatus.message,
+                  nextRetry: flyStatus.nextRetry
+                });
+              }
+            }
+          } catch (restartError) {
+            console.error('[Claude Integration] Auto-restart failed:', restartError);
+          }
+          
+          // If we get here, auto-restart wasn't possible
           return res.status(503).json({
             success: false,
             error: 'Claude executor service is not available',
-            details: `The Claude executor at ${CLAUDE_EXECUTOR_URL} is not responding. This is required to execute tasks.`,
-            solution: 'The fly.io deployment appears to be down. Please contact the administrator to restart the service.',
+            details: `The Claude executor at ${CLAUDE_EXECUTOR_URL} is not responding and could not be automatically restarted.`,
             executor: CLAUDE_EXECUTOR_URL
           });
         }

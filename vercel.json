@@ -2,5 +2,10 @@
   "buildCommand": "echo 'No build required'",
   "outputDirectory": "public",
   "framework": null,
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "functions": {
+    "api/flyio-manager.js": {
+      "maxDuration": 30
+    }
+  }
 }
