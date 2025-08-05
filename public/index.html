@@ -1473,6 +1473,15 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                 setLoading(true);
                 addLog('Creating new task...', 'info');
                 
+                // First ensure Claude is running
+                if (!state.claudeExecutorOnline) {
+                    addLog('🔄 Claude is offline, attempting to start it...', 'warning');
+                    // Force a check which will trigger auto-restart
+                    await checkClaudeExecutor();
+                    // Wait a moment for restart to initiate
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+                
                 try {
                     // First, create a GitHub issue to track this task
                     const issueBody = `## Task Request
@@ -3943,6 +3952,32 @@ Claude Session ID: ${task.threadId}
                                 <span className="text-sm text-gray-400">
                                     Claude: {state.claudeExecutorOnline ? 'Online' : 'Offline'}
                                 </span>
+                                {!state.claudeExecutorOnline && (
+                                    <button
+                                        onClick={async () => {
+                                            addLog('🚀 Starting Claude executor...', 'info');
+                                            try {
+                                                const response = await fetch('/api/claude-health-monitor', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ action: 'force-restart' })
+                                                });
+                                                const data = await response.json();
+                                                if (data.success) {
+                                                    addLog('✅ Claude restart initiated. Please wait 30-60 seconds...', 'success');
+                                                    setTimeout(checkClaudeExecutor, 30000);
+                                                } else {
+                                                    addLog('❌ Failed to restart Claude', 'error');
+                                                }
+                                            } catch (error) {
+                                                addLog(`❌ Restart error: ${error.message}`, 'error');
+                                            }
+                                        }}
+                                        className="ml-2 px-2 py-0.5 bg-red-600 hover:bg-red-700 rounded text-xs"
+                                    >
+                                        Start
+                                    </button>
+                                )}
                             </div>
                             <button 
                                 onClick={() => {
