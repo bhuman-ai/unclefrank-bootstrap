@@ -1453,10 +1453,28 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                 setLoadingSession(true);
                 setSessionMessages([]);
                 try {
-                    const response = await fetch(`/api/sessions/${sessionId}/messages`);
+                    const response = await fetch('/api/claude-executor-integration', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'check-status',
+                            payload: { threadId: sessionId }
+                        })
+                    });
+                    
                     if (response.ok) {
                         const data = await response.json();
-                        setSessionMessages(data.messages || []);
+                        // Get messages from the response
+                        if (data.allMessages && data.allMessages.length > 0) {
+                            setSessionMessages(data.allMessages);
+                        } else {
+                            // Fallback: try to get messages from the executor directly
+                            const msgResponse = await fetch(`${window.location.origin}/api/sessions/${sessionId}/messages`);
+                            if (msgResponse.ok) {
+                                const msgData = await msgResponse.json();
+                                setSessionMessages(msgData.messages || []);
+                            }
+                        }
                     } else {
                         addLog(`Failed to fetch messages for session ${sessionId}`, 'error');
                     }
@@ -4433,9 +4451,9 @@ Claude Session ID: ${task.threadId}
                                     <button 
                                         onClick={() => {
                                             if (workspaceTask.sessionId || workspaceTask.threadId) {
-                                                setSelectedSessionId(workspaceTask.sessionId || workspaceTask.threadId);
+                                                const sessionId = workspaceTask.sessionId || workspaceTask.threadId;
                                                 setTaskWorkspaceOpen(false);
-                                                setSessionViewerOpen(true);
+                                                openSessionViewer(sessionId);
                                             }
                                         }}
                                         className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded transition"

@@ -273,53 +273,80 @@ Start with Checkpoint 1 now. Create real files!`
       case 'check-claude-status':
       case 'check-terragon-status': {
         const { threadId } = payload;
-        const sessionData = sessionManager.get(threadId);
+        const sessionData = sessionManager.get(threadId) || {};
         
-        if (!sessionData) {
-          return res.status(404).json({ error: 'Session not found' });
+        try {
+          // Get session details from Claude
+          const statusResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${threadId}`, {
+            method: 'GET'
+          });
+
+          if (!statusResponse.ok) {
+            // Session might not exist on Claude executor
+            return res.status(200).json({
+              threadId,
+              status: 'unknown',
+              completed: false,
+              messageCount: 0,
+              allMessages: [],
+              checkpointsCompleted: 0,
+              totalCheckpoints: 0,
+              error: 'Session not found on executor'
+            });
+          }
+
+          const session = await statusResponse.json();
+          
+          // Get messages to check progress
+          const messagesResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${threadId}/messages`);
+          let messages = [];
+          
+          if (messagesResponse.ok) {
+            const messagesData = await messagesResponse.json();
+            messages = messagesData.messages || [];
+          }
+        
+          // Get files that were created/modified
+          const filesResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${threadId}/files`);
+          let filesData = {};
+          
+          if (filesResponse.ok) {
+            filesData = await filesResponse.json();
+          }
+          
+          // Analyze completion
+          const lastMessage = messages[messages.length - 1];
+          const completed = analyzeCompletion(lastMessage, sessionData.checkpoints || []);
+          
+          return res.status(200).json({
+            threadId,
+            status: session.status,
+            completed,
+            messageCount: messages.length,
+            lastResponse: lastMessage?.content,
+            checkpointsCompleted: countCompletedCheckpoints(messages),
+            totalCheckpoints: sessionData.checkpoints?.length || 0,
+            branch: session.branch,
+            terragonBranch: session.branch, // UI compatibility
+            claudeBranch: session.branch,
+            gitStatus: session.gitStatus,
+            filesCreated: filesData.files?.length || 0,
+            modifiedFiles: filesData.modified || [],
+            githubUrl: sessionData.githubUrl,
+            allMessages: messages,
+            executor: 'claude-github'
+          });
+        } catch (error) {
+          console.error('[Claude Status Check] Error:', error);
+          return res.status(200).json({
+            threadId,
+            status: 'error',
+            completed: false,
+            messageCount: 0,
+            allMessages: [],
+            error: error.message
+          });
         }
-
-        // Get session details from Claude
-        const statusResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${threadId}`, {
-          method: 'GET'
-        });
-
-        if (!statusResponse.ok) {
-          throw new Error('Failed to get status');
-        }
-
-        const session = await statusResponse.json();
-        
-        // Get messages to check progress
-        const messagesResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${threadId}/messages`);
-        const { messages } = await messagesResponse.json();
-        
-        // Get files that were created/modified
-        const filesResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${threadId}/files`);
-        const filesData = await filesResponse.json();
-        
-        // Analyze completion
-        const lastMessage = messages[messages.length - 1];
-        const completed = analyzeCompletion(lastMessage, sessionData.checkpoints);
-        
-        return res.status(200).json({
-          threadId,
-          status: session.status,
-          completed,
-          messageCount: messages.length,
-          lastResponse: lastMessage?.content,
-          checkpointsCompleted: countCompletedCheckpoints(messages),
-          totalCheckpoints: sessionData.checkpoints.length,
-          branch: session.branch,
-          terragonBranch: session.branch, // UI compatibility
-          claudeBranch: session.branch,
-          gitStatus: session.gitStatus,
-          filesCreated: filesData.files?.length || 0,
-          modifiedFiles: filesData.modified || [],
-          githubUrl: sessionData.githubUrl,
-          allMessages: messages,
-          executor: 'claude-github'
-        });
       }
 
       case 'commit-changes': {
