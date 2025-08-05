@@ -35,7 +35,7 @@ export default async function handler(req, res) {
             const health = await healthResponse.json();
             return res.status(200).json({
               success: true,
-              status: 'online',
+              status: health.status === 'healthy' ? 'online' : health.status,
               executor: CLAUDE_EXECUTOR_URL,
               ...health
             });
