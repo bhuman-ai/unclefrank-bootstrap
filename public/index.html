@@ -1190,7 +1190,7 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                 // Set up periodic health check for Claude executor
                 const healthCheckInterval = setInterval(() => {
                     checkClaudeExecutor();
-                }, 30000); // Check every 30 seconds
+                }, 15000); // Check every 15 seconds for faster updates
                 
                 return () => clearInterval(healthCheckInterval);
             }, []);
@@ -1224,7 +1224,7 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                     const data = await response.json();
                     setState(prev => ({
                         ...prev,
-                        claudeExecutorOnline: data.success && data.status === 'online'
+                        claudeExecutorOnline: data.success && (data.status === 'online' || data.status === 'healthy')
                     }));
                     // Don't log warnings on every check - just update the status indicator
                     // if (!data.success) {
