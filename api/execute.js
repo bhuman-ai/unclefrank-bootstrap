@@ -1,6 +1,6 @@
 // FRANK'S CLAUDE EXECUTOR API
 // Routes all task execution to Claude
-// No more Terragon BS!
+// No more Claude BS!
 
 export default async function handler(req, res) {
   // Enable CORS

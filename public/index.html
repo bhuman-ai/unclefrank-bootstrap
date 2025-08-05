@@ -266,7 +266,7 @@
                 addLog(`Starting validation for draft ${draft.id}`, 'info');
                 
                 try {
-                    // Start real validation through Terragon
+                    // Start real validation through Claude
                     const response = await fetch('/api/validation-runner', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -954,9 +954,9 @@
 
         // State management
         const initialState = {
-            request: 'Implement Task Review UI that shows completed tasks awaiting human review with GitHub integration. This must include: 1) Task Queue view showing tasks with "Awaiting Review" status after Terragon completes them, 2) Display the GitHub branch created by Terragon, 3) Show acceptance criteria as a review checklist, 4) Provide View Changes, Run Tests, Approve, and Request Changes buttons, 5) Integration with GitHub API to detect branches and create PRs, 6) Merge Review Screen showing diffs, 7) Update task status from "sent" through "completed", "awaiting review", to "merged"',
+            request: 'Implement Task Review UI that shows completed tasks awaiting human review with GitHub integration. This must include: 1) Task Queue view showing tasks with "Awaiting Review" status after Claude completes them, 2) Display the GitHub branch created by Claude, 3) Show acceptance criteria as a review checklist, 4) Provide View Changes, Run Tests, Approve, and Request Changes buttons, 5) Integration with GitHub API to detect branches and create PRs, 6) Merge Review Screen showing diffs, 7) Update task status from "sent" through "completed", "awaiting review", to "merged"',
             projectContext: `# Current State
-The system can execute tasks in Terragon, which creates GitHub branches, but there's no UI to review and approve these completed tasks. According to Interface.md, we need screens #3 (Task Queue), #7 (Merge Review), #9 (GitHub Integration), and #15 (Escalation Notifications).
+The system can execute tasks in Claude, which creates GitHub branches, but there's no UI to review and approve these completed tasks. According to Interface.md, we need screens #3 (Task Queue), #7 (Merge Review), #9 (GitHub Integration), and #15 (Escalation Notifications).
 
 # Requirements from Interface.md
 - Task Queue must show task status management
@@ -966,7 +966,7 @@ The system can execute tasks in Terragon, which creates GitHub branches, but the
 - Every action must have immediate feedback
 
 # Technical Context
-- Tasks are executed in Terragon and push to branches like "terragon/project-md-validation-system"
+- Tasks are executed in Claude and push to branches like "claude-session-md-validation-system"
 - System uses GitHub API for integration
 - React-based UI in public/index.html
 - Task state is managed in React component state`,
@@ -983,9 +983,9 @@ The system can execute tasks in Terragon, which creates GitHub branches, but the
                 {
                     id: 'task-1',
                     name: 'Task Review UI Implementation',
-                    objective: 'Build review interface for completed Terragon tasks with GitHub integration',
+                    objective: 'Build review interface for completed Claude tasks with GitHub integration',
                     status: 'Awaiting Review',
-                    branch: 'terragon/task-review-ui-github-integration',
+                    branch: 'claude/task-review-ui-github-integration',
                     threadId: 'thread-123',
                     acceptanceCriteria: [
                         'Task Queue component renders without errors',
@@ -999,7 +999,7 @@ The system can execute tasks in Terragon, which creates GitHub branches, but the
                     name: 'Discord Bot Integration',
                     objective: 'Add Discord bot for task notifications',
                     status: 'In Review',
-                    branch: 'terragon/discord-bot-integration',
+                    branch: 'claude/discord-bot-integration',
                     threadId: 'thread-456',
                     acceptanceCriteria: [
                         'Bot connects to Discord successfully',
@@ -1032,15 +1032,15 @@ The system can execute tasks in Terragon, which creates GitHub branches, but the
                 addLog('Loading task status from GitHub PRs...', 'info');
                 
                 try {
-                    // Get list of branches that match terragon pattern
+                    // Get list of branches that match claude pattern
                     const branches = await GitHubService.getBranches();
-                    const terragonBranches = branches.filter(branch => 
-                        branch.name.startsWith('terragon/')
+                    const claudeBranches = branches.filter(branch => 
+                        branch.name.startsWith('claude/')
                     );
                     
                     const updatedTasks = [];
                     
-                    for (const branch of terragonBranches) {
+                    for (const branch of claudeBranches) {
                         try {
                             // Check if PR exists for this branch
                             const response = await fetch(`https://api.github.com/repos/bhuman-ai/unclefrank-bootstrap/pulls?head=bhuman-ai:${branch.name}&state=all`);
@@ -1068,7 +1068,7 @@ The system can execute tasks in Terragon, which creates GitHub branches, but the
                             }
                             
                             // Create task object from branch info
-                            const taskName = branch.name.replace('terragon/', '').replace(/-/g, ' ')
+                            const taskName = branch.name.replace('claude/', '').replace(/-/g, ' ')
                                 .replace(/\b\w/g, l => l.toUpperCase());
                             
                             updatedTasks.push({
@@ -1149,17 +1149,17 @@ The system can execute tasks in Terragon, which creates GitHub branches, but the
                 setLoading(false);
             };
 
-            // Decompose task - Creates a new Terragon task that will be decomposed by orchestrator
+            // Decompose task - Creates a new Claude task that will be decomposed by orchestrator
             const decomposeTask = async () => {
                 if (!state.request) {
                     alert('Please enter a request');
                     return;
                 }
                 setLoading(true);
-                addLog('Creating new task in Terragon...', 'info');
+                addLog('Creating new task in Claude...', 'info');
                 
                 try {
-                    // Create the task message for Terragon
+                    // Create the task message for Claude
                     const taskMessage = `# New Task Request
 
 ${state.request}
@@ -1169,7 +1169,7 @@ ${state.projectContext}` : ''}
 
 Please help me implement this task.`;
 
-                    // Create task in Terragon via execute API
+                    // Create task in Claude via execute API
                     const taskPayload = [{
                         message: {
                             type: 'user',
@@ -1200,9 +1200,9 @@ Please help me implement this task.`;
                     const data = await response.json();
                     if (response.ok && data.threadId) {
                         const threadId = data.threadId;
-                        const threadUrl = `https://www.terragonlabs.com/task/${threadId}`;
+                        const threadUrl = `https://www.claudelabs.com/task/${threadId}`;
                         
-                        addLog(`✅ Task created in Terragon: ${threadId}`, 'success');
+                        addLog(`✅ Task created in Claude: ${threadId}`, 'success');
                         addLog(`Monitor at: ${threadUrl}`, 'info');
                         
                         // Register with orchestrator - it will decompose automatically
@@ -1293,7 +1293,7 @@ Execute this checkpoint and report when complete. After completion, I will run t
 
 SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoint will be sent individually after the previous one passes its tests.`;
 
-                    // Create Terragon thread with FIRST CHECKPOINT ONLY
+                    // Create Claude session with FIRST CHECKPOINT ONLY
                     const dashboardPayload = [{
                         message: {
                             type: 'user',
@@ -1323,13 +1323,13 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     
                     const result = await response.json();
                     if (!response.ok) {
-                        throw new Error(result.error || `Failed to create Terragon task: ${response.status}`);
+                        throw new Error(result.error || `Failed to create Claude task: ${response.status}`);
                     }
                     
                     const threadId = result.threadId;
-                    const threadUrl = `https://www.terragonlabs.com/task/${threadId}`;
+                    const threadUrl = `https://www.claudelabs.com/task/${threadId}`;
                     
-                    addLog(`✅ Checkpoint 1 sent to Terragon thread: ${threadId}`, 'success');
+                    addLog(`✅ Checkpoint 1 sent to Claude session: ${threadId}`, 'success');
                     addLog(`Monitor at: ${threadUrl}`, 'info');
                     
                     // Register main task with orchestrator
@@ -1374,7 +1374,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                 threadId: threadId,
                                 startTime: new Date().toISOString(),
                                 logs: [{ 
-                                    message: `Checkpoint 1 sent to Terragon`,
+                                    message: `Checkpoint 1 sent to Claude`,
                                     url: threadUrl
                                 }]
                             }
@@ -1389,11 +1389,11 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             executionStatus: newExecutionStatus
                         };
                         
-                        // FRANK'S REAL FIX: Poll Terragon until actual completion
+                        // FRANK'S REAL FIX: Poll Claude until actual completion
                         setTimeout(() => {
-                            addLog('🔍 Polling Terragon thread for actual completion...', 'info');
+                            addLog('🔍 Polling Claude session for actual completion...', 'info');
                             // CRITICAL: Pass threadId as executionThreadId since we're using the same thread
-                            pollTerragonForCompletion(threadId, firstCheckpoint, newState.checkpointQueue, 0, 0, threadId);
+                            pollClaudeForCompletion(threadId, firstCheckpoint, newState.checkpointQueue, 0, 0, threadId);
                         }, 5000); // Give it 5 seconds to start, then poll
                         
                         return newState;
@@ -1408,7 +1408,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
             // FRANK'S UI-BASED COMPLETION DETECTION - TRACK UI INDICATORS
             const messageTracker = {}; // Store message state per thread
             
-            const pollTerragonForCompletion = async (threadId, checkpoint, queue, currentIndex, pollCount = 0, executionThreadId = null) => {
+            const pollClaudeForCompletion = async (threadId, checkpoint, queue, currentIndex, pollCount = 0, executionThreadId = null) => {
                 const maxPolls = 120; // Max 10 minutes of polling (5 seconds * 120)
                 const minPolls = 36; // FRANK'S FIX: Minimum 3 minutes before allowing tests
                 const checkpointNumber = currentIndex + 1;
@@ -1423,15 +1423,15 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     };
                 }
                 
-                addLog(`🔄 Polling attempt ${pollCount + 1}: Checking if Terragon completed checkpoint ${checkpointNumber}`, 'info');
+                addLog(`🔄 Polling attempt ${pollCount + 1}: Checking if Claude completed checkpoint ${checkpointNumber}`, 'info');
                 
                 try {
-                    // Check Terragon thread status via our API
+                    // Check Claude session status via our API
                     const statusResponse = await fetch('/api/execute', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
-                            action: 'check-terragon-status',
+                            action: 'check-claude-status',
                             threadId: threadId,
                             lastMessageCount: messageTracker[threadId].lastMessageCount,
                             lastMessageTime: messageTracker[threadId].lastMessageTime
@@ -1442,7 +1442,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                         const statusResult = await statusResponse.json();
                         
                         // FRANK'S FIX: Auto-record branch from API response
-                        if (statusResult.terragonBranch && !messageTracker[threadId].branchRecorded) {
+                        if (statusResult.claudeBranch && !messageTracker[threadId].branchRecorded) {
                             // Record for the task thread ID
                             await fetch('/api/branch-tracker', {
                                 method: 'POST',
@@ -1450,7 +1450,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                 body: JSON.stringify({
                                     action: 'record',
                                     threadId: threadId,
-                                    branchName: statusResult.terragonBranch
+                                    branchName: statusResult.claudeBranch
                                 })
                             });
                             
@@ -1463,23 +1463,23 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                     body: JSON.stringify({
                                         action: 'record',
                                         threadId: executionThreadId,
-                                        branchName: statusResult.terragonBranch
+                                        branchName: statusResult.claudeBranch
                                     })
                                 });
                                 console.log(`Also recorded branch for execution thread: ${executionThreadId}`);
                             }
                             
                             messageTracker[threadId].branchRecorded = true;
-                            addLog(`🎯 Detected Terragon branch: ${statusResult.terragonBranch}`, 'success');
+                            addLog(`🎯 Detected Claude branch: ${statusResult.claudeBranch}`, 'success');
                             
                             // FRANK'S FIX: Save branch to state for tests to use
                             setState(prev => ({
                                 ...prev,
-                                currentBranch: statusResult.terragonBranch
+                                currentBranch: statusResult.claudeBranch
                             }));
                             
                             // FRANK'S BACKUP: Also save to window for persistence
-                            window.lastDetectedBranch = statusResult.terragonBranch;
+                            window.lastDetectedBranch = statusResult.claudeBranch;
                         }
                         
                         // Update message tracker
@@ -1528,9 +1528,9 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                         
                         // Status-based updates
                         if (statusResult.status === 'starting') {
-                            addLog(`⏳ Terragon is starting up...`, 'info');
+                            addLog(`⏳ Claude is starting up...`, 'info');
                         } else if (statusResult.status === 'checkpointing') {
-                            addLog(`💾 Terragon is creating a checkpoint...`, 'info');
+                            addLog(`💾 Claude is creating a checkpoint...`, 'info');
                         }
                         
                         if (statusResult.completed && statusResult.status === 'completed') {
@@ -1539,18 +1539,18 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             const elapsedMinutes = Math.floor(elapsedTime / 60000);
                             
                             if (pollCount < minPolls) {
-                                addLog(`⚠️ Terragon marked complete but only ${elapsedMinutes} minutes elapsed. Minimum 3 minutes required.`, 'warning');
+                                addLog(`⚠️ Claude marked complete but only ${elapsedMinutes} minutes elapsed. Minimum 3 minutes required.`, 'warning');
                                 addLog(`⏳ Continuing to poll (${pollCount}/${minPolls} minimum attempts)...`, 'info');
                                 setTimeout(() => {
-                                    pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
+                                    pollClaudeForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
                                 }, 5000);
                                 return;
                             }
                             
-                            addLog(`✅ Terragon marked as completed after ${elapsedMinutes} minutes!`, 'success');
+                            addLog(`✅ Claude marked as completed after ${elapsedMinutes} minutes!`, 'success');
                             
                             // FRANK'S REAL FIX: Wait for API sync before trusting completion
-                            addLog(`⏳ Waiting 30s for Terragon API to sync full response...`, 'info');
+                            addLog(`⏳ Waiting 30s for Claude API to sync full response...`, 'info');
                             await new Promise(resolve => setTimeout(resolve, 30000));
                             
                             // FRANK'S ATOMIC VERIFICATION: Get consistent state snapshot
@@ -1562,7 +1562,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ 
-                                        action: 'check-terragon-status',
+                                        action: 'check-claude-status',
                                         threadId: threadId
                                     })
                                 });
@@ -1577,7 +1577,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({ 
-                                            action: 'check-terragon-status',
+                                            action: 'check-claude-status',
                                             threadId: threadId
                                         })
                                     });
@@ -1613,18 +1613,18 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             }
                             
                             if (!verificationPassed) {
-                                addLog(`❌ Terragon verification failed after ${maxVerifyAttempts} attempts`, 'error');
+                                addLog(`❌ Claude verification failed after ${maxVerifyAttempts} attempts`, 'error');
                                 addLog(`Continuing to poll...`, 'info');
                                 setTimeout(() => {
-                                    pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
+                                    pollClaudeForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
                                 }, 5000);
                                 return;
                             }
                             
-                            addLog(`✅ Terragon completion verified after sync!`, 'success');
+                            addLog(`✅ Claude completion verified after sync!`, 'success');
                             
-                            // Wait for Terragon to push changes before testing
-                            addLog(`⏳ Waiting for Terragon to push changes...`, 'info');
+                            // Wait for Claude to push changes before testing
+                            addLog(`⏳ Waiting for Claude to push changes...`, 'info');
                             
                             // Poll for branch push confirmation (check if branch exists on GitHub)
                             const waitForPush = async (branchName, maxAttempts = 24) => {
@@ -1674,7 +1674,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                 return false;
                             };
                             
-                            // Get the branch Terragon is working on
+                            // Get the branch Claude is working on
                             let targetBranch = 'master';
                             try {
                                 const branchResponse = await fetch('/api/branch-tracker', {
@@ -1690,7 +1690,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                     const branchData = await branchResponse.json();
                                     if (branchData.branch) {
                                         targetBranch = branchData.branch;
-                                        addLog(`🔍 Detected Terragon branch: ${targetBranch}`, 'info');
+                                        addLog(`🔍 Detected Claude branch: ${targetBranch}`, 'info');
                                     }
                                 }
                             } catch (e) {
@@ -1732,30 +1732,30 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                             }, 1000);
                             return;
                         } else if (statusResult.completed && statusResult.status === 'error') {
-                            addLog(`❌ Terragon encountered an error in checkpoint ${checkpointNumber}`, 'error');
+                            addLog(`❌ Claude encountered an error in checkpoint ${checkpointNumber}`, 'error');
                             addLog(`📝 Error details: ${statusResult.message}`, 'error');
                             addLog(`🚫 Checkpoint execution failed - stopping`, 'error');
                             setExecuting(false);
                             return;
                         } else if (statusResult.status === 'error') {
-                            addLog(`❌ Terragon encountered an error`, 'error');
+                            addLog(`❌ Claude encountered an error`, 'error');
                             clearInterval(pollInterval);
-                            reject(new Error('Terragon execution failed'));
+                            reject(new Error('Claude execution failed'));
                             return;
                         }
                     } else {
-                        addLog(`⚠️ Could not check Terragon status, assuming still working...`, 'info');
+                        addLog(`⚠️ Could not check Claude status, assuming still working...`, 'info');
                     }
                     
                     // Continue polling if not complete and under max attempts
                     if (pollCount < maxPolls) {
                         setTimeout(() => {
-                            pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
+                            pollClaudeForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
                         }, 5000); // Poll every 5 seconds
                     } else {
                         addLog(`🕐 Max polling time reached (10 minutes).`, 'error');
-                        addLog(`❌ TASK FAILED: Terragon did not complete within 10 minutes.`, 'error');
-                        addLog(`📝 Check thread at: https://www.terragonlabs.com/task/${threadId}`, 'info');
+                        addLog(`❌ TASK FAILED: Claude did not complete within 10 minutes.`, 'error');
+                        addLog(`📝 Check thread at: https://www.claudelabs.com/task/${threadId}`, 'info');
                         
                         // FRANK'S STRICT RULE: Mark checkpoint as failed if no completion signal
                         setState(prev => ({
@@ -1766,10 +1766,10 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                     ...prev.executionStatus[checkpoint.id],
                                     status: 'failed',
                                     endTime: new Date().toISOString(),
-                                    error: 'Terragon did not complete - timeout after 10 minutes',
+                                    error: 'Claude did not complete - timeout after 10 minutes',
                                     logs: [
                                         ...prev.executionStatus[checkpoint.id].logs,
-                                        { message: 'FAILED: No completion signal from Terragon after max polling time' }
+                                        { message: 'FAILED: No completion signal from Claude after max polling time' }
                                     ]
                                 }
                             }
@@ -1782,16 +1782,16 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                 } catch (error) {
                     addLog(`Polling error: ${error.message}`, 'error');
                     
-                    // FRANK'S FIX: Don't give up on fetch errors - Terragon might still be working!
+                    // FRANK'S FIX: Don't give up on fetch errors - Claude might still be working!
                     // Network errors shouldn't trigger premature testing
                     if (pollCount < maxPolls) {
                         addLog(`⚠️ Network error, will retry in 10s (attempt ${pollCount}/${maxPolls})...`, 'warning');
                         setTimeout(() => {
-                            pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
+                            pollClaudeForCompletion(threadId, checkpoint, queue, currentIndex, pollCount + 1, executionThreadId);
                         }, 10000);
                     } else {
                         addLog(`🕐 Max polling time reached after network errors (10 minutes total).`, 'error');
-                        addLog(`❌ TASK FAILED: Cannot verify Terragon completion due to network errors`, 'error');
+                        addLog(`❌ TASK FAILED: Cannot verify Claude completion due to network errors`, 'error');
                         
                         // FRANK'S STRICT RULE: Fail on network errors too
                         setState(prev => ({
@@ -1802,7 +1802,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                     ...prev.executionStatus[checkpoint.id],
                                     status: 'failed',
                                     endTime: new Date().toISOString(),
-                                    error: 'Network errors prevented Terragon status verification',
+                                    error: 'Network errors prevented Claude status verification',
                                     logs: [
                                         ...prev.executionStatus[checkpoint.id].logs,
                                         { message: 'FAILED: Network errors after max polling attempts' }
@@ -2105,7 +2105,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                 }));
                 
                 try {
-                    // Send checkpoint to Terragon via API proxy
+                    // Send checkpoint to Claude via API proxy
                     const execResponse = await fetch('/api/execute', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -2149,19 +2149,19 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                 taskThreadId: threadId,  // Keep task thread ID too
                                 logs: [{ 
                                     message: `Executing in thread: ${executionThreadId}`,
-                                    url: `https://www.terragonlabs.com/task/${executionThreadId}`
+                                    url: `https://www.claudelabs.com/task/${executionThreadId}`
                                 }]
                             }
                         }
                     }));
                     
-                    addLog(`✅ Checkpoint ${checkpointNumber} sent to Terragon execution thread: ${executionThreadId}`, 'success');
-                    addLog(`Monitor at: https://www.terragonlabs.com/task/${executionThreadId}`, 'info');
+                    addLog(`✅ Checkpoint ${checkpointNumber} sent to Claude execution thread: ${executionThreadId}`, 'success');
+                    addLog(`Monitor at: https://www.claudelabs.com/task/${executionThreadId}`, 'info');
                     
                     // FRANK'S REAL POLLING - Pass both thread IDs
-                    addLog(`🔍 Waiting for Terragon to complete checkpoint ${checkpointNumber}...`, 'info');
+                    addLog(`🔍 Waiting for Claude to complete checkpoint ${checkpointNumber}...`, 'info');
                     setTimeout(() => {
-                        pollTerragonForCompletion(threadId, checkpoint, queue, currentIndex, 0, executionThreadId);
+                        pollClaudeForCompletion(threadId, checkpoint, queue, currentIndex, 0, executionThreadId);
                     }, 2000); // Small delay before polling starts
                     
                     return; // Exit here - polling will handle the rest
@@ -2388,7 +2388,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                 }));
                 
                 try {
-                    // Send checkpoint execution message to existing Terragon thread
+                    // Send checkpoint execution message to existing Claude session
                     const checkpointMessage = `# CHECKPOINT ${checkpointNumber}: ${checkpoint.name}
 
 ## Objective
@@ -2405,7 +2405,7 @@ ${checkpoint.passCriteria.map((pc, i) => `✓ ${i + 1}. ${pc.description}`).join
 
 Please execute this checkpoint and report when complete. I will then run tests to verify all pass criteria.`;
 
-                    // Send checkpoint to Terragon via API proxy
+                    // Send checkpoint to Claude via API proxy
                     const execResponse = await fetch('/api/execute', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -2436,15 +2436,15 @@ Please execute this checkpoint and report when complete. I will then run tests t
                                 threadId: state.taskThreadId,
                                 logs: [{ 
                                     message: `Executing in thread: ${state.taskThreadId}`,
-                                    url: `https://www.terragonlabs.com/task/${state.taskThreadId}`
+                                    url: `https://www.claudelabs.com/task/${state.taskThreadId}`
                                 }]
                             }
                         }
                     }));
                     
-                    addLog(`Checkpoint sent to Terragon, waiting for execution...`, 'info');
+                    addLog(`Checkpoint sent to Claude, waiting for execution...`, 'info');
                     
-                    // Wait for Terragon to execute (in real implementation, would poll for completion)
+                    // Wait for Claude to execute (in real implementation, would poll for completion)
                     await new Promise(resolve => setTimeout(resolve, 5000));
                     
                     // Run pass/fail tests
@@ -2566,7 +2566,7 @@ Please execute this checkpoint and report when complete. I will then run tests t
                 
                 addLog(`🔧 Task-LLM-Resolver activated (Attempt ${attemptNumber}/${MAX_ATTEMPTS})`, 'warning');
                 addLog(`📊 Analyzing test failures for checkpoint: ${checkpoint.name}`, 'info');
-                addLog(`📍 Sending fixes to Terragon thread: ${mainThreadId}`, 'info');
+                addLog(`📍 Sending fixes to Claude session: ${mainThreadId}`, 'info');
                 
                 // Analyze failure patterns
                 const failureAnalysis = {
@@ -2616,7 +2616,7 @@ Please execute this checkpoint and report when complete. I will then run tests t
                 addLog(`🔍 Identified patterns: ${failureAnalysis.patterns.join(', ')}`, 'info');
                 addLog(`💡 Proposed fixes: ${failureAnalysis.proposedFixes.length}`, 'info');
                 
-                // Send fix message to Terragon
+                // Send fix message to Claude
                 try {
                     const fixResponse = await fetch('/api/execute', {
                         method: 'POST',
@@ -2629,16 +2629,16 @@ Please execute this checkpoint and report when complete. I will then run tests t
                     });
                     
                     if (fixResponse.ok) {
-                        addLog(`✅ Fix instructions sent to Terragon thread`, 'success');
+                        addLog(`✅ Fix instructions sent to Claude session`, 'success');
                         
-                        // Wait for Terragon to implement fixes
-                        addLog(`⏳ Waiting 60 seconds for Terragon to implement fixes...`, 'info');
+                        // Wait for Claude to implement fixes
+                        addLog(`⏳ Waiting 60 seconds for Claude to implement fixes...`, 'info');
                         await new Promise(resolve => setTimeout(resolve, 60000));
                         
                         // Continue with success - tests will re-run
                         return { success: true };
                     } else {
-                        addLog(`❌ Failed to send fix instructions to Terragon`, 'error');
+                        addLog(`❌ Failed to send fix instructions to Claude`, 'error');
                         return { success: false, escalate: attemptNumber >= MAX_ATTEMPTS };
                     }
                 } catch (error) {
@@ -2649,7 +2649,7 @@ Please execute this checkpoint and report when complete. I will then run tests t
             
             // Helper to build resolver message
             const buildResolverMessage = (failureAnalysis, attemptNumber) => {
-                // Build fix message for Terragon
+                // Build fix message for Claude
                 const fixMessage = `# TASK-LLM-RESOLVER FIX ATTEMPT ${attemptNumber}
 
 ## Test Failures Analysis
@@ -2757,7 +2757,7 @@ After completing these fixes, I will re-run the tests automatically.`;
             // FRANK'S CONTEXTLESS TEST EXECUTION - NEW TERRAGON INSTANCE FOR EACH TEST
             const executeContextlessTest = async (criteria, checkpoint, mainThreadId) => {
                 addLog(`🆕 CONTEXTLESS TEST: ${criteria.description}`, 'info');
-                addLog(`Creating fresh Terragon instance for unbiased testing...`, 'info');
+                addLog(`Creating fresh Claude instance for unbiased testing...`, 'info');
                 
                 // FRANK'S DEBUG: Log all thread IDs
                 console.log('Thread ID debug:');
@@ -2766,16 +2766,16 @@ After completing these fixes, I will re-run the tests automatically.`;
                 console.log(`  state.sessionId: ${state.sessionId}`);
                 
                 try {
-                    // Create NEW Terragon instance for contextless testing
+                    // Create NEW Claude instance for contextless testing
                     // Detect branch for testing using branch tracker
                     let targetBranch = 'master';
                     
-                    // FRANK'S SIMPLE FIX: Just check branch tracker - Terragon is explicit
+                    // FRANK'S SIMPLE FIX: Just check branch tracker - Claude is explicit
                     console.log(`Branch detection for thread: ${mainThreadId}`);
                     console.log(`Test criteria: "${criteria.description}"`);
                     
                     try {
-                        // FRANK'S REAL FIX: Use the ORIGINAL Terragon thread ID, not test thread
+                        // FRANK'S REAL FIX: Use the ORIGINAL Claude session ID, not test thread
                         const originalThreadId = state.taskThreadId || mainThreadId;
                         console.log(`Looking up branch for original thread: ${originalThreadId}`);
                         
@@ -2923,7 +2923,7 @@ After completing these fixes, I will re-run the tests automatically.`;
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ 
-                                action: 'check-terragon-status',
+                                action: 'check-claude-status',
                                 threadId: testThreadId
                             })
                         });
@@ -2935,8 +2935,8 @@ After completing these fixes, I will re-run the tests automatically.`;
                                 addLog(`✅ Test instance ${testThreadId} completed!`, 'success');
                                 
                                 // FRANK'S FIX: RED TEAM found the real bug - API sync delay
-                                // Terragon UI updates before API syncs the full response
-                                addLog(`⏳ Waiting 30s for Terragon API to sync full response...`, 'info');
+                                // Claude UI updates before API syncs the full response
+                                addLog(`⏳ Waiting 30s for Claude API to sync full response...`, 'info');
                                 await new Promise(resolve => setTimeout(resolve, 30000));
                                 
                                 // Re-fetch after sync delay to get complete response
@@ -2944,7 +2944,7 @@ After completing these fixes, I will re-run the tests automatically.`;
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ 
-                                        action: 'check-terragon-status',
+                                        action: 'check-claude-status',
                                         threadId: testThreadId
                                     })
                                 });
@@ -2958,7 +2958,7 @@ After completing these fixes, I will re-run the tests automatically.`;
                                 // FRANK'S DEBUG: Log what we're getting
                                 console.log('Test status result after sync:', statusResult);
                                 
-                                // Parse the actual test result from Terragon response
+                                // Parse the actual test result from Claude response
                                 // Look for RESULT: PASS/FAIL pattern in the response
                                 const testContent = statusResult.lastResponse || statusResult.message || '';
                                 
@@ -2971,7 +2971,7 @@ After completing these fixes, I will re-run the tests automatically.`;
                                 let result = 'UNKNOWN';
                                 let evidence = 'No evidence found';
                                 
-                                // Extract RESULT: and EVIDENCE: from Terragon response
+                                // Extract RESULT: and EVIDENCE: from Claude response
                                 const resultMatch = testContent.match(/RESULT:\s*(PASS|FAIL)/i);
                                 const evidenceMatch = testContent.match(/EVIDENCE:\s*([^\n]+)/i);
                                 
@@ -3191,7 +3191,7 @@ After completing these fixes, I will re-run the tests automatically.`;
                             name: state.task.name,
                             objective: state.task.objective,
                             status: 'Awaiting Review',
-                            branch: `terragon/${state.task.name.toLowerCase().replace(/\s+/g, '-')}`,
+                            branch: `claude/${state.task.name.toLowerCase().replace(/\s+/g, '-')}`,
                             threadId: state.taskThreadId,
                             acceptanceCriteria: state.task.acceptanceCriteria,
                             completedAt: new Date().toISOString(),
@@ -3265,7 +3265,7 @@ After completing these fixes, I will re-run the tests automatically.`;
                 }));
                 
                 try {
-                    // Execute via Terragon
+                    // Execute via Claude
                     const execResponse = await fetch(EXECUTE_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -3280,10 +3280,10 @@ After completing these fixes, I will re-run the tests automatically.`;
                     const execData = await execResponse.json();
                     if (!execResponse.ok) throw new Error(execData.error);
                     
-                    const threadUrl = `https://www.terragonlabs.com/task/${execData.threadId}`;
+                    const threadUrl = `https://www.claudelabs.com/task/${execData.threadId}`;
                     addLog(`${checkpoint.name}: Created in thread ${execData.threadId}`, 'success');
                     
-                    // Update status to show execution was sent to Terragon
+                    // Update status to show execution was sent to Claude
                     setState(prev => ({
                         ...prev,
                         executionStatus: {
@@ -3292,7 +3292,7 @@ After completing these fixes, I will re-run the tests automatically.`;
                                 status: 'sent',
                                 threadId: execData.threadId,
                                 logs: [{ 
-                                    message: `Executing in Terragon thread: ${execData.threadId}`,
+                                    message: `Executing in Claude session: ${execData.threadId}`,
                                     url: threadUrl
                                 }]
                             }
@@ -3470,8 +3470,8 @@ ${task.acceptanceCriteria ? task.acceptanceCriteria.map(criteria => `- ${criteri
 ### Branch
 \`${task.branch}\`
 
-### Terragon Thread
-https://www.terragonlabs.com/task/${task.threadId}
+### Execution Session
+Claude Session ID: ${task.threadId}
 
 ---
 🤖 This PR was automatically created by Uncle Frank's Task Review System`;
@@ -3617,18 +3617,18 @@ https://www.terragonlabs.com/task/${task.threadId}
                                     <p className="text-gray-400 mb-2">{state.task.objective}</p>
                                     <p className="text-sm">{state.task.acceptanceCriteria.length} acceptance criteria</p>
                                     
-                                    {/* Task-level Terragon Chat */}
+                                    {/* Task-level Claude Execution */}
                                     {state.taskThreadId && (
                                         <div className="mt-4 pt-4 border-t border-gray-700">
                                             <div className="flex items-center justify-between mb-2">
-                                                <span className="text-sm font-semibold">Terragon Thread</span>
+                                                <span className="text-sm font-semibold">Claude Session</span>
                                                 <span className="text-xs text-gray-500">{state.taskThreadId}</span>
                                             </div>
                                             <button 
-                                                onClick={() => window.open(`https://www.terragonlabs.com/task/${state.taskThreadId}`, '_blank')}
+                                                onClick={() => addLog(`Claude session: ${state.taskThreadId}`, 'info')}
                                                 className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm transition"
                                             >
-                                                Open in Terragon →
+                                                View Claude Logs →
                                             </button>
                                         </div>
                                     )}
@@ -3669,7 +3669,7 @@ https://www.terragonlabs.com/task/${task.threadId}
                                                                         target="_blank" 
                                                                         className="text-blue-400 hover:underline ml-2"
                                                                     >
-                                                                        Open in Terragon →
+                                                                        Open in Claude →
                                                                     </a>
                                                                 )}
                                                             </div>

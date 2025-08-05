@@ -1,7 +1,7 @@
-// Vercel Edge Function for Terragon Chat
+// Vercel Edge Function for Claude Chat
 
 const TERRAGON_AUTH = process.env.TERRAGON_AUTH || 'JTgr3pSvWUN2bNmaO66GnTGo2wrk1zFf.fW4Qo8gvM1lTf%2Fis9Ss%2FJOdlSKJrnLR0CapMdm%2Bcy0U%3D';
-const TERRAGON_BASE_URL = 'https://www.terragonlabs.com';
+const TERRAGON_BASE_URL = 'https://www.claudelabs.com';
 
 export default async function handler(req, res) {
   // Enable CORS

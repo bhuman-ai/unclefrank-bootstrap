@@ -132,7 +132,37 @@ Start with Checkpoint 1 now. Create real files!`
         });
       }
 
+      case 'send-message': {
+        // Handle checkpoint execution messages
+        const { threadId, message } = payload;
+        
+        if (!threadId) {
+          return res.status(400).json({ error: 'Thread ID required' });
+        }
+        
+        // Send message to Claude executor
+        const executeResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${threadId}/execute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message })
+        });
+        
+        if (!executeResponse.ok) {
+          throw new Error('Failed to send message to Claude');
+        }
+        
+        const result = await executeResponse.json();
+        
+        return res.status(200).json({
+          success: true,
+          threadId: threadId,
+          response: result.response,
+          status: result.status
+        });
+      }
+
       case 'check-status':
+      case 'check-claude-status':
       case 'check-terragon-status': {
         const { threadId } = payload;
         const sessionData = sessionManager.get(threadId);
@@ -173,10 +203,13 @@ Start with Checkpoint 1 now. Create real files!`
           checkpointsCompleted: countCompletedCheckpoints(messages),
           totalCheckpoints: sessionData.checkpoints.length,
           branch: session.branch,
+          terragonBranch: session.branch, // UI compatibility
+          claudeBranch: session.branch,
           gitStatus: session.gitStatus,
           filesCreated: filesData.files?.length || 0,
           modifiedFiles: filesData.modified || [],
           githubUrl: sessionData.githubUrl,
+          allMessages: messages,
           executor: 'claude-github'
         });
       }

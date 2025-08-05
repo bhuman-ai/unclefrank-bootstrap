@@ -31,7 +31,7 @@ npm run dev init
 1. Request → Classification → Validation
 2. Task decomposition into checkpoints
 3. Human approval gate
-4. Checkpoint execution via Terragon
+4. Checkpoint execution via Claude
 5. Pass/fail testing
 6. Merge to production state
 
@@ -39,7 +39,7 @@ npm run dev init
 
 - **Meta-Agent**: Request classification and task decomposition
 - **Document Manager**: Project.md, Task.md, Checkpoint.md handling
-- **Terragon Proxy**: Integration with Terragon execution engine
+- **Claude Proxy**: Integration with Claude execution engine
 - **Principle Enforcer**: Sacred document validation
 - **Simple CLI**: Human approval gates
 
@@ -59,7 +59,7 @@ Use the bootstrap to add its first enhancement:
 npm run dev task "Add validation system for cross-document coherence"
 ```
 
-This will create the task, decompose it into checkpoints, and execute through Terragon.
+This will create the task, decompose it into checkpoints, and execute through Claude.
 
 ## Philosophy
 

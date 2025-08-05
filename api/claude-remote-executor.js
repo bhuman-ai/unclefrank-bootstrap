@@ -1,5 +1,5 @@
 // FRANK'S CLAUDE-CODE-REMOTE EXECUTOR
-// Replaces Terragon with Claude-Code-Remote for task execution
+// Replaces Claude with Claude-Code-Remote for task execution
 
 const CLAUDE_REMOTE_URL = process.env.CLAUDE_REMOTE_URL || 'http://207.148.12.169:3000';
 const CLAUDE_API_KEY = process.env.ANTHROPIC_API_KEY;

@@ -33,7 +33,7 @@ const rateLimiter = {
 
 class TaskOrchestrator {
   constructor() {
-    this.baseUrl = 'https://www.terragonlabs.com';
+    this.baseUrl = 'https://www.claudelabs.com';
     this.deploymentId = 'dpl_EcYagrYkth26MSww72T3G2EZGiUH';
     this.anthropic = new Anthropic({ apiKey: CLAUDE_API_KEY });
     this.startTime = Date.now();
@@ -86,7 +86,7 @@ class TaskOrchestrator {
     }, 60000); // Run every minute
   }
 
-  // Register a new Terragon instance to monitor
+  // Register a new Claude instance to monitor
   registerInstance(instanceId, metadata) {
     // FRANK'S LIMIT: Prevent instance explosion
     if (this.instances.size >= this.MAX_INSTANCES) {
@@ -185,7 +185,7 @@ class TaskOrchestrator {
     }
   }
 
-  // Extract messages from Terragon response
+  // Extract messages from Claude response
   extractMessages(content) {
     const messages = [];
     const messageMatches = [...content.matchAll(/"text":"((?:[^"\\]|\\.)*)"/g)];
@@ -200,7 +200,7 @@ class TaskOrchestrator {
     return messages;
   }
 
-  // Extract status from Terragon response
+  // Extract status from Claude response
   extractStatus(content) {
     const statusMatch = content.match(/"status":"([^"]+)"/);
     return statusMatch ? statusMatch[1] : 'unknown';
@@ -265,7 +265,7 @@ class TaskOrchestrator {
         max_tokens: 1000, // FRANK'S LIMIT: Smaller responses
         messages: [{
           role: 'user',
-          content: `You are monitoring Terragon instance ${instanceId}. Type: ${instance.type}, Status: ${instance.status}, Messages: ${instance.messages.length}, Already decomposed: ${instance.decomposition ? 'yes' : 'no'}.
+          content: `You are monitoring Claude instance ${instanceId}. Type: ${instance.type}, Status: ${instance.status}, Messages: ${instance.messages.length}, Already decomposed: ${instance.decomposition ? 'yes' : 'no'}.
 
 ${instance.type === 'main-task' && !instance.decomposition ? `This is a main task that needs decomposition. The task has ${instance.messages.length} messages. If there are at least 2 messages (user request + initial response), decompose it into checkpoints.` : 'This instance does not need decomposition.'}
 
@@ -416,17 +416,17 @@ Return ONLY JSON: {"action":"[decompose_task or wait]","targetInstance":"${insta
     }
   }
 
-  // Send message to a Terragon instance
+  // Send message to a Claude instance
   async sendMessage(instanceId, message) {
     console.log(`[Orchestrator] 📮 SENDING MESSAGE to ${instanceId}`);
     console.log(`[Orchestrator] 📝 Message preview: "${message.substring(0, 100)}..."`);
     
     try {
-      // Use the working send-terragon-message endpoint
+      // Use the working send-claude-message endpoint
       const apiBase = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://unclefrank-bootstrap-ellm56p3u-bhuman.vercel.app';
       
       const response = await fetch(
-        `${apiBase}/api/send-terragon-message`,
+        `${apiBase}/api/send-claude-message`,
         {
           method: 'POST',
           headers: {
@@ -448,7 +448,7 @@ Return ONLY JSON: {"action":"[decompose_task or wait]","targetInstance":"${insta
         console.error(`[Orchestrator] ❌ Failed to send message:`, result.message || 'Unknown error');
         console.error(`[Orchestrator] Debug:`, result.debug);
       } else {
-        console.log(`[Orchestrator] ✅ Message sent successfully via send-terragon-message`);
+        console.log(`[Orchestrator] ✅ Message sent successfully via send-claude-message`);
       }
       
       return success;
@@ -458,7 +458,7 @@ Return ONLY JSON: {"action":"[decompose_task or wait]","targetInstance":"${insta
     }
   }
 
-  // Create a new Terragon instance
+  // Create a new Claude instance
   async createInstance(details) {
     // FRANK'S GUARD: Check instance limit
     if (this.instances.size >= this.MAX_INSTANCES) {
@@ -484,7 +484,7 @@ Return ONLY JSON: {"action":"[decompose_task or wait]","targetInstance":"${insta
     }];
 
     const response = await fetch(
-      'https://www.terragonlabs.com/dashboard',
+      'https://www.claudelabs.com/dashboard',
       {
         method: 'POST',
         headers: {
@@ -492,8 +492,8 @@ Return ONLY JSON: {"action":"[decompose_task or wait]","targetInstance":"${insta
           'content-type': 'text/plain;charset=UTF-8',
           'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
           'next-action': '7f7cba8a674421dfd9e9da7470ee4d79875a158bc9',
-          'origin': 'https://www.terragonlabs.com',
-          'referer': 'https://www.terragonlabs.com/dashboard',
+          'origin': 'https://www.claudelabs.com',
+          'referer': 'https://www.claudelabs.com/dashboard',
           'user-agent': 'Mozilla/5.0',
           'x-deployment-id': 'dpl_3hWzkM7LiymSczFN21Z8chju84CV'
         },
@@ -693,7 +693,7 @@ Now create checkpoints for the given task. Return only JSON:`
         };
       }
       
-      // Send decomposition back to Terragon instance
+      // Send decomposition back to Claude instance
       const decompositionMessage = `# TASK DECOMPOSITION COMPLETE
 
 ## Task Summary
@@ -722,7 +722,7 @@ ${cp.passCriteria.map(pc => `✓ ${pc.description}`).join('\n')}
 
 Ready to begin execution. Will start with checkpoint: ${decomposition.checkpoints[0]?.name || 'Unknown'}`;
 
-      console.log(`[Orchestrator] 📤 SENDING decomposition to Terragon instance ${instanceId}`);
+      console.log(`[Orchestrator] 📤 SENDING decomposition to Claude instance ${instanceId}`);
       await this.sendMessage(instanceId, decompositionMessage);
       
       // Store decomposition in instance metadata

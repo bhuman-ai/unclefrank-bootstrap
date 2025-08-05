@@ -96,7 +96,7 @@ class DraftManager {
     
     console.log(`[DraftManager] Starting validation for draft ${draftId}`);
     
-    // In a real implementation, this would create a Terragon task for validation
+    // In a real implementation, this would create a Claude task for validation
     // For now, we'll simulate validation checks
     const validationResults = await this.runValidationChecks(draft);
     
@@ -113,7 +113,7 @@ class DraftManager {
     return validationResults;
   }
 
-  // Run validation checks (would connect to Terragon in production)
+  // Run validation checks (would connect to Claude in production)
   async runValidationChecks(draft) {
     console.log(`[DraftManager] Running validation checks...`);
     
@@ -164,7 +164,7 @@ class DraftManager {
     });
     
     // Extract tasks from draft content
-    // In production, this would parse the draft and create Terragon tasks
+    // In production, this would parse the draft and create Claude tasks
     const taskIds = [`task_${Date.now()}_1`]; // Simulated task ID
     
     draft.taskIds = taskIds;

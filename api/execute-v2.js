@@ -1,5 +1,5 @@
-// FRANK'S HYBRID EXECUTOR - Supports both Terragon and Claude-Remote
-// Gradually migrate from Terragon to Claude-Remote
+// FRANK'S HYBRID EXECUTOR - Supports both Claude and Claude-Remote
+// Gradually migrate from Claude to Claude-Remote
 
 export default async function handler(req, res) {
   // Enable CORS
@@ -16,13 +16,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { action, payload, executor = 'terragon' } = req.body;
+  const { action, payload, executor = 'claude' } = req.body;
 
   // Route to appropriate executor
   if (executor === 'claude-remote') {
     return handleClaudeRemote(action, payload, res);
   } else {
-    return handleTerragon(action, payload, res);
+    return handleClaude(action, payload, res);
   }
 }
 
@@ -85,7 +85,7 @@ async function handleClaudeRemote(action, payload, res) {
       }
 
       case 'check-status':
-      case 'check-terragon-status': {
+      case 'check-claude-status': {
         const { threadId } = payload;
         
         const response = await fetch(`${CLAUDE_REMOTE_URL}/api/claude-remote-executor`, {
@@ -141,26 +141,26 @@ async function handleClaudeRemote(action, payload, res) {
       }
 
       default:
-        // Fall back to Terragon for unsupported actions
-        return handleTerragon(action, payload, res);
+        // Fall back to Claude for unsupported actions
+        return handleClaude(action, payload, res);
     }
   } catch (error) {
     console.error('[Claude-Remote] Error:', error);
-    // Fall back to Terragon on error
-    console.log('[Claude-Remote] Falling back to Terragon due to error');
-    return handleTerragon(action, payload, res);
+    // Fall back to Claude on error
+    console.log('[Claude-Remote] Falling back to Claude due to error');
+    return handleClaude(action, payload, res);
   }
 }
 
-async function handleTerragon(action, payload, res) {
-  // Existing Terragon implementation
+async function handleClaude(action, payload, res) {
+  // Existing Claude implementation
   // Copy the current execute.js implementation here
   
   // For brevity, returning a placeholder
   return res.status(200).json({
-    message: 'Terragon executor - implement existing logic here',
+    message: 'Claude executor - implement existing logic here',
     action,
-    executor: 'terragon'
+    executor: 'claude'
   });
 }
 
@@ -187,6 +187,6 @@ export function selectExecutor(taskType, config = {}) {
     return 'claude-remote';
   }
   
-  // Default to Terragon
-  return 'terragon';
+  // Default to Claude
+  return 'claude';
 }

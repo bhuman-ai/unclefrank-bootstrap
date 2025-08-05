@@ -51,11 +51,11 @@ export default async function handler(req, res) {
           // Fetch latest branches from remote
           await execAsync('git fetch origin');
           
-          // Look for branches created by Terragon
-          const { stdout: branches } = await execAsync('git branch -r | grep terragon');
+          // Look for branches created by Claude
+          const { stdout: branches } = await execAsync('git branch -r | grep claude');
           const branchList = branches.split('\n').filter(b => b.trim());
           
-          // Find the most recent Terragon branch
+          // Find the most recent Claude branch
           let latestBranch = null;
           let latestTime = 0;
           
@@ -77,8 +77,8 @@ export default async function handler(req, res) {
           
           return res.status(200).json({
             currentBranch: currentBranch.trim(),
-            terragonBranches: branchList.map(b => b.trim().replace('origin/', '')),
-            latestTerragonBranch: latestBranch,
+            claudeBranches: branchList.map(b => b.trim().replace('origin/', '')),
+            latestClaudeBranch: latestBranch,
             timestamp: new Date().toISOString()
           });
           

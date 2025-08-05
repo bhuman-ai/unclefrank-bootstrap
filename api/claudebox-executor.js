@@ -1,5 +1,5 @@
 // FRANK'S CLAUDEBOX EXECUTOR - Docker-based Claude execution
-// Replaces both Terragon and manual VM setup
+// Replaces both Claude and manual VM setup
 
 const CLAUDEBOX_URL = process.env.CLAUDEBOX_URL || 'http://localhost:3000';
 
@@ -23,7 +23,7 @@ export default async function handler(req, res) {
   try {
     switch (action) {
       case 'create-task': {
-        // Extract task from Terragon-style payload
+        // Extract task from Claude-style payload
         const taskData = payload[0];
         const taskMessage = taskData.message.parts[0].text;
         

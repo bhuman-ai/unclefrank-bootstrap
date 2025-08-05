@@ -39,13 +39,13 @@ const branchTracker = {
     const branches = this.loadBranches();
     
     // FRANK'S FALLBACK: Try to extract branch from thread ID if not found
-    // Some Terragon threads include branch info in their IDs
+    // Some Claude threads include branch info in their IDs
     if (!branches.has(threadId) && threadId) {
       console.log(`No branch found for ${threadId}, checking for patterns...`);
       
       // Check if thread ID contains branch pattern
-      // e.g., "terragon/setup-base-document-manager-hy0ltw" might be in the ID
-      const branchPattern = /terragon\/[a-z0-9-]+/i;
+      // e.g., "claude/setup-base-document-manager-hy0ltw" might be in the ID
+      const branchPattern = /claude\/[a-z0-9-]+/i;
       const match = threadId.match(branchPattern);
       if (match) {
         console.log(`Extracted branch from thread ID: ${match[0]}`);
@@ -61,12 +61,12 @@ const branchTracker = {
     return result;
   },
   
-  // Extract branch from Terragon's messages
+  // Extract branch from Claude's messages
   extractBranchFromMessage(message) {
-    // FRANK'S SIMPLIFIED APPROACH - Terragon is explicit!
-    // Just look for terragon/ branches
-    const terragonBranchPattern = /terragon\/[\w-]+/;
-    const match = message.match(terragonBranchPattern);
+    // FRANK'S SIMPLIFIED APPROACH - Claude is explicit!
+    // Just look for claude/ branches
+    const claudeBranchPattern = /claude\/[\w-]+/;
+    const match = message.match(claudeBranchPattern);
     
     if (match) {
       return match[0];
