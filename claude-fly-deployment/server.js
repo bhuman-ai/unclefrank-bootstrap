@@ -279,14 +279,30 @@ async function executeDirectly(session, message) {
     // Parse the message to understand what needs to be done
     // This is a simplified version - in production, you'd use an LLM to parse
     
-    if (message.includes('Create') && message.includes('file')) {
-        // Extract filename and content from message
-        const filenameMatch = message.match(/(?:file|called|named)\s+([^\s,]+)/i);
-        const filename = filenameMatch ? filenameMatch[1] : 'example.js';
+    if (message.toLowerCase().includes('create') && message.toLowerCase().includes('file')) {
+        // Better filename extraction - look for quoted strings or filenames with extensions
+        let filename = 'example.js';
+        
+        // Try to extract filename from various patterns
+        const patterns = [
+            /"([^"]+\.\w+)"/,                    // "filename.ext" in quotes
+            /'([^']+\.\w+)'/,                    // 'filename.ext' in quotes
+            /(?:file|called|named)\s+([^\s,]+\.\w+)/i,  // file named something.ext
+            /([a-zA-Z0-9_-]+\.\w+)/              // any filename.ext pattern
+        ];
+        
+        for (const pattern of patterns) {
+            const match = message.match(pattern);
+            if (match && match[1]) {
+                filename = match[1];
+                break;
+            }
+        }
         
         // Create a simple file
         const filePath = path.join(repoPath, filename);
         const content = `// Created by Uncle Frank's executor
+// Task: ${message}
 console.log("Hello from ${filename}");
 `;
         await fs.writeFile(filePath, content);

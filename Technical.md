@@ -1,5 +1,11 @@
 # Technical.md — System Architecture & Constraints
 
+## Claude Code CLI Integration
+- **Required Flag**: `--dangerously-skip-permissions` is MANDATORY for Claude Code CLI execution
+- **Rationale**: Claude's default permission model prevents file system operations in containerized environments
+- **Security Note**: This flag is necessary for autonomous file creation and git operations
+- **Implementation**: All Claude executions must include this flag: `claude --dangerously-skip-permissions chat`
+
 ## Performance Constraints
 - **Page Load Time**: Maximum 3 seconds initial load
 - **API Response Time**: Maximum 500ms for standard requests
