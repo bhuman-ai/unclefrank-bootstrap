@@ -122,7 +122,7 @@
             
             if (!orchestratorData) return null;
             
-            const activeCount = orchestratorData.instances.filter(i => i.status === 'active').length;
+            const activeCount = orchestratorData.instances?.filter(i => i.status === 'active').length || 0;
             
             const isThinking = orchestratorData.instances?.some(i => 
                 i.status === 'active' && (Date.now() - new Date(i.lastActivity).getTime() < 10000)
