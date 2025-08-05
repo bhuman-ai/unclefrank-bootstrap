@@ -1200,10 +1200,8 @@ Please help me implement this task.`;
                     const data = await response.json();
                     if (response.ok && data.threadId) {
                         const threadId = data.threadId;
-                        const threadUrl = `https://www.claudelabs.com/task/${threadId}`;
-                        
                         addLog(`✅ Task created in Claude: ${threadId}`, 'success');
-                        addLog(`Monitor at: ${threadUrl}`, 'info');
+                        addLog(`📍 Claude session ID: ${threadId}`, 'info');
                         
                         // Register with orchestrator - it will decompose automatically
                         await registerWithOrchestrator(threadId, {
@@ -1243,8 +1241,7 @@ Please help me implement this task.`;
                             taskThreadId: threadId
                         }));
                         
-                        // Open the task in a new tab
-                        window.open(threadUrl, '_blank');
+                        // Task is running in Claude - no new tabs needed!
                         
                     } else {
                         addLog(data.error || 'Failed to create task', 'error');
@@ -1327,10 +1324,8 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     }
                     
                     const threadId = result.threadId;
-                    const threadUrl = `https://www.claudelabs.com/task/${threadId}`;
-                    
                     addLog(`✅ Checkpoint 1 sent to Claude session: ${threadId}`, 'success');
-                    addLog(`Monitor at: ${threadUrl}`, 'info');
+                    addLog(`📍 Session ID: ${threadId}`, 'info');
                     
                     // Register main task with orchestrator
                     await registerWithOrchestrator(threadId, {
@@ -1755,7 +1750,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     } else {
                         addLog(`🕐 Max polling time reached (10 minutes).`, 'error');
                         addLog(`❌ TASK FAILED: Claude did not complete within 10 minutes.`, 'error');
-                        addLog(`📝 Check thread at: https://www.claudelabs.com/task/${threadId}`, 'info');
+                        addLog(`📝 Session ID: ${threadId}`, 'info');
                         
                         // FRANK'S STRICT RULE: Mark checkpoint as failed if no completion signal
                         setState(prev => ({
@@ -2149,14 +2144,14 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                                 taskThreadId: threadId,  // Keep task thread ID too
                                 logs: [{ 
                                     message: `Executing in thread: ${executionThreadId}`,
-                                    url: `https://www.claudelabs.com/task/${executionThreadId}`
+                                    message: `Session: ${executionThreadId}`
                                 }]
                             }
                         }
                     }));
                     
                     addLog(`✅ Checkpoint ${checkpointNumber} sent to Claude execution thread: ${executionThreadId}`, 'success');
-                    addLog(`Monitor at: https://www.claudelabs.com/task/${executionThreadId}`, 'info');
+                    addLog(`📍 Session: ${executionThreadId}`, 'info');
                     
                     // FRANK'S REAL POLLING - Pass both thread IDs
                     addLog(`🔍 Waiting for Claude to complete checkpoint ${checkpointNumber}...`, 'info');
@@ -2436,7 +2431,7 @@ Please execute this checkpoint and report when complete. I will then run tests t
                                 threadId: state.taskThreadId,
                                 logs: [{ 
                                     message: `Executing in thread: ${state.taskThreadId}`,
-                                    url: `https://www.claudelabs.com/task/${state.taskThreadId}`
+                                    message: `Session: ${state.taskThreadId}`
                                 }]
                             }
                         }
@@ -3280,8 +3275,7 @@ After completing these fixes, I will re-run the tests automatically.`;
                     const execData = await execResponse.json();
                     if (!execResponse.ok) throw new Error(execData.error);
                     
-                    const threadUrl = `https://www.claudelabs.com/task/${execData.threadId}`;
-                    addLog(`${checkpoint.name}: Created in thread ${execData.threadId}`, 'success');
+                    addLog(`${checkpoint.name}: Created in session ${execData.threadId}`, 'success');
                     
                     // Update status to show execution was sent to Claude
                     setState(prev => ({
