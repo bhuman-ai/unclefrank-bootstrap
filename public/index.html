@@ -1016,6 +1016,10 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
             const [executing, setExecuting] = useState(false);
             const [diffViewerOpen, setDiffViewerOpen] = useState(false);
             const [selectedTask, setSelectedTask] = useState(null);
+            const [sessionViewerOpen, setSessionViewerOpen] = useState(false);
+            const [selectedSessionId, setSelectedSessionId] = useState(null);
+            const [sessionMessages, setSessionMessages] = useState([]);
+            const [loadingSession, setLoadingSession] = useState(false);
             const executionInterval = useRef(null);
 
             const API_URL = '/api/task';
@@ -1110,15 +1114,42 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
             };
 
             // Add log entry
-            const addLog = (message, level = 'info') => {
+            const addLog = (message, level = 'info', sessionId = null) => {
                 setState(prev => ({
                     ...prev,
                     logs: [...prev.logs, {
                         timestamp: new Date().toLocaleTimeString(),
                         message,
-                        level
+                        level,
+                        sessionId
                     }]
                 }));
+            };
+
+            // Fetch Claude session messages
+            const fetchSessionMessages = async (sessionId) => {
+                setLoadingSession(true);
+                setSessionMessages([]);
+                try {
+                    const response = await fetch(`/api/sessions/${sessionId}/messages`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        setSessionMessages(data.messages || []);
+                    } else {
+                        addLog(`Failed to fetch messages for session ${sessionId}`, 'error');
+                    }
+                } catch (error) {
+                    addLog(`Error fetching session messages: ${error.message}`, 'error');
+                } finally {
+                    setLoadingSession(false);
+                }
+            };
+
+            // Open session viewer
+            const openSessionViewer = (sessionId) => {
+                setSelectedSessionId(sessionId);
+                setSessionViewerOpen(true);
+                fetchSessionMessages(sessionId);
             };
 
             // Classify request
@@ -1200,8 +1231,8 @@ Please help me implement this task.`;
                     const data = await response.json();
                     if (response.ok && data.threadId) {
                         const threadId = data.threadId;
-                        addLog(`✅ Task created in Claude: ${threadId}`, 'success');
-                        addLog(`📍 Claude session ID: ${threadId}`, 'info');
+                        addLog(`✅ Task created in Claude: ${threadId}`, 'success', threadId);
+                        addLog(`📍 Claude session ID: ${threadId}`, 'info', threadId);
                         
                         // Register with orchestrator - it will decompose automatically
                         await registerWithOrchestrator(threadId, {
@@ -1324,8 +1355,8 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     }
                     
                     const threadId = result.threadId;
-                    addLog(`✅ Checkpoint 1 sent to Claude session: ${threadId}`, 'success');
-                    addLog(`📍 Session ID: ${threadId}`, 'info');
+                    addLog(`✅ Checkpoint 1 sent to Claude session: ${threadId}`, 'success', threadId);
+                    addLog(`📍 Session ID: ${threadId}`, 'info', threadId);
                     
                     // Register main task with orchestrator
                     await registerWithOrchestrator(threadId, {
@@ -1750,7 +1781,7 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                     } else {
                         addLog(`🕐 Max polling time reached (10 minutes).`, 'error');
                         addLog(`❌ TASK FAILED: Claude did not complete within 10 minutes.`, 'error');
-                        addLog(`📝 Session ID: ${threadId}`, 'info');
+                        addLog(`📝 Session ID: ${threadId}`, 'info', threadId);
                         
                         // FRANK'S STRICT RULE: Mark checkpoint as failed if no completion signal
                         setState(prev => ({
@@ -2150,8 +2181,8 @@ SACRED FLOW: This is checkpoint 1 of ${state.checkpoints.length}. Each checkpoin
                         }
                     }));
                     
-                    addLog(`✅ Checkpoint ${checkpointNumber} sent to Claude execution thread: ${executionThreadId}`, 'success');
-                    addLog(`📍 Session: ${executionThreadId}`, 'info');
+                    addLog(`✅ Checkpoint ${checkpointNumber} sent to Claude execution thread: ${executionThreadId}`, 'success', executionThreadId);
+                    addLog(`📍 Session: ${executionThreadId}`, 'info', executionThreadId);
                     
                     // FRANK'S REAL POLLING - Pass both thread IDs
                     addLog(`🔍 Waiting for Claude to complete checkpoint ${checkpointNumber}...`, 'info');
@@ -3687,6 +3718,14 @@ Claude Session ID: ${task.threadId}
                                             'text-gray-300'
                                         }`}>
                                             <span className="text-gray-500">[{log.timestamp}]</span> {log.message}
+                                            {log.sessionId && (
+                                                <button 
+                                                    onClick={() => openSessionViewer(log.sessionId)}
+                                                    className="ml-2 text-blue-400 hover:text-blue-300 underline text-xs"
+                                                >
+                                                    View Session
+                                                </button>
+                                            )}
                                         </div>
                                     ))}
                                     {state.logs.length === 0 && (
@@ -3706,6 +3745,73 @@ Claude Session ID: ${task.threadId}
                     
                     {/* Orchestrator Status */}
                     <OrchestratorStatus />
+                    
+                    {/* Session Viewer Modal */}
+                    {sessionViewerOpen && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                            <div className="bg-gray-900 rounded-lg p-6 max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-semibold">
+                                        Claude Session: {selectedSessionId}
+                                    </h3>
+                                    <button 
+                                        onClick={() => setSessionViewerOpen(false)}
+                                        className="text-gray-400 hover:text-white"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                                
+                                {loadingSession ? (
+                                    <div className="text-center py-4">
+                                        <div className="animate-spin h-8 w-8 border-b-2 border-white mx-auto"></div>
+                                        <p className="text-gray-400 mt-2">Loading session messages...</p>
+                                    </div>
+                                ) : (
+                                    <div className="overflow-y-auto flex-1 bg-gray-800 rounded p-4">
+                                        {sessionMessages.length === 0 ? (
+                                            <p className="text-gray-400">No messages found in this session.</p>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {sessionMessages.map((msg, idx) => (
+                                                    <div key={idx} className="border-b border-gray-700 pb-4">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <span className={`px-2 py-1 rounded text-xs ${
+                                                                msg.role === 'user' ? 'bg-blue-600' : 'bg-green-600'
+                                                            }`}>
+                                                                {msg.role}
+                                                            </span>
+                                                            <span className="text-gray-500 text-xs">
+                                                                {new Date(msg.timestamp).toLocaleString()}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-gray-300 whitespace-pre-wrap">
+                                                            {msg.content}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                
+                                <div className="mt-4 flex justify-end">
+                                    <button 
+                                        onClick={() => fetchSessionMessages(selectedSessionId)}
+                                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 mr-2"
+                                    >
+                                        Refresh
+                                    </button>
+                                    <button 
+                                        onClick={() => setSessionViewerOpen(false)}
+                                        className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
