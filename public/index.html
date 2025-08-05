@@ -1133,6 +1133,7 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
             taskThreadId: null, // One thread per task
             checkpointQueue: [], // Queue of checkpoints to execute
             currentCheckpointIndex: 0, // Current position in queue
+            githubConnected: false, // GitHub connection status
             reviewTasks: [
                 {
                     id: 'task-1',
@@ -1182,7 +1183,26 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
             // Load tasks from GitHub PRs on component mount
             useEffect(() => {
                 loadTasksFromGitHub();
+                checkGitHubConnection();
             }, []);
+            
+            // Check GitHub connection status
+            const checkGitHubConnection = async () => {
+                try {
+                    const response = await fetch('/api/github-diagnostics');
+                    const data = await response.json();
+                    setState(prev => ({
+                        ...prev,
+                        githubConnected: data.environment.hasToken && data.environment.hasToken === true
+                    }));
+                } catch (error) {
+                    console.error('Failed to check GitHub connection:', error);
+                    setState(prev => ({
+                        ...prev,
+                        githubConnected: false
+                    }));
+                }
+            };
 
             // Load tasks by checking GitHub PR status
             const loadTasksFromGitHub = async () => {
@@ -3851,37 +3871,20 @@ Claude Session ID: ${task.threadId}
                             <h1 className="text-4xl font-bold mb-2">🔨 Uncle Frank's Bootstrap Core</h1>
                             <p className="text-gray-400">No BS Autonomous LLM Development Platform</p>
                         </div>
-                        <button 
-                            onClick={async () => {
-                                try {
-                                    const response = await fetch('/api/github-diagnostics');
-                                    const data = await response.json();
-                                    console.log('GitHub Diagnostics:', data);
-                                    addLog(`GitHub Token: ${data.environment.hasToken ? 'CONFIGURED' : 'NOT FOUND'}`, data.environment.hasToken ? 'success' : 'error');
-                                    addLog(`Token Test: ${data.tokenTest.works ? 'WORKING' : 'FAILED'}`, data.tokenTest.works ? 'success' : 'error');
-                                    if (data.tokenTest.error) {
-                                        addLog(`Error: ${data.tokenTest.error}`, 'error');
-                                    }
-                                    if (data.environment.hasToken) {
-                                        addLog(`Token Length: ${data.environment.tokenLength} chars`, 'info');
-                                        addLog(`Token Prefix: ${data.environment.tokenPrefix}`, 'info');
-                                    }
-                                    addLog(`Environment: ${data.environment.vercelEnv || 'local'}`, 'info');
-                                    
-                                    // Show full diagnostics in console
-                                    console.log('Full Diagnostics:', JSON.stringify(data, null, 2));
-                                    
-                                    // Show alert with key info
-                                    alert(`GitHub Diagnostics:\n\nToken: ${data.environment.hasToken ? 'CONFIGURED' : 'NOT FOUND'}\nToken Works: ${data.tokenTest.works ? 'YES' : 'NO'}\nEnvironment: ${data.environment.vercelEnv || 'local'}\n\nCheck console for full details.`);
-                                } catch (error) {
-                                    addLog(`Diagnostics error: ${error.message}`, 'error');
-                                    console.error('Diagnostics error:', error);
-                                }
-                            }}
-                            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded transition text-sm"
-                        >
-                            🔍 GitHub Diagnostics
-                        </button>
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 px-3 py-1 bg-gray-800 rounded">
+                                <div className={`w-2 h-2 rounded-full ${state.githubConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                <span className="text-sm text-gray-400">
+                                    GitHub: {state.githubConnected ? 'Connected' : 'Disconnected'}
+                                </span>
+                            </div>
+                            <button 
+                                onClick={checkGitHubConnection}
+                                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded transition text-sm"
+                                title="Refresh GitHub connection status"
+                            >
+                                🔄 Refresh
+                            </button>
                     </div>
 
                     {/* Task Review Queue */}

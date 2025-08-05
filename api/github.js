@@ -12,12 +12,6 @@ module.exports = async (req, res) => {
     
     const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
     
-    console.log('GitHub API request:', {
-        hasToken: !!GITHUB_TOKEN,
-        tokenLength: GITHUB_TOKEN ? GITHUB_TOKEN.length : 0,
-        method: req.method,
-        body: req.body
-    });
     
     if (!GITHUB_TOKEN) {
         console.error('GITHUB_TOKEN not found in environment variables');
@@ -32,7 +26,6 @@ module.exports = async (req, res) => {
     
     try {
         const url = `https://api.github.com${endpoint}`;
-        console.log('Making GitHub API request to:', url);
         
         // Use https module instead of fetch for Node.js compatibility
         const options = {
@@ -77,7 +70,6 @@ module.exports = async (req, res) => {
             return res.status(result.status).json(result.data);
         }
         
-        console.log('GitHub API success, returning', Array.isArray(result.data) ? `${result.data.length} items` : 'data');
         return res.status(200).json(result.data);
     } catch (error) {
         console.error('GitHub API error:', error);
