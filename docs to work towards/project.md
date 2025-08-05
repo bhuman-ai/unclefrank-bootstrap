@@ -31,7 +31,18 @@ This document represents the live Product Requirements Document (PRD) for the pr
 - Cross-document coherence is mandatory before proceeding to Task breakdown.
 - Any changes initiate a **Project.md Draft**.
 - The Draft is co-edited with the LLM, validating logic, UX, and technical coherence.
-- Once fully validated and reviewed by humans, it’s merged back into the main Project.md.
+- Once fully validated and reviewed by humans, it's merged back into the main Project.md.
+
+## Task Persistence & GitHub Integration
+
+- **Every task is immediately persisted as a GitHub issue** upon creation, ensuring no task is lost.
+- Issues are created with:
+  - Task title and full description
+  - 'task' and 'claude' labels for filtering
+  - Status tracking (Processing → In Progress → Completed)
+  - Claude session ID linkage once execution begins
+- Tasks remain trackable even if execution fails or is interrupted.
+- GitHub issues serve as the primary source of truth for task state.
 
 ## Constraints & Design Philosophies
 
@@ -47,6 +58,8 @@ Tasks.md and Checkpoints.md automatically reference this document for:
 - UX Flows
 - API Specifications
 - DB Schema References
+- GitHub Issue Numbers
+- Claude Session IDs
 
 ## Versioning & Rollbacks
 

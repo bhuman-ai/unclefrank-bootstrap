@@ -560,15 +560,31 @@
         
         // GitHub API Service
         const GitHubService = {
-            baseUrl: 'https://api.github.com',
+            baseUrl: '/api/github',
             owner: 'bhuman-ai',
             repo: 'unclefrank-bootstrap',
 
+            async makeRequest(endpoint, method = 'GET', body = null) {
+                try {
+                    const response = await fetch(this.baseUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ method, endpoint, body })
+                    });
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || `GitHub API error: ${response.status}`);
+                    }
+                    return await response.json();
+                } catch (error) {
+                    console.error('GitHub API request failed:', error);
+                    throw error;
+                }
+            },
+
             async getBranches() {
                 try {
-                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/branches`);
-                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
-                    return await response.json();
+                    return await this.makeRequest(`/repos/${this.owner}/${this.repo}/branches`);
                 } catch (error) {
                     console.error('Failed to fetch branches:', error);
                     return [];
@@ -577,9 +593,7 @@
 
             async getBranchDetails(branchName) {
                 try {
-                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/branches/${branchName}`);
-                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
-                    return await response.json();
+                    return await this.makeRequest(`/repos/${this.owner}/${this.repo}/branches/${branchName}`);
                 } catch (error) {
                     console.error('Failed to fetch branch details:', error);
                     return null;
@@ -588,9 +602,7 @@
 
             async getCommitDiff(baseBranch = 'master', headBranch) {
                 try {
-                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/compare/${baseBranch}...${headBranch}`);
-                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
-                    return await response.json();
+                    return await this.makeRequest(`/repos/${this.owner}/${this.repo}/compare/${baseBranch}...${headBranch}`);
                 } catch (error) {
                     console.error('Failed to fetch diff:', error);
                     return null;
@@ -599,23 +611,13 @@
 
             async createPullRequest(title, body, headBranch, baseBranch = 'master') {
                 try {
-                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/pulls`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            // Note: In production, you'd need proper authentication
-                        },
-                        body: JSON.stringify({
-                            title,
-                            body,
-                            head: headBranch,
-                            base: baseBranch
-                        })
-                    });
-                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
-                    return await response.json();
+                    return await this.makeRequest(
+                        `/repos/${this.owner}/${this.repo}/pulls`,
+                        'POST',
+                        { title, body, head: headBranch, base: baseBranch }
+                    );
                 } catch (error) {
-                    console.error('Failed to create PR:', error);
+                    console.error('Failed to create pull request:', error);
                     return null;
                 }
             },
@@ -630,20 +632,11 @@
 
             async createIssue(title, body, labels = ['task', 'claude']) {
                 try {
-                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/issues`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            // Note: In production, you'd need proper authentication
-                        },
-                        body: JSON.stringify({
-                            title,
-                            body,
-                            labels
-                        })
-                    });
-                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
-                    return await response.json();
+                    return await this.makeRequest(
+                        `/repos/${this.owner}/${this.repo}/issues`,
+                        'POST',
+                        { title, body, labels }
+                    );
                 } catch (error) {
                     console.error('Failed to create issue:', error);
                     return null;
@@ -652,9 +645,7 @@
 
             async getIssue(issueNumber) {
                 try {
-                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/issues/${issueNumber}`);
-                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
-                    return await response.json();
+                    return await this.makeRequest(`/repos/${this.owner}/${this.repo}/issues/${issueNumber}`);
                 } catch (error) {
                     console.error('Failed to fetch issue:', error);
                     return null;
@@ -663,15 +654,11 @@
 
             async updateIssue(issueNumber, updates) {
                 try {
-                    const response = await fetch(`${this.baseUrl}/repos/${this.owner}/${this.repo}/issues/${issueNumber}`, {
-                        method: 'PATCH',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(updates)
-                    });
-                    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
-                    return await response.json();
+                    return await this.makeRequest(
+                        `/repos/${this.owner}/${this.repo}/issues/${issueNumber}`,
+                        'PATCH',
+                        updates
+                    );
                 } catch (error) {
                     console.error('Failed to update issue:', error);
                     return null;
@@ -1193,12 +1180,12 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                 
                 try {
                     // First, load all open issues with 'task' label
-                    const issuesResponse = await fetch('https://api.github.com/repos/bhuman-ai/unclefrank-bootstrap/issues?labels=task&state=all');
-                    const issues = issuesResponse.ok ? await issuesResponse.json() : [];
-                    
-                    if (!issuesResponse.ok) {
-                        console.warn('Failed to load GitHub issues:', issuesResponse.status);
-                        addLog('GitHub API rate limit or authentication required', 'warning');
+                    let issues = [];
+                    try {
+                        issues = await GitHubService.makeRequest('/repos/bhuman-ai/unclefrank-bootstrap/issues?labels=task&state=all');
+                    } catch (error) {
+                        console.warn('Failed to load GitHub issues:', error);
+                        addLog('Failed to load GitHub issues', 'warning');
                     }
                     
                     const tasksByIssue = new Map();
@@ -1233,8 +1220,12 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                     for (const branch of claudeBranches) {
                         try {
                             // Check if PR exists for this branch
-                            const response = await fetch(`https://api.github.com/repos/bhuman-ai/unclefrank-bootstrap/pulls?head=bhuman-ai:${branch.name}&state=all`);
-                            const prs = await response.json();
+                            let prs = [];
+                            try {
+                                prs = await GitHubService.makeRequest(`/repos/bhuman-ai/unclefrank-bootstrap/pulls?head=bhuman-ai:${branch.name}&state=all`);
+                            } catch (error) {
+                                console.warn('Failed to fetch PRs for branch:', branch.name);
+                            }
                             
                             let status = 'Awaiting Review'; // Default if no PR
                             let prUrl = null;
@@ -1245,8 +1236,12 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                                 
                                 if (pr.state === 'open') {
                                     // Check if changes are requested
-                                    const reviewsResponse = await fetch(`https://api.github.com/repos/bhuman-ai/unclefrank-bootstrap/pulls/${pr.number}/reviews`);
-                                    const reviews = await reviewsResponse.json();
+                                    let reviews = [];
+                                    try {
+                                        reviews = await GitHubService.makeRequest(`/repos/bhuman-ai/unclefrank-bootstrap/pulls/${pr.number}/reviews`);
+                                    } catch (error) {
+                                        console.warn('Failed to fetch PR reviews:', error);
+                                    }
                                     const hasRequestedChanges = reviews && reviews.some(review => review.state === 'CHANGES_REQUESTED');
                                     
                                     status = hasRequestedChanges ? 'Changes Requested' : 'In Review';

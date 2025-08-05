@@ -8,16 +8,22 @@ Outlines the technical structure of the LLM Development Platform, including syst
   - LLM Orchestration Engine (Claude Code CLI)
   - Task Queue & Execution Pipeline (Terragon)
   - Validation API Service
-  - GitHub Integration Layer
+  - GitHub Integration Layer (Issues, Branches, PRs)
   - Dependency Graph Engine
+  - Task Persistence Layer (GitHub Issues API)
 
 - **Data Flow Pipelines:**
-  - Project.md Drafting → Task Breakdown → Checkpoint Execution → Validation → Human Review → Merge
+  - User Request → GitHub Issue Creation → Claude Session Creation → Task Breakdown → Checkpoint Execution → Validation → Human Review → PR Creation → Merge
+  - GitHub Issue serves as persistent task record throughout entire pipeline
 
 ## API Schemas
 - **Validation API:** Linting, Schema Checks, DOM Verification
-- **GitHub API Layer:** PR Creation, Auto-Merge, Commit Logs
+- **GitHub API Layer:** 
+  - Issue Creation & Management (createIssue, updateIssue, getIssue)
+  - PR Creation, Auto-Merge, Commit Logs
+  - Branch Management & Status Tracking
 - **Dependency DAG API:** Realtime dependency resolution
+- **Task Persistence API:** GitHub Issues integration for immediate task persistence
 
 ## Subagents Architecture
 
@@ -199,9 +205,30 @@ Subagents are specialized AI agents invoked for specific workflow stages. Each o
 - Long-running Checkpoints will issue periodic heartbeat updates.
 - These updates show active status and prevent perceived execution stalls.
 
+## Task Persistence & Recovery
+
+### GitHub Issue Integration
+- **Immediate Persistence:** Every task creates a GitHub issue before any execution begins
+- **Issue Structure:**
+  - Title: "Task: {user_request_summary}"
+  - Body: Contains full request, context, status, timestamps, and Claude session ID
+  - Labels: ['task', 'claude'] for easy filtering
+  - Status tracking via issue state and body updates
+- **Recovery Mechanism:** On system restart, all tasks are reloaded from GitHub issues
+- **Session Linkage:** Claude session IDs are stored in issues for full traceability
+
+### Task Lifecycle States
+1. **Created** - GitHub issue created, awaiting Claude session
+2. **Processing** - Claude session initiated, task breakdown in progress
+3. **In Progress** - Checkpoints being executed
+4. **In Review** - PR created, awaiting human review
+5. **Changes Requested** - Requires modifications based on review
+6. **Completed** - Merged to main branch, issue closed
+
 ## Logging & Traceability
 - All agent executions, validations, retries, and merges are logged.
 - Logs are accessible in Checkpoint Execution Logs Viewer.
+- GitHub issues provide permanent audit trail of all tasks.
 
 ## Version Control
 - Claude.md, Project.md, Interface.md, and Technical.md are version-controlled.
