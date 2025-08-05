@@ -19,8 +19,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
 
 WORKDIR /app
 
-# Install Claude Code CLI globally
-RUN npm install -g @anthropic-ai/claude-code
+# Install Claude Code CLI globally and ensure it's in PATH
+RUN npm install -g @anthropic-ai/claude-code && \
+    echo "Claude Code installed at: $(which claude)" && \
+    claude --version || echo "Claude version check failed"
 
 # Copy package.json and install dependencies
 COPY package.json ./

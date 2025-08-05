@@ -56,9 +56,14 @@ async function executeWithClaudeInRepo(sessionId, message) {
     const session = sessions.get(sessionId);
     const repoPath = session.repoPath;
     
+    console.log(`[Claude] Starting execution in ${repoPath}`);
+    
     return new Promise((resolve, reject) => {
         // Change to repo directory and run Claude with permissions flag
-        const claudeProcess = spawn('bash', ['-c', `cd ${repoPath} && claude --dangerously-skip-permissions chat`], {
+        const command = `cd ${repoPath} && claude --dangerously-skip-permissions chat`;
+        console.log(`[Claude] Running command: ${command}`);
+        
+        const claudeProcess = spawn('bash', ['-c', command], {
             env: { ...process.env, HOME: '/root' }
         });
         
@@ -198,12 +203,27 @@ app.post('/api/sessions/:sessionId/execute', async (req, res) => {
         
         let responseContent;
         
-        // Check if Claude Code is available
+        // Check if Claude Code is available and log the result
+        let claudeAvailable = false;
         try {
-            await execAsync('which claude');
-            // Execute with real Claude Code in the repo
-            responseContent = await executeWithClaudeInRepo(sessionId, message);
+            const { stdout } = await execAsync('which claude');
+            console.log('Claude Code found at:', stdout.trim());
+            claudeAvailable = true;
         } catch (error) {
+            console.error('Claude Code not found:', error.message);
+        }
+        
+        if (claudeAvailable) {
+            try {
+                // Execute with real Claude Code in the repo
+                console.log('Executing with Claude Code CLI...');
+                responseContent = await executeWithClaudeInRepo(sessionId, message);
+            } catch (error) {
+                console.error('Claude execution failed:', error);
+                // Fallback if Claude execution fails
+                responseContent = `Claude execution failed: ${error.message}`;
+            }
+        } else {
             // Fallback: execute git and file operations directly
             console.log('Claude Code not available, executing directly...');
             responseContent = await executeDirectly(session, message);
