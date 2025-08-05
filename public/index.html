@@ -887,34 +887,109 @@
             );
         };
 
-        // Task Queue Component
-        const TaskQueue = ({ tasks, onUpdateTaskStatus, onViewChanges, onRunTests, onApprove, onRequestChanges }) => {
-            const [filter, setFilter] = useState('Awaiting Review');
+        // Kanban Board Component
+        const KanbanBoard = ({ tasks, onUpdateTaskStatus, onViewChanges, onRunTests, onApprove, onRequestChanges }) => {
+            const [viewMode, setViewMode] = useState('kanban'); // 'kanban' or 'table'
             
-            const filteredTasks = tasks.filter(task => 
-                !filter || task.status === filter
-            );
+            // Define kanban columns
+            const columns = [
+                { id: 'pending', title: '🔄 Pending', statuses: ['Created', 'Processing'] },
+                { id: 'inprogress', title: '🚀 In Progress', statuses: ['In Progress', 'Awaiting Review'] },
+                { id: 'review', title: '👀 In Review', statuses: ['In Review', 'Changes Requested'] },
+                { id: 'complete', title: '✅ Complete', statuses: ['Approved', 'Merged', 'Completed'] }
+            ];
+
+            // Group tasks by column
+            const tasksByColumn = columns.reduce((acc, column) => {
+                acc[column.id] = tasks.filter(task => 
+                    column.statuses.includes(task.status) || 
+                    (column.id === 'pending' && !task.status)
+                );
+                return acc;
+            }, {});
 
             const StatusBadge = ({ status }) => {
                 const colors = {
+                    'Created': 'bg-gray-600',
+                    'Processing': 'bg-blue-600',
+                    'In Progress': 'bg-blue-600',
                     'Awaiting Review': 'bg-yellow-600',
-                    'In Review': 'bg-blue-600',
+                    'In Review': 'bg-yellow-600',
                     'Approved': 'bg-green-600',
                     'Changes Requested': 'bg-red-600',
-                    'Merged': 'bg-purple-600'
+                    'Merged': 'bg-purple-600',
+                    'Completed': 'bg-green-600'
                 };
                 
                 return (
                     <span className={`px-2 py-1 text-xs rounded ${colors[status] || 'bg-gray-600'}`}>
-                        {status}
+                        {status || 'Pending'}
                     </span>
                 );
             };
 
+            const TaskCard = ({ task }) => (
+                <div className="bg-gray-700 rounded p-3 mb-3 hover:bg-gray-650 transition">
+                    <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-semibold text-sm">{task.name}</h4>
+                        <StatusBadge status={task.status} />
+                    </div>
+                    
+                    {task.issueNumber && (
+                        <a 
+                            href={task.issueUrl}
+                            target="_blank"
+                            className="text-blue-400 hover:underline text-xs"
+                        >
+                            Issue #{task.issueNumber}
+                        </a>
+                    )}
+                    
+                    {task.branch && (
+                        <div className="text-xs text-gray-400 mt-1">
+                            Branch: {task.branch}
+                        </div>
+                    )}
+                    
+                    {task.threadId && (
+                        <div className="text-xs text-gray-400 mt-1">
+                            Session: {task.threadId.substring(0, 8)}...
+                        </div>
+                    )}
+                    
+                    <div className="mt-3 flex gap-2">
+                        {task.status === 'Awaiting Review' && (
+                            <button
+                                onClick={() => onViewChanges(task)}
+                                className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded"
+                            >
+                                View Changes
+                            </button>
+                        )}
+                        {task.status === 'In Review' && (
+                            <>
+                                <button
+                                    onClick={() => onApprove(task)}
+                                    className="text-xs px-2 py-1 bg-green-600 hover:bg-green-700 rounded"
+                                >
+                                    Approve
+                                </button>
+                                <button
+                                    onClick={() => onRequestChanges(task)}
+                                    className="text-xs px-2 py-1 bg-red-600 hover:bg-red-700 rounded"
+                                >
+                                    Request Changes
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+
             return (
                 <div className="bg-gray-800 rounded-lg p-6">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-xl font-semibold">Task Queue</h2>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-semibold">📊 Task Board</h2>
                         <div className="flex gap-2">
                             <button 
                                 onClick={() => window.location.reload()}
@@ -922,95 +997,113 @@
                             >
                                 Refresh from GitHub
                             </button>
-                            <select 
-                                value={filter}
-                                onChange={(e) => setFilter(e.target.value)}
-                                className="px-3 py-1 bg-gray-700 rounded border border-gray-600 text-sm"
+                            <button
+                                onClick={() => setViewMode(viewMode === 'kanban' ? 'table' : 'kanban')}
+                                className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm transition"
                             >
-                                <option value="">All Tasks</option>
-                                <option value="Awaiting Review">Awaiting Review</option>
-                                <option value="In Review">In Review</option>
-                                <option value="Approved">Approved</option>
-                                <option value="Changes Requested">Changes Requested</option>
-                                <option value="Merged">Merged</option>
-                            </select>
+                                {viewMode === 'kanban' ? 'Table View' : 'Kanban View'}
+                            </button>
                         </div>
                     </div>
                     
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b border-gray-700">
-                                    <th className="text-left py-2 px-3">Task Name</th>
-                                    <th className="text-left py-2 px-3">Status</th>
-                                    <th className="text-left py-2 px-3">Branch</th>
-                                    <th className="text-left py-2 px-3">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredTasks.map(task => (
-                                    <tr key={task.id} className="border-b border-gray-700 hover:bg-gray-750">
-                                        <td className="py-3 px-3">
-                                            <div>
-                                                <div className="font-medium">{task.name}</div>
-                                                <div className="text-xs text-gray-400">{task.objective}</div>
+                    {viewMode === 'kanban' ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {columns.map(column => (
+                                <div key={column.id} className="bg-gray-900 rounded-lg p-4">
+                                    <h3 className="font-semibold mb-3 text-center">
+                                        {column.title}
+                                        <span className="ml-2 text-sm text-gray-400">
+                                            ({tasksByColumn[column.id].length})
+                                        </span>
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {tasksByColumn[column.id].length === 0 ? (
+                                            <div className="text-center py-8 text-gray-500 text-sm">
+                                                No tasks
                                             </div>
-                                        </td>
-                                        <td className="py-3 px-3">
-                                            <StatusBadge status={task.status} />
-                                        </td>
-                                        <td className="py-3 px-3">
-                                            <div className="space-y-1">
-                                                {task.branch ? (
-                                                    <a 
-                                                        href={GitHubService.getBranchUrl(task.branch)}
-                                                        target="_blank"
-                                                        className="text-blue-400 hover:underline text-xs block"
-                                                    >
-                                                        {task.branch}
-                                                    </a>
-                                                ) : (
-                                                    <span className="text-gray-500 text-xs">No branch</span>
-                                                )}
-                                                {task.issueUrl && (
-                                                    <a 
-                                                        href={task.issueUrl}
-                                                        target="_blank"
-                                                        className="text-blue-400 hover:underline text-xs block"
-                                                    >
-                                                        Issue #{task.issueNumber} →
-                                                    </a>
-                                                )}
-                                                {task.prUrl && (
-                                                    <a 
-                                                        href={task.prUrl}
-                                                        target="_blank"
-                                                        className="text-green-400 hover:underline text-xs block"
-                                                    >
-                                                        View PR →
-                                                    </a>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="py-3 px-3">
-                                            <ReviewActions 
-                                                task={task}
-                                                onViewChanges={onViewChanges}
-                                                onRunTests={onRunTests}
-                                                onApprove={onApprove}
-                                                onRequestChanges={onRequestChanges}
-                                            />
-                                        </td>
+                                        ) : (
+                                            tasksByColumn[column.id].map(task => (
+                                                <TaskCard key={task.id} task={task} />
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-gray-700">
+                                        <th className="text-left py-2 px-3">Task Name</th>
+                                        <th className="text-left py-2 px-3">Status</th>
+                                        <th className="text-left py-2 px-3">Links</th>
+                                        <th className="text-left py-2 px-3">Actions</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        {filteredTasks.length === 0 && (
-                            <div className="text-center py-8 text-gray-500">
-                                No tasks found with status "{filter}"
-                            </div>
-                        )}
-                    </div>
+                                </thead>
+                                <tbody>
+                                    {tasks.map(task => (
+                                        <tr key={task.id} className="border-b border-gray-700 hover:bg-gray-750">
+                                            <td className="py-3 px-3">
+                                                <div>
+                                                    <div className="font-medium">{task.name}</div>
+                                                    <div className="text-xs text-gray-400">{task.objective}</div>
+                                                </div>
+                                            </td>
+                                            <td className="py-3 px-3">
+                                                <StatusBadge status={task.status} />
+                                            </td>
+                                            <td className="py-3 px-3">
+                                                <div className="space-y-1">
+                                                    {task.branch && (
+                                                        <a 
+                                                            href={GitHubService.getBranchUrl(task.branch)}
+                                                            target="_blank"
+                                                            className="text-blue-400 hover:underline text-xs block"
+                                                        >
+                                                            {task.branch}
+                                                        </a>
+                                                    )}
+                                                    {task.issueUrl && (
+                                                        <a 
+                                                            href={task.issueUrl}
+                                                            target="_blank"
+                                                            className="text-blue-400 hover:underline text-xs block"
+                                                        >
+                                                            Issue #{task.issueNumber} →
+                                                        </a>
+                                                    )}
+                                                    {task.prUrl && (
+                                                        <a 
+                                                            href={task.prUrl}
+                                                            target="_blank"
+                                                            className="text-green-400 hover:underline text-xs block"
+                                                        >
+                                                            View PR →
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="py-3 px-3">
+                                                <ReviewActions 
+                                                    task={task}
+                                                    onViewChanges={onViewChanges}
+                                                    onRunTests={onRunTests}
+                                                    onApprove={onApprove}
+                                                    onRequestChanges={onRequestChanges}
+                                                />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {tasks.length === 0 && (
+                                <div className="text-center py-8 text-gray-500">
+                                    No tasks found. Create a new task to get started.
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -1101,7 +1194,12 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                 try {
                     // First, load all open issues with 'task' label
                     const issuesResponse = await fetch('https://api.github.com/repos/bhuman-ai/unclefrank-bootstrap/issues?labels=task&state=all');
-                    const issues = await issuesResponse.json();
+                    const issues = issuesResponse.ok ? await issuesResponse.json() : [];
+                    
+                    if (!issuesResponse.ok) {
+                        console.warn('Failed to load GitHub issues:', issuesResponse.status);
+                        addLog('GitHub API rate limit or authentication required', 'warning');
+                    }
                     
                     const tasksByIssue = new Map();
                     
@@ -1208,13 +1306,25 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                         return dateB - dateA;
                     });
                     
+                    // Also load tasks from localStorage
+                    const localTasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
+                    for (const localTask of localTasks) {
+                        // Don't add if we already have this task from GitHub
+                        if (!allTasks.find(t => t.id === localTask.id)) {
+                            allTasks.push({
+                                ...localTask,
+                                status: localTask.status || 'Created'
+                            });
+                        }
+                    }
+                    
                     // Update state with all tasks
                     setState(prev => ({
                         ...prev,
                         reviewTasks: allTasks
                     }));
                     
-                    addLog(`Loaded ${allTasks.length} tasks (${tasksByIssue.size} issues, ${updatedTasks.length} branches)`, 'success');
+                    addLog(`Loaded ${allTasks.length} tasks (${tasksByIssue.size} issues, ${updatedTasks.length} branches, ${localTasks.length} local)`, 'success');
                     
                 } catch (error) {
                     addLog(`Failed to load tasks from GitHub: ${error.message}`, 'error');
@@ -1323,9 +1433,29 @@ This issue tracks the task from creation through completion.`;
                         issueBody
                     );
 
+                    let taskId;
                     if (issue) {
                         addLog(`✅ Created GitHub issue #${issue.number}`, 'success');
                         addLog(`📍 Issue URL: ${issue.html_url}`, 'info');
+                        taskId = `issue-${issue.number}`;
+                    } else {
+                        // Fallback to localStorage if GitHub API fails
+                        taskId = `local-${Date.now()}`;
+                        const localTask = {
+                            id: taskId,
+                            name: state.request.substring(0, 100),
+                            objective: state.request,
+                            status: 'Created',
+                            created: new Date().toISOString(),
+                            projectContext: state.projectContext
+                        };
+                        
+                        // Save to localStorage
+                        const savedTasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
+                        savedTasks.push(localTask);
+                        localStorage.setItem('unclefrank-tasks', JSON.stringify(savedTasks));
+                        
+                        addLog(`📦 Task saved locally (GitHub API unavailable)`, 'warning');
                     }
                     // Create the task message for Claude
                     const taskMessage = `# New Task Request
@@ -1378,6 +1508,15 @@ Please help me implement this task.`;
                                 body: updatedBody
                             });
                             addLog(`📝 Updated issue #${issue.number} with Claude session`, 'info');
+                        } else if (taskId) {
+                            // Update localStorage task
+                            const savedTasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
+                            const taskIndex = savedTasks.findIndex(t => t.id === taskId);
+                            if (taskIndex !== -1) {
+                                savedTasks[taskIndex].threadId = threadId;
+                                savedTasks[taskIndex].status = 'Processing';
+                                localStorage.setItem('unclefrank-tasks', JSON.stringify(savedTasks));
+                            }
                         }
                         
                         // Register with orchestrator - it will decompose automatically
@@ -3713,7 +3852,7 @@ Claude Session ID: ${task.threadId}
                                 </div>
                             </div>
                         ) : (
-                            <TaskQueue 
+                            <KanbanBoard 
                                 tasks={state.reviewTasks}
                                 onUpdateTaskStatus={handleUpdateTaskStatus}
                                 onViewChanges={handleViewChanges}
