@@ -140,7 +140,7 @@
                             Active: <span className="text-white">{activeCount}</span>
                         </p>
                         <p className="text-gray-400">
-                            Total: <span className="text-white">{orchestratorData.instanceCount}</span>
+                            Total: <span className="text-white">{orchestratorData.instanceCount || orchestratorData.instances?.length || 0}</span>
                         </p>
                         
                         {orchestratorData.instances?.length > 0 && (
