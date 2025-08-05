@@ -28,7 +28,7 @@
                     orchestratorEnabled = config.orchestratorEnabled;
                     if (orchestratorEnabled) {
                         console.log('[Config] 🧠 Task Orchestrator ENABLED');
-                        addLog('🧠 Task Orchestrator enabled and ready', 'success');
+                        // Can't use addLog here - it's not defined yet
                     } else {
                         console.log('[Config] Task Orchestrator disabled');
                     }
@@ -69,14 +69,14 @@
                     // Check if we're near instance limit
                     if (result.limits && result.limits.currentInstances > result.limits.maxInstances * 0.8) {
                         console.warn(`[Orchestrator] WARNING: Near instance limit (${result.limits.currentInstances}/${result.limits.maxInstances})`);
-                        addLog(`⚠️ Orchestrator near instance limit`, 'warning');
+                        console.warn('⚠️ Orchestrator near instance limit');
                     }
                 } else if (response.status === 429) {
                     console.error('[Orchestrator] Rate limited');
-                    addLog(`⚠️ Orchestrator rate limit hit - slow down`, 'warning');
+                    console.warn('⚠️ Orchestrator rate limit hit - slow down');
                 } else if (response.status === 401) {
                     console.error('[Orchestrator] Unauthorized');
-                    addLog(`❌ Orchestrator authentication failed`, 'error');
+                    console.error('❌ Orchestrator authentication failed');
                 }
             } catch (error) {
                 console.error('[Orchestrator] Registration failed:', error);
@@ -219,7 +219,7 @@
                     }
                 } catch (error) {
                     console.error('Failed to load drafts:', error);
-                    addLog('Failed to load drafts', 'error');
+                    console.error('Failed to load drafts');
                 }
             };
             
