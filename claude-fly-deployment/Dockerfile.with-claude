@@ -1,0 +1,35 @@
+# Enhanced Claude Executor with Claude Code CLI
+FROM node:20-slim
+
+# Install dependencies including curl for Claude installation
+RUN apt-get update && apt-get install -y \
+    git \
+    build-essential \
+    python3 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Claude CLI globally
+RUN npm install -g claude-cli
+
+# Create a combined server with best features
+COPY package.json ./
+RUN npm install
+
+# Copy server code
+COPY server.js ./
+
+# Create workspace directory
+RUN mkdir -p /workspace
+
+# Fly.io uses PORT 8080
+ENV PORT=8080
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:8080/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1))"
+
+CMD ["node", "server.js"]

@@ -1,0 +1,50 @@
+# FRANK'S ENHANCED CLAUDEBOX - Best of both projects
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies for both projects
+RUN apk add --no-cache git python3 make g++ bash
+
+# Clone both projects
+RUN git clone https://github.com/RchGrav/claudebox.git /claudebox && \
+    git clone https://github.com/JessyTsui/Claude-Code-Remote.git /claude-remote
+
+# Copy best features from both
+COPY --from=/claudebox /claudebox/src ./src
+COPY --from=/claude-remote /claude-remote/features ./features
+
+# Create unified package.json
+RUN echo '{ \
+  "name": "claude-executor-enhanced", \
+  "version": "1.0.0", \
+  "main": "server.js", \
+  "scripts": { \
+    "start": "node server.js" \
+  }, \
+  "dependencies": { \
+    "express": "^4.18.2", \
+    "cors": "^2.8.5", \
+    "@anthropic-ai/sdk": "^0.17.0", \
+    "docker-modem": "^3.0.8", \
+    "node-pty": "^1.0.0", \
+    "ws": "^8.14.2", \
+    "uuid": "^9.0.0" \
+  } \
+}' > package.json
+
+# Install dependencies
+RUN npm install
+
+# Create unified server
+COPY server-enhanced.js ./server.js
+
+# Cloud Run expects PORT env var
+ENV PORT=8080
+EXPOSE 8080
+
+# Run as non-root
+RUN adduser -D appuser
+USER appuser
+
+CMD ["npm", "start"]

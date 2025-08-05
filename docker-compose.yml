@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # Uncle Frank Bootstrap API (optional - if you want to run locally)
+  uncle-frank:
+    build: .
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=development
+      - CLAUDEBOX_URL=http://claudebox:3000
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    depends_on:
+      - claudebox
+    volumes:
+      - ./api:/app/api
+      - ./public:/app/public
+
+  # Claudebox - Claude in Docker
+  claudebox:
+    image: rchgrav/claudebox:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - NODE_ENV=production
+    volumes:
+      - ./workspace:/workspace
+      - claudebox-data:/data
+    restart: unless-stopped
+
+  # Optional: PostgreSQL for persistence
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=unclefrank
+      - POSTGRES_USER=frank
+      - POSTGRES_PASSWORD=no-bs-password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  # Optional: Redis for session management
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  claudebox-data:
+  postgres-data:
+  redis-data:

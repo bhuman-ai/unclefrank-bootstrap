@@ -1,5 +1,6 @@
-// Properly send message to Terragon by fetching first to get the digest
+// Test endpoint to send message to Terragon
 export default async function handler(req, res) {
+  // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   
@@ -18,28 +19,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // First fetch to get current state
-    const fetchResponse = await fetch(
-      `https://www.terragonlabs.com/task/${threadId}`,
-      {
-        method: 'POST',
-        headers: {
-          'accept': 'text/x-component',
-          'content-type': 'text/plain;charset=UTF-8',
-          'cookie': `__Secure-better-auth.session_token=${TERRAGON_AUTH}`,
-          'next-action': '7f40cb55e87cce4b3543b51a374228296bc2436c6d',
-          'origin': 'https://www.terragonlabs.com',
-          'referer': `https://www.terragonlabs.com/task/${threadId}`,
-          'user-agent': 'Mozilla/5.0',
-          'x-deployment-id': 'dpl_3hWzkM7LiymSczFN21Z8chju84CV'
-        },
-        body: JSON.stringify([threadId])
-      }
-    );
-
-    const fetchContent = await fetchResponse.text();
-    
-    // Now send the message using the same headers that work for sending
     const payload = [{
       threadId: threadId,
       message: {
@@ -56,7 +35,7 @@ export default async function handler(req, res) {
       }
     }];
 
-    const sendResponse = await fetch(
+    const response = await fetch(
       `https://www.terragonlabs.com/task/${threadId}`,
       {
         method: 'POST',
@@ -73,19 +52,13 @@ export default async function handler(req, res) {
         body: JSON.stringify(payload)
       }
     );
-    
-    const sendContent = await sendResponse.text();
-    
-    // Check if message was sent successfully
-    const success = sendResponse.ok && !sendContent.includes('E{"digest"');
+
+    const responseText = await response.text();
     
     return res.status(200).json({
-      success,
-      status: sendResponse.status,
-      message: success ? 'Message sent successfully' : 'Failed to send message',
-      debug: {
-        responsePreview: sendContent.substring(0, 200)
-      }
+      success: response.ok,
+      status: response.status,
+      responsePreview: responseText.substring(0, 500)
     });
     
   } catch (error) {

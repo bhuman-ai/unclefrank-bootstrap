@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# Commands to run in your SSH session for headless Claude authentication
+
+echo "Run these commands in your Fly.io SSH session:"
+echo ""
+echo "# 1. First, set environment for headless operation"
+echo "export CLAUDE_HEADLESS=true"
+echo "export BROWSER=none"
+echo "export NO_BROWSER=true"
+echo ""
+echo "# 2. Check Claude is installed"
+echo "which claude"
+echo "claude --version"
+echo ""
+echo "# 3. Try headless login"
+echo "claude login --no-browser"
+echo ""
+echo "# It should output something like:"
+echo "# Please visit: https://claude.ai/auth/..."
+echo "# Copy that URL and open in your local browser"
+echo ""
+echo "# 4. After authenticating in browser, check if it worked:"
+echo "claude doctor"
+echo ""
+echo "# 5. Test with a simple chat:"
+echo 'echo "Hello Claude" | claude chat'
+echo ""
+echo "# Alternative: If login still hangs, try:"
+echo "# Exit SSH, then use port forwarding:"
+echo "fly proxy 8080:8080 -a uncle-frank-claude"
+echo "# Then SSH in again and run claude"

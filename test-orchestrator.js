@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // Test script for Task Orchestrator
-const API_BASE = 'https://unclefrank-bootstrap-lmqevwtt2-bhuman.vercel.app';
+const API_BASE = 'https://unclefrank-bootstrap-3h8mj1rmt-bhuman.vercel.app';
 
 async function testOrchestrator() {
   console.log('🧪 Testing Task Orchestrator...\n');
