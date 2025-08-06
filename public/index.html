@@ -889,12 +889,12 @@
         const KanbanBoard = ({ tasks, onUpdateTaskStatus, onViewChanges, onRunTests, onApprove, onRequestChanges, onTaskClick }) => {
             const [viewMode, setViewMode] = useState('kanban'); // 'kanban' or 'table'
             
-            // Define kanban columns
+            // Define kanban columns - FRANK'S SACRED FLOW
             const columns = [
-                { id: 'pending', title: '🔄 Pending', statuses: ['Created', 'Processing'] },
-                { id: 'inprogress', title: '🚀 In Progress', statuses: ['In Progress', 'Awaiting Review'] },
-                { id: 'review', title: '👀 In Review', statuses: ['In Review', 'Changes Requested'] },
-                { id: 'complete', title: '✅ Complete', statuses: ['Approved', 'Merged', 'Completed'] }
+                { id: 'pending', title: '🔄 Pending', statuses: ['Created', 'Draft'] },
+                { id: 'inprogress', title: '🚀 In Progress', statuses: ['In Progress', 'Executing', 'Processing'] },
+                { id: 'review', title: '👀 Awaiting Review', statuses: ['Awaiting Review', 'Ready for Review', 'AI Complete'] },
+                { id: 'complete', title: '✅ Human Approved', statuses: ['Approved', 'Merged', 'Human Approved'] }
             ];
 
             // Group tasks by column
@@ -4414,7 +4414,7 @@ Claude Session ID: ${task.threadId}
                                     </div>
                                 </div>
                                 
-                                {/* Footer Actions */}
+                                {/* Footer Actions - FRANK'S HUMAN APPROVAL REQUIRED */}
                                 <div className="mt-4 pt-4 border-t border-gray-700 flex justify-between">
                                     <div className="flex gap-2">
                                         {workspaceTask.status === 'In Progress' && (
@@ -4427,20 +4427,33 @@ Claude Session ID: ${task.threadId}
                                                 Pause Execution
                                             </button>
                                         )}
-                                        {workspaceTask.status === 'In Review' && (
+                                        {(workspaceTask.status === 'Awaiting Review' || 
+                                          workspaceTask.status === 'Ready for Review' || 
+                                          workspaceTask.status === 'AI Complete') && (
                                             <>
+                                                <div className="bg-yellow-900 border border-yellow-600 rounded p-2 mr-2">
+                                                    <span className="text-yellow-400 text-sm font-bold">
+                                                        ⚠️ HUMAN REVIEW REQUIRED
+                                                    </span>
+                                                </div>
                                                 <button 
-                                                    className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded transition"
+                                                    className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded transition font-bold"
                                                     onClick={() => {
-                                                        console.log('Approve task:', workspaceTask.id);
+                                                        if (confirm('Are you a HUMAN approving this task as complete?')) {
+                                                            console.log('Human approved task:', workspaceTask.id);
+                                                            // Update task status to Human Approved
+                                                        }
                                                     }}
                                                 >
-                                                    Approve & Merge
+                                                    HUMAN APPROVE ✓
                                                 </button>
                                                 <button 
                                                     className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition"
                                                     onClick={() => {
-                                                        console.log('Request changes:', workspaceTask.id);
+                                                        const feedback = prompt('What changes are needed?');
+                                                        if (feedback) {
+                                                            console.log('Human requested changes:', workspaceTask.id, feedback);
+                                                        }
                                                     }}
                                                 >
                                                     Request Changes
