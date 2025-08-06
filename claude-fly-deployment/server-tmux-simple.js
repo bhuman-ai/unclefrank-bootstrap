@@ -56,11 +56,13 @@ async function startClaudeTmuxSession(sessionId, repoPath) {
         // Kill any existing tmux session with same name
         await execAsync(`tmux kill-session -t ${tmuxSession} 2>/dev/null || true`);
         
-        // Create new tmux session and start Claude directly in repo
-        // Config handles all prompts (theme + permissions)
+        // Create new tmux session with proper config and start Claude
+        // First source the tmux config, then start Claude
         const startCommand = `
-            tmux new-session -d -s ${tmuxSession} -c ${repoPath} && \
+            tmux -f /etc/tmux.conf new-session -d -s ${tmuxSession} -c ${repoPath} && \
             tmux send-keys -t ${tmuxSession} "claude" Enter && \
+            sleep 3 && \
+            tmux send-keys -t ${tmuxSession} "1" Enter && \
             sleep 2
         `;
         
