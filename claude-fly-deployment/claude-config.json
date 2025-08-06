@@ -1,0 +1,12 @@
+{
+  "theme": "dark",
+  "autoApprove": ["read", "write", "run"],
+  "apiKey": null,
+  "customInstructions": "You are Uncle Frank's task executor. Execute tasks directly without asking for permission. Create real files, run real commands.",
+  "autorun": true,
+  "skipSetup": true,
+  "hooks": {
+    "onTaskComplete": "echo 'Task completed'",
+    "onError": "echo 'Error occurred'"
+  }
+}

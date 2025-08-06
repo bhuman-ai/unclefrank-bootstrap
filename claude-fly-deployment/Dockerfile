@@ -30,7 +30,7 @@ COPY package.json ./
 RUN npm install
 
 # Copy server code and auth setup
-COPY server-tmux-based.js ./server.js
+COPY server-tmux-fixed.js ./server.js
 COPY setup-claude-auth.sh ./
 
 # Make auth script executable
