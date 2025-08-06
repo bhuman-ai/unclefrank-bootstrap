@@ -1,9 +1,10 @@
 # GitHub-Integrated Claude Executor for Fly.io
 FROM node:20-slim
 
-# Install required tools including git and GitHub CLI
+# Install required tools including git, tmux and GitHub CLI
 RUN apt-get update && apt-get install -y \
     git \
+    tmux \
     curl \
     build-essential \
     python3 \
@@ -29,7 +30,7 @@ COPY package.json ./
 RUN npm install
 
 # Copy server code and auth setup
-COPY server-github-integrated-working.js ./server.js
+COPY server-tmux-based.js ./server.js
 COPY setup-claude-auth.sh ./
 
 # Make auth script executable
