@@ -64,16 +64,11 @@ async function startClaudeTmuxSession(sessionId, repoPath) {
         console.log(`Created tmux session ${tmuxSession} with config ${tmuxConfig}`);
         
         // Start Claude in the tmux session
+        // Since manual setup is done, config should handle theme/permissions
         await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${tmuxSession} "claude" Enter`);
         
-        // Wait for Claude to start, then send theme selection
+        // Wait for Claude to fully start
         await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        // Send "1" to select dark theme (until config properly skips this)
-        await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${tmuxSession} "1" Enter`);
-        
-        // Give Claude a moment to process the theme selection
-        await new Promise(resolve => setTimeout(resolve, 2000));
         
         console.log(`Claude started in tmux session ${tmuxSession} at ${repoPath}`);
         
