@@ -51,23 +51,31 @@ configureGit();
 // Start Claude in tmux session - FULLY CONFIGURED, NO PROMPTS!
 async function startClaudeTmuxSession(sessionId, repoPath) {
     const tmuxSession = `claude-${sessionId}`;
+    const tmuxConfig = '/etc/tmux.conf';
     
     try {
         // Kill any existing tmux session with same name
-        await execAsync(`tmux kill-session -t ${tmuxSession} 2>/dev/null || true`);
+        await execAsync(`tmux -f ${tmuxConfig} kill-session -t ${tmuxSession} 2>/dev/null || true`);
         
-        // Create new tmux session with proper config and start Claude
-        // First source the tmux config, then start Claude
-        const startCommand = `
-            tmux -f /etc/tmux.conf new-session -d -s ${tmuxSession} -c ${repoPath} && \
-            tmux send-keys -t ${tmuxSession} "claude" Enter && \
-            sleep 3 && \
-            tmux send-keys -t ${tmuxSession} "1" Enter && \
-            sleep 2
-        `;
+        // Create new tmux session with proper config
+        // The -f flag ensures our config is used
+        const createSessionCmd = `tmux -f ${tmuxConfig} new-session -d -s ${tmuxSession} -c ${repoPath}`;
+        await execAsync(createSessionCmd);
+        console.log(`Created tmux session ${tmuxSession} with config ${tmuxConfig}`);
         
-        await execAsync(startCommand);
-        console.log(`Started tmux session ${tmuxSession} with Claude in ${repoPath}`);
+        // Start Claude in the tmux session
+        await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${tmuxSession} "claude" Enter`);
+        
+        // Wait for Claude to start, then send theme selection
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Send "1" to select dark theme (until config properly skips this)
+        await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${tmuxSession} "1" Enter`);
+        
+        // Give Claude a moment to process the theme selection
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        console.log(`Claude started in tmux session ${tmuxSession} at ${repoPath}`);
         
         // Claude should be ready immediately thanks to config
         return tmuxSession;
@@ -79,18 +87,20 @@ async function startClaudeTmuxSession(sessionId, repoPath) {
 
 // Send command to Claude via tmux
 async function sendToClaudeTmux(tmuxSession, message) {
+    const tmuxConfig = '/etc/tmux.conf';
+    
     try {
         // Escape special characters in message
         const escapedMessage = message.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/'/g, "'\\''");
         
-        // Send message to tmux session
-        await execAsync(`tmux send-keys -t ${tmuxSession} "${escapedMessage}" Enter`);
+        // Send message to tmux session (using config for consistency)
+        await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${tmuxSession} "${escapedMessage}" Enter`);
         
         // Wait for Claude to process
         await new Promise(resolve => setTimeout(resolve, 5000));
         
         // Capture tmux pane output (last 50 lines)
-        const { stdout } = await execAsync(`tmux capture-pane -t ${tmuxSession} -p -S -50`);
+        const { stdout } = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${tmuxSession} -p -S -50`);
         
         return stdout;
     } catch (error) {
@@ -303,14 +313,15 @@ app.get('/api/sessions/:sessionId', async (req, res) => {
 // Kill tmux session on cleanup
 app.delete('/api/sessions/:sessionId', async (req, res) => {
     const session = sessions.get(req.params.sessionId);
+    const tmuxConfig = '/etc/tmux.conf';
     
     if (!session) {
         return res.status(404).json({ error: 'Session not found' });
     }
     
     try {
-        // Kill tmux session
-        await execAsync(`tmux kill-session -t ${session.tmuxSession} 2>/dev/null || true`);
+        // Kill tmux session (using config for consistency)
+        await execAsync(`tmux -f ${tmuxConfig} kill-session -t ${session.tmuxSession} 2>/dev/null || true`);
         
         // Remove from sessions
         sessions.delete(req.params.sessionId);
@@ -323,10 +334,11 @@ app.delete('/api/sessions/:sessionId', async (req, res) => {
 
 // Cleanup on exit
 process.on('SIGTERM', async () => {
+    const tmuxConfig = '/etc/tmux.conf';
     console.log('Cleaning up tmux sessions...');
     for (const [id, session] of sessions) {
         try {
-            await execAsync(`tmux kill-session -t ${session.tmuxSession} 2>/dev/null || true`);
+            await execAsync(`tmux -f ${tmuxConfig} kill-session -t ${session.tmuxSession} 2>/dev/null || true`);
         } catch (e) {}
     }
     process.exit(0);
