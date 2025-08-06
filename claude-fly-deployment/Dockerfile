@@ -30,11 +30,15 @@ COPY package.json ./
 RUN npm install
 
 # Copy server code and auth setup
-COPY server-tmux-fixed.js ./server.js
+COPY server-tmux-simple.js ./server.js
 COPY setup-claude-auth.sh ./
+COPY init-claude-config.sh ./
 
-# Make auth script executable
-RUN chmod +x setup-claude-auth.sh
+# Make scripts executable
+RUN chmod +x setup-claude-auth.sh init-claude-config.sh
+
+# Initialize Claude config to skip theme selection
+RUN ./init-claude-config.sh
 
 # Create workspace directory
 RUN mkdir -p /workspace
