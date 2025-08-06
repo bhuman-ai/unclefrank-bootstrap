@@ -48,29 +48,27 @@ async function configureGit() {
 
 configureGit();
 
-// Start Claude in tmux session - FULLY CONFIGURED, NO PROMPTS!
+// Use the existing manual Claude session
 async function startClaudeTmuxSession(sessionId, repoPath) {
-    const tmuxSession = `claude-${sessionId}`;
+    // ALWAYS use the manual session that's already set up and authenticated
+    const tmuxSession = 'claude-manual';
     const tmuxConfig = '/etc/tmux.conf';
     
     try {
-        // Kill any existing tmux session with same name
-        await execAsync(`tmux -f ${tmuxConfig} kill-session -t ${tmuxSession} 2>/dev/null || true`);
+        // Check if manual session exists
+        try {
+            await execAsync(`tmux -f ${tmuxConfig} has-session -t ${tmuxSession} 2>/dev/null`);
+            console.log(`Using existing manual session ${tmuxSession}`);
+        } catch (e) {
+            // Manual session doesn't exist - user needs to set it up
+            throw new Error('Manual Claude session not found. Please SSH in and set up claude-manual session first.');
+        }
         
-        // Create new tmux session with proper config
-        // The -f flag ensures our config is used
-        const createSessionCmd = `tmux -f ${tmuxConfig} new-session -d -s ${tmuxSession} -c ${repoPath}`;
-        await execAsync(createSessionCmd);
-        console.log(`Created tmux session ${tmuxSession} with config ${tmuxConfig}`);
+        // Change to the repo directory in the existing session
+        await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${tmuxSession} "cd ${repoPath}" Enter`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Start Claude in the tmux session
-        // Since manual setup is done, config should handle theme/permissions
-        await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${tmuxSession} "claude" Enter`);
-        
-        // Wait for Claude to fully start
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        console.log(`Claude started in tmux session ${tmuxSession} at ${repoPath}`);
+        console.log(`Using manual Claude session ${tmuxSession} in ${repoPath}`);
         
         // Claude should be ready immediately thanks to config
         return tmuxSession;
@@ -83,19 +81,21 @@ async function startClaudeTmuxSession(sessionId, repoPath) {
 // Send command to Claude via tmux
 async function sendToClaudeTmux(tmuxSession, message) {
     const tmuxConfig = '/etc/tmux.conf';
+    // Always use the manual session
+    const actualSession = 'claude-manual';
     
     try {
         // Escape special characters in message
         const escapedMessage = message.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/'/g, "'\\''");
         
-        // Send message to tmux session (using config for consistency)
-        await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${tmuxSession} "${escapedMessage}" Enter`);
+        // Send message to the manual session
+        await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${actualSession} "${escapedMessage}" Enter`);
         
         // Wait for Claude to process
         await new Promise(resolve => setTimeout(resolve, 5000));
         
-        // Capture tmux pane output (last 50 lines)
-        const { stdout } = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${tmuxSession} -p -S -50`);
+        // Capture tmux pane output from manual session (last 50 lines)
+        const { stdout } = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -50`);
         
         return stdout;
     } catch (error) {
@@ -160,10 +160,10 @@ app.post('/api/sessions', async (req, res) => {
         const branchName = `claude-session-${sessionId}`;
         await execAsync(`cd ${repoPath} && git checkout -b ${branchName}`);
         
-        // Start Claude in tmux (no setup needed!)
-        const tmuxSession = await startClaudeTmuxSession(sessionId, repoPath);
+        // Use the existing manual Claude session
+        await startClaudeTmuxSession(sessionId, repoPath);
         
-        // Initialize session
+        // Initialize session (always uses claude-manual)
         const session = {
             id: sessionId,
             created: new Date().toISOString(),
@@ -173,7 +173,7 @@ app.post('/api/sessions', async (req, res) => {
             branch: branchName,
             repoPath,
             workspaceDir,
-            tmuxSession
+            tmuxSession: 'claude-manual'  // Always use the manual session
         };
         
         sessions.set(sessionId, session);
