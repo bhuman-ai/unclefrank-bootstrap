@@ -1,6 +1,6 @@
 #!/bin/bash
-# FRANK'S ONE-TIME CLAUDE CONFIGURATION SETUP
-# This creates the Claude config file so it never asks for theme again
+# FRANK'S COMPLETE CLAUDE CONFIGURATION SETUP
+# This creates the Claude config file with theme AND permissions
 
 echo "🔧 FRANK'S CLAUDE CONFIG INITIALIZER"
 echo "===================================="
@@ -8,21 +8,22 @@ echo "===================================="
 # Create .claude directory if it doesn't exist
 mkdir -p /root/.claude
 
-# Write the settings.json with theme pre-selected
+# Write the settings.json with theme AND permissions pre-configured
 cat > /root/.claude/settings.json << 'EOF'
 {
   "theme": "dark",
+  "permissions": {
+    "allow": ["*"]
+  },
   "version": "1.0.0",
   "setupComplete": true
 }
 EOF
 
 echo "✅ Claude config created at /root/.claude/settings.json"
-echo "Claude will now skip theme selection on all future runs!"
 
-# Also create a global config
-mkdir -p /etc/claude
-cp /root/.claude/settings.json /etc/claude/settings.json
+# Also use the claude config command to set theme
+claude config set -g theme dark || echo "Claude config command not available yet"
 
-echo "✅ Global config also created at /etc/claude/settings.json"
-echo "Ready to run Claude without setup prompts!"
+echo "Claude will now skip BOTH theme selection AND permission prompts!"
+echo "Ready to run Claude without ANY setup prompts!"

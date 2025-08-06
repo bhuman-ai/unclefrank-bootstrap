@@ -33,11 +33,12 @@ RUN npm install
 COPY server-tmux-simple.js ./server.js
 COPY setup-claude-auth.sh ./
 COPY init-claude-config.sh ./
+COPY tmux.conf /etc/tmux.conf
 
 # Make scripts executable
 RUN chmod +x setup-claude-auth.sh init-claude-config.sh
 
-# Initialize Claude config to skip theme selection
+# Initialize Claude config to skip theme AND permission prompts
 RUN ./init-claude-config.sh
 
 # Create workspace directory

@@ -48,7 +48,7 @@ async function configureGit() {
 
 configureGit();
 
-// Start Claude in tmux session - NO PROMPTS NEEDED!
+// Start Claude in tmux session - FULLY CONFIGURED, NO PROMPTS!
 async function startClaudeTmuxSession(sessionId, repoPath) {
     const tmuxSession = `claude-${sessionId}`;
     
@@ -56,22 +56,16 @@ async function startClaudeTmuxSession(sessionId, repoPath) {
         // Kill any existing tmux session with same name
         await execAsync(`tmux kill-session -t ${tmuxSession} 2>/dev/null || true`);
         
-        // Create a temp directory to run Claude from (avoids root trust issues)
-        const tempDir = `/tmp/claude-${sessionId}`;
-        await execAsync(`mkdir -p ${tempDir}`);
-        
-        // Create new tmux session from temp dir, then cd to repo
-        // Running from non-root dir allows --dangerously-skip-permissions
+        // Create new tmux session and start Claude directly in repo
+        // Config handles all prompts (theme + permissions)
         const startCommand = `
-            tmux new-session -d -s ${tmuxSession} -c ${tempDir} && \
-            tmux send-keys -t ${tmuxSession} "claude --dangerously-skip-permissions" Enter && \
-            sleep 2 && \
-            tmux send-keys -t ${tmuxSession} "cd ${repoPath}" Enter && \
-            sleep 1
+            tmux new-session -d -s ${tmuxSession} -c ${repoPath} && \
+            tmux send-keys -t ${tmuxSession} "claude" Enter && \
+            sleep 2
         `;
         
         await execAsync(startCommand);
-        console.log(`Started tmux session ${tmuxSession} with Claude from ${tempDir}, working in ${repoPath}`);
+        console.log(`Started tmux session ${tmuxSession} with Claude in ${repoPath}`);
         
         // Claude should be ready immediately thanks to config
         return tmuxSession;
