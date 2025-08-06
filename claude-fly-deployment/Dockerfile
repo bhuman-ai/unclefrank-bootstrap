@@ -29,7 +29,7 @@ COPY package.json ./
 RUN npm install
 
 # Copy server code and auth setup
-COPY server-github-integrated-fixed.js ./server.js
+COPY server-github-integrated-working.js ./server.js
 COPY setup-claude-auth.sh ./
 
 # Make auth script executable
