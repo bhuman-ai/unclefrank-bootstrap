@@ -4602,13 +4602,27 @@ Claude Session ID: ${task.threadId}
                                                                     addLog(`🌿 Branch: ${session.branch}`, 'info');
                                                                     addLog(`📋 Response: ${result.response?.substring(0, 100) || 'Processing...'}`, 'info');
                                                                     
-                                                                    // Close the workspace modal
-                                                                    setTaskWorkspaceOpen(false);
+                                                                    // UPDATE the workspace task with new session ID
+                                                                    setWorkspaceTask(prev => ({
+                                                                        ...prev,
+                                                                        sessionId: session.sessionId,
+                                                                        threadId: session.sessionId,
+                                                                        branch: session.branch,
+                                                                        status: 'In Progress'
+                                                                    }));
                                                                     
-                                                                    // Refresh the page after a short delay
-                                                                    setTimeout(() => {
-                                                                        window.location.reload();
-                                                                    }, 2000);
+                                                                    // Update state tasks as well
+                                                                    setState(prev => ({
+                                                                        ...prev,
+                                                                        tasks: prev.tasks.map(t => 
+                                                                            t.id === workspaceTask.id 
+                                                                                ? { ...t, sessionId: session.sessionId, threadId: session.sessionId, status: 'In Progress' }
+                                                                                : t
+                                                                        )
+                                                                    }));
+                                                                    
+                                                                    // Don't close the modal - user might want to view the new session
+                                                                    addLog('📌 Task workspace updated with new session', 'success');
                                                                 } else {
                                                                     const error = await restartResponse.json();
                                                                     addLog(`❌ Failed to restart task: ${error.error}`, 'error');
@@ -4659,10 +4673,13 @@ Claude Session ID: ${task.threadId}
                                     </div>
                                     <button 
                                         onClick={() => {
-                                            if (workspaceTask.sessionId || workspaceTask.threadId) {
-                                                const sessionId = workspaceTask.sessionId || workspaceTask.threadId;
+                                            const currentSessionId = workspaceTask.sessionId || workspaceTask.threadId;
+                                            if (currentSessionId) {
+                                                addLog(`📂 Opening session viewer for: ${currentSessionId}`, 'info');
                                                 setTaskWorkspaceOpen(false);
-                                                openSessionViewer(sessionId);
+                                                openSessionViewer(currentSessionId);
+                                            } else {
+                                                addLog('⚠️ No session ID available for this task', 'warning');
                                             }
                                         }}
                                         className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded transition"
