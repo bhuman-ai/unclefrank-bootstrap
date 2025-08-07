@@ -4539,12 +4539,11 @@ Claude Session ID: ${task.threadId}
                                                             addLog('🔄 Restarting task with checkpoint decomposition...', 'info');
                                                             
                                                             try {
-                                                                // Close existing session if it exists
+                                                                // Skip trying to delete old session - it's causing errors
+                                                                // Just create a new one
                                                                 const sessionId = workspaceTask.sessionId || workspaceTask.threadId;
                                                                 if (sessionId) {
-                                                                    await fetch(`/api/claude/sessions/${sessionId}`, {
-                                                                        method: 'DELETE'
-                                                                    });
+                                                                    addLog(`📝 Previous session: ${sessionId}`, 'info');
                                                                 }
                                                                 
                                                                 // For now, just use the Claude executor directly
