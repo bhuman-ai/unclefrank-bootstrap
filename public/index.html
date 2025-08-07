@@ -1567,6 +1567,7 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                         
                         // Step 2: Execute with Claude using decomposed format
                         addLog('🚀 Sending decomposed task to Claude...', 'info');
+                        addLog('⏳ Note: Claude needs time to process. Do not interrupt!', 'warning');
                         
                         const executeResponse = await fetch('/api/claude/execute', {
                             method: 'POST',
