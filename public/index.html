@@ -4650,6 +4650,9 @@ Claude Session ID: ${task.threadId}
                                                                     
                                                                     // Store the task ID before updating state (closure issue)
                                                                     const currentTaskId = workspaceTask.id;
+                                                                    addLog(`🔍 DEBUG: Task ID = ${currentTaskId}`, 'warning');
+                                                                    addLog(`🔍 DEBUG: Old session = ${workspaceTask.sessionId || workspaceTask.threadId}`, 'warning');
+                                                                    addLog(`🔍 DEBUG: New session = ${session.sessionId}`, 'warning');
                                                                     
                                                                     // UPDATE the workspace task with new session ID
                                                                     const updatedTask = {
@@ -4663,6 +4666,7 @@ Claude Session ID: ${task.threadId}
                                                                         oldSessionId: workspaceTask.sessionId || workspaceTask.threadId // Keep track of old session
                                                                     };
                                                                     
+                                                                    addLog(`🔍 DEBUG: Calling setWorkspaceTask with new session`, 'warning');
                                                                     setWorkspaceTask(updatedTask);
                                                                     
                                                                     // Update state tasks as well
@@ -4677,16 +4681,25 @@ Claude Session ID: ${task.threadId}
                                                                     
                                                                     // Update localStorage to persist the new session ID
                                                                     const savedTasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
+                                                                    addLog(`🔍 DEBUG: Found ${savedTasks.length} tasks in localStorage`, 'warning');
                                                                     const taskIndex = savedTasks.findIndex(t => t.id === currentTaskId);
                                                                     if (taskIndex !== -1) {
+                                                                        addLog(`🔍 DEBUG: Found task at index ${taskIndex}, updating...`, 'warning');
                                                                         savedTasks[taskIndex].sessionId = session.sessionId;
                                                                         savedTasks[taskIndex].threadId = session.sessionId;
                                                                         savedTasks[taskIndex].branch = session.branch;
                                                                         savedTasks[taskIndex].status = 'In Progress';
+                                                                        savedTasks[taskIndex].oldSessionId = workspaceTask.sessionId || workspaceTask.threadId;
                                                                         localStorage.setItem('unclefrank-tasks', JSON.stringify(savedTasks));
                                                                         addLog('💾 Updated task in localStorage with new session', 'success');
+                                                                        
+                                                                        // Verify the update
+                                                                        const verifyTasks = JSON.parse(localStorage.getItem('unclefrank-tasks'));
+                                                                        const verifyTask = verifyTasks[taskIndex];
+                                                                        addLog(`🔍 DEBUG: Verified - task now has session ${verifyTask.sessionId}`, 'warning');
                                                                     } else {
-                                                                        addLog('⚠️ Could not find task in localStorage to update', 'warning');
+                                                                        addLog(`⚠️ Could not find task with ID ${currentTaskId} in localStorage`, 'warning');
+                                                                        addLog(`🔍 DEBUG: Task IDs in localStorage: ${savedTasks.map(t => t.id).join(', ')}`, 'warning');
                                                                     }
                                                                     
                                                                     // Don't close the modal - user might want to view the new session

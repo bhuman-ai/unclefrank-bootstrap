@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Session Debug Tool</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #fff; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #444; background: #2a2a2a; }
+        .button { padding: 10px 20px; margin: 5px; cursor: pointer; background: #4a4a4a; color: white; border: none; }
+        .button:hover { background: #5a5a5a; }
+        .log { padding: 10px; margin: 5px 0; background: #333; border-left: 3px solid #0080ff; }
+        .error { border-left-color: #ff4444; }
+        .success { border-left-color: #44ff44; }
+        .warning { border-left-color: #ffaa44; }
+        pre { background: #111; padding: 10px; overflow: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Uncle Frank's Session Debugger</h1>
+    
+    <div class="section">
+        <h2>localStorage Tasks</h2>
+        <button class="button" onclick="showLocalStorage()">Show localStorage</button>
+        <button class="button" onclick="clearLocalStorage()">Clear localStorage</button>
+        <div id="localStorage-content"></div>
+    </div>
+    
+    <div class="section">
+        <h2>Test Restart Flow</h2>
+        <button class="button" onclick="simulateRestart()">Simulate Restart</button>
+        <div id="restart-log"></div>
+    </div>
+    
+    <div class="section">
+        <h2>Check Specific Session</h2>
+        <input type="text" id="session-id" placeholder="Enter session ID" style="width: 400px; padding: 5px;">
+        <button class="button" onclick="checkSession()">Check Session</button>
+        <div id="session-status"></div>
+    </div>
+    
+    <div class="section">
+        <h2>Create New Session</h2>
+        <button class="button" onclick="createNewSession()">Create New Claude Session</button>
+        <div id="new-session"></div>
+    </div>
+
+    <script>
+        function log(containerId, message, type = '') {
+            const container = document.getElementById(containerId);
+            const div = document.createElement('div');
+            div.className = 'log ' + type;
+            div.innerHTML = new Date().toLocaleTimeString() + ' - ' + message;
+            container.appendChild(div);
+        }
+        
+        function showLocalStorage() {
+            const container = document.getElementById('localStorage-content');
+            container.innerHTML = '';
+            
+            const tasks = localStorage.getItem('unclefrank-tasks');
+            if (tasks) {
+                const parsed = JSON.parse(tasks);
+                container.innerHTML = '<h3>Tasks in localStorage:</h3><pre>' + JSON.stringify(parsed, null, 2) + '</pre>';
+                
+                // Highlight session IDs
+                parsed.forEach(task => {
+                    if (task.sessionId || task.threadId) {
+                        const sessionId = task.sessionId || task.threadId;
+                        container.innerHTML += '<div class="log">Task "' + (task.name || task.id) + '" has session: ' + sessionId + '</div>';
+                    }
+                });
+            } else {
+                container.innerHTML = '<div class="log warning">No tasks in localStorage</div>';
+            }
+        }
+        
+        function clearLocalStorage() {
+            if (confirm('Clear all tasks from localStorage?')) {
+                localStorage.removeItem('unclefrank-tasks');
+                showLocalStorage();
+                log('localStorage-content', 'Cleared localStorage', 'success');
+            }
+        }
+        
+        async function checkSession() {
+            const sessionId = document.getElementById('session-id').value;
+            if (!sessionId) {
+                alert('Enter a session ID');
+                return;
+            }
+            
+            const container = document.getElementById('session-status');
+            container.innerHTML = '';
+            
+            log('session-status', 'Checking session: ' + sessionId);
+            
+            try {
+                const response = await fetch('https://uncle-frank-claude.fly.dev/api/sessions/' + sessionId);
+                if (response.ok) {
+                    const data = await response.json();
+                    log('session-status', 'Session EXISTS and is ACTIVE', 'success');
+                    container.innerHTML += '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                } else {
+                    log('session-status', 'Session NOT FOUND (404)', 'error');
+                }
+            } catch (error) {
+                log('session-status', 'Error: ' + error.message, 'error');
+            }
+        }
+        
+        async function createNewSession() {
+            const container = document.getElementById('new-session');
+            container.innerHTML = '';
+            
+            log('new-session', 'Creating new session...');
+            
+            try {
+                const response = await fetch('https://uncle-frank-claude.fly.dev/api/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ repoUrl: 'https://github.com/bhuman-ai/unclefrank-bootstrap' })
+                });
+                
+                if (response.ok) {
+                    const session = await response.json();
+                    log('new-session', 'Created session: ' + session.sessionId, 'success');
+                    container.innerHTML += '<pre>' + JSON.stringify(session, null, 2) + '</pre>';
+                    
+                    // Auto-fill the session ID field
+                    document.getElementById('session-id').value = session.sessionId;
+                } else {
+                    log('new-session', 'Failed to create session', 'error');
+                }
+            } catch (error) {
+                log('new-session', 'Error: ' + error.message, 'error');
+            }
+        }
+        
+        async function simulateRestart() {
+            const container = document.getElementById('restart-log');
+            container.innerHTML = '';
+            
+            // Step 1: Show current localStorage
+            log('restart-log', 'Step 1: Current localStorage state');
+            const tasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
+            if (tasks.length === 0) {
+                log('restart-log', 'No tasks found. Creating a test task...', 'warning');
+                const testTask = {
+                    id: 'test-' + Date.now(),
+                    name: 'Test Document Management Task',
+                    sessionId: '34c0b44c-1b0a-4a7d-9fd0-a3f373550ba0',
+                    threadId: '34c0b44c-1b0a-4a7d-9fd0-a3f373550ba0',
+                    status: 'In Progress'
+                };
+                tasks.push(testTask);
+                localStorage.setItem('unclefrank-tasks', JSON.stringify(tasks));
+                log('restart-log', 'Created test task with old session', 'success');
+            }
+            
+            const task = tasks[0];
+            log('restart-log', 'Task ID: ' + task.id);
+            log('restart-log', 'Current session: ' + (task.sessionId || 'none'));
+            
+            // Step 2: Create new session
+            log('restart-log', 'Step 2: Creating new Claude session...');
+            try {
+                const response = await fetch('https://uncle-frank-claude.fly.dev/api/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ repoUrl: 'https://github.com/bhuman-ai/unclefrank-bootstrap' })
+                });
+                
+                const session = await response.json();
+                log('restart-log', 'New session created: ' + session.sessionId, 'success');
+                
+                // Step 3: Update localStorage
+                log('restart-log', 'Step 3: Updating localStorage...');
+                const oldSessionId = task.sessionId;
+                task.sessionId = session.sessionId;
+                task.threadId = session.sessionId;
+                task.oldSessionId = oldSessionId;
+                task.branch = session.branch;
+                task.status = 'In Progress';
+                
+                localStorage.setItem('unclefrank-tasks', JSON.stringify(tasks));
+                log('restart-log', 'Updated task with new session', 'success');
+                
+                // Step 4: Verify
+                log('restart-log', 'Step 4: Verifying update...');
+                const updatedTasks = JSON.parse(localStorage.getItem('unclefrank-tasks'));
+                const updatedTask = updatedTasks[0];
+                
+                if (updatedTask.sessionId === session.sessionId) {
+                    log('restart-log', '✅ SUCCESS: Task now has new session ' + session.sessionId, 'success');
+                } else {
+                    log('restart-log', '❌ FAILED: Task still has old session', 'error');
+                }
+                
+                // Show final state
+                container.innerHTML += '<h3>Final Task State:</h3><pre>' + JSON.stringify(updatedTask, null, 2) + '</pre>';
+                
+            } catch (error) {
+                log('restart-log', 'Error: ' + error.message, 'error');
+            }
+        }
+        
+        // Auto-load on page load
+        window.onload = () => {
+            showLocalStorage();
+            
+            // Check the problematic session
+            document.getElementById('session-id').value = '34c0b44c-1b0a-4a7d-9fd0-a3f373550ba0';
+            checkSession();
+        };
+    </script>
+</body>
+</html>
