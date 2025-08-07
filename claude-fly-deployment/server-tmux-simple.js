@@ -85,11 +85,23 @@ async function sendToClaudeTmux(tmuxSession, message) {
     const actualSession = 'claude-manual';
     
     try {
-        // Escape special characters in message
-        const escapedMessage = message.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/'/g, "'\\''");
-        
-        // Send message to the manual session
-        await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${actualSession} "${escapedMessage}" Enter`);
+        // Special case: if message is empty or just whitespace, only send Enter
+        if (!message || message.trim() === '') {
+            await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${actualSession} Enter`);
+        } else {
+            // Escape special characters in message
+            const escapedMessage = message.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/'/g, "'\\''");
+            
+            // IMPORTANT: Send text and Enter separately to ensure proper execution
+            // Step 1: Send the message text to the buffer
+            await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${actualSession} "${escapedMessage}"`);
+            
+            // Step 2: Wait a moment for text to be in buffer
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // Step 3: Send Enter to trigger execution
+            await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${actualSession} Enter`);
+        }
         
         // Wait for Claude to process
         await new Promise(resolve => setTimeout(resolve, 5000));
