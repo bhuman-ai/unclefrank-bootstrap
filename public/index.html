@@ -4481,7 +4481,7 @@ Claude Session ID: ${task.threadId}
                                         </div>
                                         
                                         {/* Session Info */}
-                                        {(workspaceTask.sessionId || workspaceTask.threadId) && (
+                                        {(workspaceTask?.sessionId || workspaceTask?.threadId) && (
                                             <div className="mb-4">
                                                 <label className="text-xs text-gray-400">Claude Session</label>
                                                 <p className="mt-1 text-sm font-mono text-gray-300">
@@ -4490,6 +4490,11 @@ Claude Session ID: ${task.threadId}
                                                         <span className="ml-2 text-red-500 text-xs">(Expired - Restart Required)</span>
                                                     )}
                                                 </p>
+                                                {workspaceTask.newSessionId && workspaceTask.newSessionId !== workspaceTask.sessionId && (
+                                                    <p className="mt-1 text-sm font-mono text-green-400">
+                                                        New: {workspaceTask.newSessionId.substring(0, 12)}... (Active)
+                                                    </p>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -4625,21 +4630,27 @@ Claude Session ID: ${task.threadId}
                                                                     addLog(`🌿 Branch: ${session.branch}`, 'info');
                                                                     addLog(`📋 Response: ${result.response?.substring(0, 100) || 'Processing...'}`, 'info');
                                                                     
+                                                                    // Store the task ID before updating state (closure issue)
+                                                                    const currentTaskId = workspaceTask.id;
+                                                                    
                                                                     // UPDATE the workspace task with new session ID
-                                                                    setWorkspaceTask(prev => ({
-                                                                        ...prev,
+                                                                    const updatedTask = {
+                                                                        ...workspaceTask,
                                                                         sessionId: session.sessionId,
                                                                         threadId: session.sessionId,
                                                                         branch: session.branch,
                                                                         status: 'In Progress',
-                                                                        sessionExpired: false
-                                                                    }));
+                                                                        sessionExpired: false,
+                                                                        oldSessionId: workspaceTask.sessionId // Keep track of old session
+                                                                    };
+                                                                    
+                                                                    setWorkspaceTask(updatedTask);
                                                                     
                                                                     // Update state tasks as well
                                                                     setState(prev => ({
                                                                         ...prev,
                                                                         tasks: prev.tasks.map(t => 
-                                                                            t.id === workspaceTask.id 
+                                                                            t.id === currentTaskId 
                                                                                 ? { ...t, sessionId: session.sessionId, threadId: session.sessionId, status: 'In Progress' }
                                                                                 : t
                                                                         )
@@ -4647,7 +4658,7 @@ Claude Session ID: ${task.threadId}
                                                                     
                                                                     // Update localStorage to persist the new session ID
                                                                     const savedTasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
-                                                                    const taskIndex = savedTasks.findIndex(t => t.id === workspaceTask.id);
+                                                                    const taskIndex = savedTasks.findIndex(t => t.id === currentTaskId);
                                                                     if (taskIndex !== -1) {
                                                                         savedTasks[taskIndex].sessionId = session.sessionId;
                                                                         savedTasks[taskIndex].threadId = session.sessionId;
@@ -4655,6 +4666,8 @@ Claude Session ID: ${task.threadId}
                                                                         savedTasks[taskIndex].status = 'In Progress';
                                                                         localStorage.setItem('unclefrank-tasks', JSON.stringify(savedTasks));
                                                                         addLog('💾 Updated task in localStorage with new session', 'success');
+                                                                    } else {
+                                                                        addLog('⚠️ Could not find task in localStorage to update', 'warning');
                                                                     }
                                                                     
                                                                     // Don't close the modal - user might want to view the new session
@@ -4709,9 +4722,14 @@ Claude Session ID: ${task.threadId}
                                     </div>
                                     <button 
                                         onClick={() => {
-                                            const currentSessionId = workspaceTask.sessionId || workspaceTask.threadId;
+                                            // Get the freshest task data from localStorage in case it was updated
+                                            const savedTasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
+                                            const currentTask = savedTasks.find(t => t.id === workspaceTask.id) || workspaceTask;
+                                            const currentSessionId = currentTask.sessionId || currentTask.threadId;
+                                            
                                             if (currentSessionId) {
                                                 addLog(`📂 Opening session viewer for: ${currentSessionId}`, 'info');
+                                                addLog(`📌 Task ID: ${currentTask.id}`, 'info');
                                                 setTaskWorkspaceOpen(false);
                                                 openSessionViewer(currentSessionId);
                                             } else {
