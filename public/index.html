@@ -4547,25 +4547,42 @@ Claude Session ID: ${task.threadId}
                                                                     });
                                                                 }
                                                                 
-                                                                // Restart with decomposition
-                                                                const restartResponse = await fetch('/api/tasks/restart', {
+                                                                // For now, just use the Claude executor directly
+                                                                // Since we don't have a Next.js server running locally
+                                                                addLog('🔄 Restarting task with Claude...', 'info');
+                                                                
+                                                                // Create a new Claude session directly on Fly.io
+                                                                const claudeResponse = await fetch('https://uncle-frank-claude.fly.dev/api/sessions', {
                                                                     method: 'POST',
                                                                     headers: { 'Content-Type': 'application/json' },
                                                                     body: JSON.stringify({
-                                                                        task: workspaceTask.objective || workspaceTask.name,
-                                                                        originalTask: workspaceTask.objective || workspaceTask.name,
-                                                                        issueNumber: workspaceTask.issueNumber,
-                                                                        checkpoints: [],
-                                                                        complexity: 'moderate',
-                                                                        estimatedTime: 'TBD'
+                                                                        repoUrl: 'https://github.com/bhuman-ai/unclefrank-bootstrap'
                                                                     })
                                                                 });
                                                                 
+                                                                if (!claudeResponse.ok) {
+                                                                    throw new Error('Failed to create Claude session');
+                                                                }
+                                                                
+                                                                const session = await claudeResponse.json();
+                                                                
+                                                                // Execute the task
+                                                                const executeResponse = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${session.sessionId}/execute`, {
+                                                                    method: 'POST',
+                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                    body: JSON.stringify({
+                                                                        message: `Restart and continue this task: ${workspaceTask.objective || workspaceTask.name}`
+                                                                    })
+                                                                });
+                                                                
+                                                                const restartResponse = executeResponse;
+                                                                
                                                                 if (restartResponse.ok) {
                                                                     const result = await restartResponse.json();
-                                                                    addLog('✅ Task restarted with checkpoint system!', 'success');
-                                                                    addLog(`📍 New Session: ${result.sessionId}`, 'info');
-                                                                    addLog(`🌿 Branch: ${result.branch}`, 'info');
+                                                                    addLog('✅ Task restarted successfully!', 'success');
+                                                                    addLog(`📍 New Session: ${session.sessionId}`, 'info');
+                                                                    addLog(`🌿 Branch: ${session.branch}`, 'info');
+                                                                    addLog(`📋 Response: ${result.response?.substring(0, 100) || 'Processing...'}`, 'info');
                                                                     
                                                                     // Close the workspace modal
                                                                     setTaskWorkspaceOpen(false);
