@@ -161,7 +161,7 @@ app.post('/api/sessions', async (req, res) => {
         await execAsync(`cd ${repoPath} && git checkout -b ${branchName}`);
         
         // Use the existing manual Claude session
-        await startClaudeTmuxSession(sessionId, repoPath);
+        const tmuxSession = await startClaudeTmuxSession(sessionId, repoPath);
         
         // Initialize session (always uses claude-manual)
         const session = {

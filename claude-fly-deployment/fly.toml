@@ -49,8 +49,8 @@ kill_timeout = 5
     tls_skip_verify = false
 
 [mounts]
-  source = "workspace_data"
-  destination = "/workspace"
+  source = "claude_auth"
+  destination = "/persistent"
 
 [metrics]
   port = 9091
