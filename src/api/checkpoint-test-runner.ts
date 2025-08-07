@@ -8,6 +8,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import axios from 'axios';
 import * as fs from 'fs/promises';
+import { getErrorMessage, getErrorCode, isSystemError, isExecError } from '../types/errors';
 
 const execAsync = promisify(exec);
 
@@ -77,9 +78,9 @@ export class CheckpointTestRunner {
                 default:
                     throw new Error(`Unknown test type: ${test.type}`);
             }
-        } catch (error: any) {
+        } catch (error) {
             result.passed = false;
-            result.error = error.message;
+            result.error = getErrorMessage(error);
             result.evidence.push(`Test failed with error: ${error.message}`);
         }
 
@@ -143,9 +144,9 @@ export class CheckpointTestRunner {
                     result.evidence.push('Command executed without errors');
                 }
             }
-        } catch (error: any) {
+        } catch (error) {
             result.passed = false;
-            result.error = error.message;
+            result.error = getErrorMessage(error);
         }
 
         return result;
@@ -188,11 +189,11 @@ export class CheckpointTestRunner {
             } else {
                 result.passed = true; // File exists
             }
-        } catch (error: any) {
-            if (error.code === 'ENOENT') {
+        } catch (error) {
+            if (isSystemError(error) && error.code === 'ENOENT') {
                 result.error = `File not found: ${test.test}`;
             } else {
-                result.error = error.message;
+                result.error = getErrorMessage(error);
             }
             result.passed = false;
         }
@@ -263,9 +264,9 @@ export class CheckpointTestRunner {
                     result.evidence.push('API returned successful status');
                 }
             }
-        } catch (error: any) {
+        } catch (error) {
             result.passed = false;
-            result.error = error.message;
+            result.error = getErrorMessage(error);
         }
 
         return result;
@@ -316,9 +317,9 @@ export class CheckpointTestRunner {
             if (result.passed) {
                 result.evidence.push(`All ${steps.length} integration steps passed`);
             }
-        } catch (error: any) {
+        } catch (error) {
             result.passed = false;
-            result.error = error.message;
+            result.error = getErrorMessage(error);
         }
 
         return result;
@@ -408,12 +409,13 @@ export class CheckpointTestRunner {
                     result.evidence.push('Test command completed without errors');
                 }
             }
-        } catch (error: any) {
+        } catch (error) {
             // Check if it's just a non-zero exit code
-            if (error.code && error.code !== 0) {
-                result.error = `Test failed with exit code ${error.code}`;
+            const errorCode = getErrorCode(error);
+            if (errorCode && errorCode !== 0) {
+                result.error = `Test failed with exit code ${errorCode}`;
             } else {
-                result.error = error.message;
+                result.error = getErrorMessage(error);
             }
             result.passed = false;
         }

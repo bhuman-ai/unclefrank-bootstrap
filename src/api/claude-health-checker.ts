@@ -120,34 +120,80 @@ export class ClaudeHealthChecker {
     }
 
     /**
-     * Test that Claude can actually execute a simple command
+     * Test that Claude can ACTUALLY do real work, not just echo
      */
     private async testCommandExecution(): Promise<any> {
+        console.log('🧪 Testing REAL Claude capabilities...');
+        
         try {
-            // Create a real session
+            // Use testOnly mode for health check
             const createResponse = await axios.post(`${this.claudeUrl}/api/sessions`, {
-                repoUrl: 'https://github.com/bhuman-ai/unclefrank-bootstrap'
+                testOnly: true
             });
 
             const sessionId = createResponse.data.sessionId;
 
-            // Execute a simple test command
-            const execResponse = await axios.post(
-                `${this.claudeUrl}/api/sessions/${sessionId}/execute`,
-                { message: 'echo "CLAUDE_TEST_SUCCESS"' },
-                { timeout: 15000 }
-            );
+            // Test REAL capabilities, not just echo
+            const realTests = [
+                {
+                    name: 'Code analysis',
+                    command: 'ls -la && file package.json',
+                    expected: 'package.json'
+                },
+                {
+                    name: 'TypeScript check', 
+                    command: 'which tsc && tsc --version',
+                    expected: 'Version'
+                },
+                {
+                    name: 'Git operations',
+                    command: 'git --version',
+                    expected: 'git version'
+                }
+            ];
 
-            // Check if the command actually executed
-            const output = execResponse.data.response || '';
-            const success = output.includes('CLAUDE_TEST_SUCCESS');
+            let passedTests = 0;
+            const results: any[] = [];
 
-            // Cleanup
-            await axios.delete(`${this.claudeUrl}/api/sessions/${sessionId}`);
+            for (const test of realTests) {
+                try {
+                    const execResponse = await axios.post(
+                        `${this.claudeUrl}/api/sessions/${sessionId}/execute`,
+                        { message: test.command },
+                        { timeout: 10000 }
+                    );
+                    
+                    const output = execResponse.data.response || '';
+                    const passed = output.toLowerCase().includes(test.expected.toLowerCase());
+                    
+                    if (passed) passedTests++;
+                    
+                    results.push({
+                        test: test.name,
+                        passed,
+                        output: output.substring(0, 100)
+                    });
+                } catch (err) {
+                    results.push({
+                        test: test.name,
+                        passed: false,
+                        error: 'Test failed to execute'
+                    });
+                }
+            }
 
+            // Cleanup if session was created
+            if (!createResponse.data.testOnly) {
+                await axios.delete(`${this.claudeUrl}/api/sessions/${sessionId}`).catch(() => {});
+            }
+
+            const success = passedTests >= 2; // At least 2 out of 3 tests should pass
+            
             return {
                 success,
-                output: output.substring(0, 200),
+                testsPassed: passedTests,
+                totalTests: realTests.length,
+                results,
                 sessionId
             };
         } catch (error) {

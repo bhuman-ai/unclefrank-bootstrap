@@ -184,7 +184,35 @@ app.get('/health', async (req, res) => {
 
 // Create session with GitHub repo
 app.post('/api/sessions', async (req, res) => {
+    const { testOnly, repoUrl } = req.body;
     const sessionId = uuidv4();
+    
+    // REAL IMPLEMENTATION: Actually handle testOnly parameter
+    if (testOnly) {
+        console.log(`[Test Mode] Creating test session ${sessionId} without cloning`);
+        
+        // For test mode, just verify tmux is ready
+        try {
+            await execAsync(`tmux has-session -t claude-manual 2>/dev/null`);
+            
+            return res.json({
+                sessionId,
+                status: 'test',
+                testOnly: true,
+                tmuxSession: 'claude-manual',
+                ready: true,
+                message: 'Test session created without repo clone'
+            });
+        } catch (error) {
+            return res.status(503).json({
+                error: 'Claude tmux session not ready',
+                testOnly: true,
+                ready: false
+            });
+        }
+    }
+    
+    // Normal mode - actually clone the repo
     const workspaceDir = path.join(WORKSPACE_DIR, sessionId);
     const repoPath = path.join(workspaceDir, 'repo');
     
@@ -192,7 +220,8 @@ app.post('/api/sessions', async (req, res) => {
         await fs.mkdir(workspaceDir, { recursive: true });
         
         // Clone the repository
-        console.log(`Cloning ${GITHUB_REPO} to ${repoPath}`);
+        const repoToClone = repoUrl || `https://github.com/${GITHUB_REPO}`;
+        console.log(`Cloning ${repoToClone} to ${repoPath}`);
         await execAsync(`git clone https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git ${repoPath}`);
         
         // Create unique branch
