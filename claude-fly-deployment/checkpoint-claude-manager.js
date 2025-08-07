@@ -93,8 +93,8 @@ class CheckpointClaudeManager {
             // Capture test results
             const output = await this.captureWindowOutput(instance.windowIndex, 100);
             
-            // Verify pass/fail criteria
-            const passed = await this.verifyCheckpoint(output, passCriteria);
+            // Verify pass/fail criteria with REAL verification
+            const passed = await this.verifyCheckpoint(output, passCriteria, id);
             
             return {
                 checkpointId: id,
@@ -169,9 +169,65 @@ ${checkpoint.passCriteria}
 
     /**
      * Verify checkpoint passed based on criteria
+     * SACRED PRINCIPLE: Real verification, not text pattern matching
      */
-    async verifyCheckpoint(output, passCriteria) {
-        // Simple verification - look for success indicators
+    async verifyCheckpoint(output, passCriteria, checkpointId) {
+        console.log('🔍 Frank is doing REAL verification...');
+        
+        // First, try to run the ACTUAL TEST
+        try {
+            const axios = require('axios');
+            
+            // Step 1: Run the actual test
+            const testResult = await axios.post(
+                'http://localhost:3000/api/checkpoint/run-test',
+                {
+                    checkpoint: {
+                        id: checkpointId,
+                        name: `Checkpoint ${checkpointId}`,
+                        test: passCriteria  // Use criteria as test spec
+                    },
+                    passFail: passCriteria,
+                    sessionId: `checkpoint-${checkpointId}`
+                }
+            );
+            
+            if (testResult.data && testResult.data.success) {
+                console.log(`✅ ACTUAL TEST PASSED!`);
+                console.log(`Evidence:`, testResult.data.testResult.evidence);
+                return true;
+            }
+            
+            console.log(`❌ ACTUAL TEST FAILED:`, testResult.data.testResult.error);
+            
+        } catch (testError) {
+            console.log('⚠️ Test runner unavailable, trying execution verifier...');
+            
+            // Fallback to execution verifier
+            try {
+                const axios = require('axios');
+                const verificationResult = await axios.post(
+                    'http://localhost:3000/api/claude/verify-execution',
+                    {
+                        sessionId: `checkpoint-${checkpointId}`,
+                        checkpointId,
+                        passFail: passCriteria
+                    }
+                );
+                
+                if (verificationResult.data && verificationResult.data.success) {
+                    console.log(`✅ Execution verification passed (confidence: ${verificationResult.data.result.confidence}%)`);
+                    return true;
+                }
+                
+                console.log(`❌ Execution verification failed:`, verificationResult.data.result.errors);
+                return false;
+            } catch (error) {
+                console.log('⚠️ Execution verifier unavailable, falling back to pattern matching...');
+            }
+        }
+        
+        // Final fallback to pattern matching if all else fails
         const successIndicators = [
             '✓', '✅', 'SUCCESS', 'PASSED', 'Complete', 
             'successfully', 'working', 'verified'

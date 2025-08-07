@@ -1529,13 +1529,45 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                 setLoading(true);
                 addLog('🔍 Decomposing task into checkpoints...', 'info');
                 
-                // First ensure Claude is running
+                // REAL Claude validation - Frank doesn't do fake checks
                 if (!state.claudeExecutorOnline) {
-                    addLog('🔄 Claude is offline, attempting to start it...', 'warning');
-                    // Force a check which will trigger auto-restart
-                    await checkClaudeExecutor();
-                    // Wait a moment for restart to initiate
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    addLog('🔍 Frank is validating Claude is ACTUALLY ready...', 'warning');
+                    
+                    // Attempt real validation with retries
+                    let claudeReady = false;
+                    for (let attempt = 1; attempt <= 3; attempt++) {
+                        addLog(`Validation attempt ${attempt}/3...`, 'info');
+                        
+                        const validationResponse = await fetch('/api/claude/validate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ attempt })
+                        });
+                        
+                        if (validationResponse.ok) {
+                            const validation = await validationResponse.json();
+                            if (validation.ready) {
+                                claudeReady = true;
+                                addLog('✅ Claude is ACTUALLY ready and can execute commands', 'success');
+                                break;
+                            } else {
+                                addLog(`❌ Claude not ready: ${validation.details.error}`, 'error');
+                                
+                                // Attempt auto-fix
+                                if (attempt < 3) {
+                                    addLog('🔧 Attempting to fix Claude...', 'info');
+                                    await new Promise(resolve => setTimeout(resolve, 3000));
+                                    await checkClaudeExecutor();
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (!claudeReady) {
+                        addLog('❌ Claude cannot be started. Manual intervention required.', 'error');
+                        setLoading(false);
+                        return; // STOP - don't proceed with broken Claude
+                    }
                 }
                 
                 try {

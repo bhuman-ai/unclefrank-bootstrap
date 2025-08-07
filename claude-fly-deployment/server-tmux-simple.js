@@ -78,13 +78,18 @@ async function startClaudeTmuxSession(sessionId, repoPath) {
     }
 }
 
-// Send command to Claude via tmux
+// Send command to Claude via tmux with VERIFICATION
 async function sendToClaudeTmux(tmuxSession, message) {
     const tmuxConfig = '/etc/tmux.conf';
     // Always use the manual session
     const actualSession = 'claude-manual';
     
     try {
+        // VERIFICATION STEP 1: Capture output before sending command
+        const outputBefore = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -50`)
+            .then(res => res.stdout)
+            .catch(() => '');
+        
         // Special case: if message is empty or just whitespace, only send Enter
         if (!message || message.trim() === '') {
             await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${actualSession} Enter`);
@@ -106,10 +111,32 @@ async function sendToClaudeTmux(tmuxSession, message) {
         // Wait for Claude to process
         await new Promise(resolve => setTimeout(resolve, 5000));
         
-        // Capture tmux pane output from manual session (last 50 lines)
-        const { stdout } = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -50`);
+        // VERIFICATION STEP 2: Capture output after command
+        const { stdout: outputAfter } = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -50`);
         
-        return stdout;
+        // VERIFICATION STEP 3: Verify command was actually executed
+        if (outputBefore === outputAfter && message && message.trim()) {
+            console.warn('⚠️ Frank says: Command might not have been executed - output unchanged');
+            
+            // Try to verify in a different way
+            const extendedOutput = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -100`)
+                .then(res => res.stdout)
+                .catch(() => '');
+            
+            if (extendedOutput.length > outputBefore.length || extendedOutput.includes(message.substring(0, 20))) {
+                console.log('✅ Command verified through extended output check');
+            } else {
+                console.error('❌ Frank says: Command execution could not be verified!');
+                // Log for debugging
+                console.log('Command sent:', message.substring(0, 50));
+                console.log('Output length before:', outputBefore.length);
+                console.log('Output length after:', outputAfter.length);
+            }
+        } else {
+            console.log('✅ Frank verified: Command was executed (output changed)');
+        }
+        
+        return outputAfter;
     } catch (error) {
         console.error('Failed to send to tmux:', error);
         throw error;
