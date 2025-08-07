@@ -46,7 +46,11 @@ export function isAxiosError(error: unknown): error is AxiosErrorType {
  * Type guard for exec errors
  */
 export function isExecError(error: unknown): error is ExecError {
-    return error instanceof Error && 'code' in error && typeof (error as any).code === 'number';
+    if (!(error instanceof Error)) return false;
+    if (!('code' in error)) return false;
+    // Properly type check without 'as any'
+    const errorWithCode = error as Error & { code: unknown };
+    return typeof errorWithCode.code === 'number';
 }
 
 /**

@@ -21,10 +21,22 @@ export class GitHubDraftStorage {
     private octokit: Octokit;
     private owner: string;
     private repo: string;
+    private rateLimitRemaining: number = 5000;
+    private rateLimitReset: Date = new Date();
 
     constructor() {
         this.octokit = new Octokit({
-            auth: process.env.GITHUB_TOKEN
+            auth: process.env.GITHUB_TOKEN,
+            throttle: {
+                onRateLimit: (retryAfter: number, options: any) => {
+                    console.warn(`⚠️ GitHub rate limit hit! Retrying after ${retryAfter} seconds`);
+                    return true; // Retry
+                },
+                onSecondaryRateLimit: (retryAfter: number, options: any) => {
+                    console.warn(`⚠️ GitHub secondary rate limit hit!`);
+                    return true;
+                }
+            }
         });
         
         // Parse from GITHUB_REPO env var or use defaults
@@ -32,6 +44,34 @@ export class GitHubDraftStorage {
         const parts = repoPath.split('/');
         this.owner = parts[0] || 'bhuman-ai';
         this.repo = parts[1] || 'unclefrank-bootstrap';
+        
+        // Check rate limit on startup
+        this.checkRateLimit();
+    }
+
+    /**
+     * Check and update rate limit status
+     */
+    private async checkRateLimit(): Promise<boolean> {
+        try {
+            const { data } = await this.octokit.rateLimit.get();
+            this.rateLimitRemaining = data.rate.remaining;
+            this.rateLimitReset = new Date(data.rate.reset * 1000);
+            
+            if (this.rateLimitRemaining < 100) {
+                console.warn(`⚠️ Low GitHub rate limit: ${this.rateLimitRemaining} remaining`);
+                if (this.rateLimitRemaining < 10) {
+                    const waitTime = this.rateLimitReset.getTime() - Date.now();
+                    throw new Error(`GitHub rate limit exceeded. Resets in ${Math.ceil(waitTime / 60000)} minutes`);
+                }
+            }
+            
+            return true;
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Rate limit check failed:', err.message);
+            return false;
+        }
     }
 
     /**
@@ -44,6 +84,9 @@ export class GitHubDraftStorage {
         type: 'project' | 'task' | 'checkpoint' | 'documentation'
     ): Promise<GitHubDraft> {
         console.log(`📝 Creating draft as GitHub Issue: ${title}`);
+        
+        // Check rate limit before operation
+        await this.checkRateLimit();
         
         try {
             const { data } = await this.octokit.issues.create({
@@ -165,7 +208,7 @@ export class GitHubDraftStorage {
 
     /**
      * Convert approved draft (Issue) to Pull Request
-     * This is how drafts become REAL work
+     * REAL IMPLEMENTATION: Actually creates branch and commit first
      */
     async convertDraftToPR(issueNumber: number): Promise<number> {
         console.log(`🚀 Converting draft #${issueNumber} to PR...`);
@@ -178,17 +221,65 @@ export class GitHubDraftStorage {
                 issue_number: issueNumber
             });
 
-            // Create a branch for this work
+            // Step 1: Get the SHA of main branch
+            const { data: ref } = await this.octokit.git.getRef({
+                owner: this.owner,
+                repo: this.repo,
+                ref: 'heads/main'
+            });
+
+            // Step 2: Create a new branch from main
             const branchName = `draft-${issueNumber}-${Date.now()}`;
+            await this.octokit.git.createRef({
+                owner: this.owner,
+                repo: this.repo,
+                ref: `refs/heads/${branchName}`,
+                sha: ref.object.sha
+            });
+
+            // Step 3: Create a task file in the new branch
+            const taskContent = `# Task from Draft #${issueNumber}
+
+${issue.title.replace(/^\[(DRAFT|APPROVED|VALIDATED|REJECTED)\]\s*/, '')}
+
+## Description
+${issue.body}
+
+## Original Issue
+- Issue: #${issueNumber}
+- Created: ${issue.created_at}
+- Labels: ${issue.labels.map((l: any) => l.name).join(', ')}
+
+---
+*Generated from draft by Uncle Frank's platform*`;
+
+            await this.octokit.repos.createOrUpdateFileContents({
+                owner: this.owner,
+                repo: this.repo,
+                path: `tasks/task-${issueNumber}.md`,
+                message: `Add task from draft #${issueNumber}`,
+                content: Buffer.from(taskContent).toString('base64'),
+                branch: branchName
+            });
             
-            // Create PR with issue content
+            // Step 4: NOW create the PR (branch exists with content!)
             const { data: pr } = await this.octokit.pulls.create({
                 owner: this.owner,
                 repo: this.repo,
                 title: issue.title.replace('[APPROVED]', '[TASK]'),
                 head: branchName,
                 base: 'main',
-                body: `Implements #${issueNumber}\n\n${issue.body}\n\n---\nCloses #${issueNumber}`
+                body: `## Implements #${issueNumber}
+
+${issue.body}
+
+---
+### Checklist
+- [ ] Implementation complete
+- [ ] Tests added/updated
+- [ ] Documentation updated
+
+Closes #${issueNumber}`
             });
 
             // Close the original issue
