@@ -1190,10 +1190,18 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
             // Open Task Workspace View
             const openTaskWorkspace = async (task) => {
                 // ALWAYS check localStorage for the most recent version of this task
-                const savedTasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
-                const latestTask = savedTasks.find(t => t.id === task.id);
+                let savedTasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
+                let latestTask = savedTasks.find(t => t.id === task.id);
                 
-                // Use the localStorage version if it exists and has a newer session
+                // If task doesn't exist in localStorage, add it (happens with GitHub-loaded tasks)
+                if (!latestTask) {
+                    addLog(`📝 Task ${task.id} not in localStorage, adding it now`, 'info');
+                    savedTasks.push(task);
+                    localStorage.setItem('unclefrank-tasks', JSON.stringify(savedTasks));
+                    latestTask = task;
+                }
+                
+                // Use the localStorage version if it has a newer session
                 let taskToOpen = task;
                 if (latestTask && latestTask.sessionId !== task.sessionId) {
                     addLog(`📦 Found updated task in localStorage with new session`, 'info');
@@ -4704,6 +4712,11 @@ Claude Session ID: ${task.threadId}
                                                                     
                                                                     // Don't close the modal - user might want to view the new session
                                                                     addLog('📌 Task workspace updated with new session', 'success');
+                                                                    
+                                                                    // Force a re-render by setting a dummy state change
+                                                                    setTimeout(() => {
+                                                                        addLog(`✨ Session updated to: ${session.sessionId.substring(0, 12)}...`, 'success');
+                                                                    }, 100);
                                                                 } else {
                                                                     const error = await restartResponse.json();
                                                                     addLog(`❌ Failed to restart task: ${error.error}`, 'error');
