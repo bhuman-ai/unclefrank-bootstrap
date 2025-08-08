@@ -1614,251 +1614,161 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                 setLoading(false);
             };
 
-            // Decompose task - Creates a new Claude task that will be decomposed by orchestrator
+            // FRANK'S SIMPLE TASK CREATION - NO BS, JUST WORKS
             const decomposeTask = async () => {
                 if (!state.request) {
                     alert('Please enter a request');
                     return;
                 }
                 setLoading(true);
-                addLog('🔍 Decomposing task into checkpoints...', 'info');
-                
-                // REAL Claude validation - Frank doesn't do fake checks
-                if (!state.claudeExecutorOnline) {
-                    addLog('🔍 Frank is validating Claude is ACTUALLY ready...', 'warning');
-                    
-                    // Attempt real validation with retries
-                    let claudeReady = false;
-                    for (let attempt = 1; attempt <= 3; attempt++) {
-                        addLog(`Validation attempt ${attempt}/3...`, 'info');
-                        
-                        const validationResponse = await fetch('/api/claude/validate', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ attempt })
-                        });
-                        
-                        if (validationResponse.ok) {
-                            const validation = await validationResponse.json();
-                            if (validation.ready) {
-                                claudeReady = true;
-                                addLog('✅ Claude is ACTUALLY ready and can execute commands', 'success');
-                                break;
-                            } else {
-                                addLog(`❌ Claude not ready: ${validation.details.error}`, 'error');
-                                
-                                // Attempt auto-fix
-                                if (attempt < 3) {
-                                    addLog('🔧 Attempting to fix Claude...', 'info');
-                                    await new Promise(resolve => setTimeout(resolve, 3000));
-                                    await checkClaudeExecutor();
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (!claudeReady) {
-                        addLog('❌ Claude cannot be started. Manual intervention required.', 'error');
-                        setLoading(false);
-                        return; // STOP - don't proceed with broken Claude
-                    }
-                }
+                addLog('🚀 Creating task...', 'info');
                 
                 try {
-                    // Skip the non-existent decompose API and go straight to task creation
-                    addLog('📝 Creating task with Claude...', 'info');
-                    // First, create a GitHub issue to track this task
-                    const issueBody = `## Task Request
+                    // Step 1: Create GitHub issue to track the task
+                    addLog('📝 Creating GitHub issue...', 'info');
+                    const issueBody = `## Task
 ${state.request}
-
-${state.projectContext ? `## Project Context
-${state.projectContext}` : ''}
 
 ## Status
 - Created: ${new Date().toISOString()}
-- Status: 🔄 Processing
 - Claude Session: _pending_
 
----
-This issue tracks the task from creation through completion.`;
+${state.projectContext ? `## Context
+${state.projectContext}` : ''}`;
 
-                    const issue = await GitHubService.createIssue(
-                        `Task: ${state.request.substring(0, 100)}${state.request.length > 100 ? '...' : ''}`,
-                        issueBody
-                    );
-
-                    let taskId;
-                    if (issue) {
-                        addLog(`✅ Created GitHub issue #${issue.number}`, 'success');
-                        addLog(`📍 Issue URL: ${issue.html_url}`, 'info');
-                        taskId = `issue-${issue.number}`;
-                    } else {
-                        // Fallback to localStorage if GitHub API fails
-                        taskId = `local-${Date.now()}`;
-                        const localTask = {
-                            id: taskId,
-                            name: state.request.substring(0, 100),
-                            objective: state.request,
-                            status: 'Created',
-                            created: new Date().toISOString(),
-                            projectContext: state.projectContext
-                        };
+                    let issue = null;
+                    let issueNumber = null;
+                    try {
+                        const response = await fetch('/api/github', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                endpoint: '/repos/bhuman-ai/unclefrank-bootstrap/issues',
+                                method: 'POST',
+                                body: {
+                                    title: `Task: ${state.request.substring(0, 80)}`,
+                                    body: issueBody,
+                                    labels: ['task']
+                                }
+                            })
+                        });
                         
-                        // Save to localStorage
-                        const savedTasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
-                        savedTasks.push(localTask);
-                        localStorage.setItem('unclefrank-tasks', JSON.stringify(savedTasks));
-                        
-                        addLog(`📦 Task saved locally (GitHub API unavailable)`, 'warning');
+                        if (response.ok) {
+                            issue = await response.json();
+                            issueNumber = issue.number;
+                            addLog(`✅ Created GitHub issue #${issueNumber}`, 'success');
+                        } else {
+                            addLog('⚠️ Failed to create GitHub issue', 'warning');
+                        }
+                    } catch (error) {
+                        console.error('GitHub issue creation failed:', error);
+                        addLog('⚠️ GitHub issue creation failed', 'warning');
                     }
-                    // Create the task message for Claude
-                    const taskMessage = `# New Task Request
 
-${state.request}
-
-${state.projectContext ? `## Project Context
-${state.projectContext}` : ''}
-
-Please help me implement this task.`;
-
-                    // Create task in Claude via execute API
-                    const taskPayload = [{
-                        message: {
-                            type: 'user',
-                            model: 'sonnet',
-                            parts: [{
-                                type: 'rich-text',
-                                nodes: [{
-                                    type: 'text',
-                                    text: taskMessage
-                                }]
-                            }],
-                            timestamp: new Date().toISOString()
-                        },
-                        githubRepoFullName: 'bhuman-ai/unclefrank-bootstrap',
-                        repoBaseBranchName: 'master',
-                        saveAsDraft: false
-                    }];
+                    // Step 2: Create Claude session with checkpoint decomposition
+                    addLog('🤖 Creating Claude session...', 'info');
                     
-                    const response = await fetch('/api/execute', {
+                    const taskMessage = `# TASK: ${state.request}
+
+## CRITICAL: Follow Sacred Flow
+You MUST decompose this task into checkpoints BEFORE doing ANY work.
+
+### Checkpoint Format Required:
+#### Checkpoint 1: [Name]
+- Objective: [Clear goal]
+- Deliverables: [What to create]
+- Pass Criteria: [How to verify]
+
+#### Checkpoint 2: [Name]
+- Objective: [Clear goal]
+- Deliverables: [What to create]
+- Pass Criteria: [How to verify]
+
+[Continue for 3-5 checkpoints total]
+
+### THEN AND ONLY THEN
+After decomposing into checkpoints, begin implementing Checkpoint 1.
+
+${state.projectContext ? `## Project Context\n${state.projectContext}` : ''}`;
+
+                    // Use the claude-executor-integration API that ACTUALLY EXISTS
+                    const response = await fetch('/api/claude-executor-integration', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
+                        body: JSON.stringify({
                             action: 'create-task',
-                            payload: taskPayload
+                            payload: [{
+                                message: taskMessage
+                            }]
                         })
                     });
                     
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`Failed to create task: ${errorText}`);
+                    }
+                    
                     const data = await response.json();
-                    if (response.ok && data.threadId) {
-                        const threadId = data.threadId;
-                        addLog(`✅ Task created in Claude: ${threadId}`, 'success', threadId);
-                        addLog(`📍 Claude session ID: ${threadId}`, 'info', threadId);
-                        
-                        // Update GitHub issue with Claude session ID
-                        if (issue) {
-                            const updatedBody = issueBody.replace('- Claude Session: _pending_', `- Claude Session: ${threadId}`);
-                            await GitHubService.updateIssue(issue.number, {
-                                body: updatedBody
+                    const sessionId = data.threadId || data.sessionId;
+                    
+                    if (!sessionId) {
+                        throw new Error('No session ID returned from Claude');
+                    }
+                    
+                    addLog(`✅ Task created in Claude!`, 'success');
+                    addLog(`📍 Session ID: ${sessionId}`, 'info');
+                    
+                    // Step 3: Update GitHub issue with session ID
+                    if (issueNumber) {
+                        try {
+                            await fetch('/api/github', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    action: 'update-issue-session',
+                                    issueNumber: issueNumber,
+                                    newSessionId: sessionId
+                                })
                             });
-                            addLog(`📝 Updated issue #${issue.number} with Claude session`, 'info');
-                        } else if (taskId) {
-                            // Update localStorage task
-                            const savedTasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
-                            const taskIndex = savedTasks.findIndex(t => t.id === taskId);
-                            if (taskIndex !== -1) {
-                                savedTasks[taskIndex].threadId = threadId;
-                                savedTasks[taskIndex].status = 'Processing';
-                                localStorage.setItem('unclefrank-tasks', JSON.stringify(savedTasks));
-                            }
-                        }
-                        
-                        // Register with orchestrator - it will decompose automatically
-                        await registerWithOrchestrator(threadId, {
-                            type: 'main-task',
-                            task: state.request,
-                            branch: 'master',
-                            issueNumber: issue?.number
-                        });
-                        
-                        if (orchestratorEnabled) {
-                            addLog('🧠 Task Orchestrator is now monitoring this task...', 'info');
-                            addLog('📋 Task Agent will decompose into checkpoints...', 'info');
-                            
-                            // Poll orchestrator to trigger decomposition
-                            setTimeout(async () => {
-                                try {
-                                    const pollResponse = await fetch('/api/task-orchestrator', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ action: 'poll' })
-                                    });
-                                    
-                                    if (pollResponse.ok) {
-                                        const pollData = await pollResponse.json();
-                                        addLog(`🔄 Orchestrator polling ${pollData.instanceCount} instances`, 'info');
-                                    }
-                                } catch (e) {
-                                    console.error('Orchestrator poll error:', e);
-                                }
-                            }, 2000);
-                        }
-                        
-                        // Add the new task to reviewTasks with all necessary info
-                        const newTask = {
-                            id: taskId,
-                            name: state.request.substring(0, 100),
-                            objective: state.request,
-                            status: 'Processing',
-                            threadId: threadId,
-                            sessionId: threadId,
-                            issueNumber: issue?.number || null,
-                            issueUrl: issue?.html_url || null,
-                            created: new Date().toISOString()
-                        };
-                        
-                        // Clear the form and add task to list
-                        setState(prev => ({
-                            ...prev,
-                            request: '',
-                            projectContext: '',
-                            taskThreadId: threadId,
-                            reviewTasks: [newTask, ...prev.reviewTasks]
-                        }));
-                        
-                        // Task is running in Claude - no new tabs needed!
-                        
-                    } else {
-                        // Handle different error scenarios
-                        if (data.error && data.error.includes('Claude executor is restarting')) {
-                            addLog(`🔄 Claude executor is restarting automatically`, 'warning');
-                            addLog(`⏳ ${data.details}`, 'info');
-                            addLog(`🔄 Please retry in ${data.retryAfter || 30} seconds`, 'info');
-                            
-                            // Auto-retry after the specified time
-                            setTimeout(() => {
-                                addLog('🔄 Retrying task creation...', 'info');
-                                decomposeTask();
-                            }, (data.retryAfter || 30) * 1000);
-                            
-                        } else if (data.error && data.error.includes('restart failed multiple times')) {
-                            addLog(`❌ Claude executor restart failed`, 'error');
-                            addLog(`📍 ${data.details}`, 'error');
-                            addLog(`⏰ Next retry: ${new Date(data.nextRetry).toLocaleTimeString()}`, 'warning');
-                            alert('Claude executor is experiencing issues!\n\nMultiple restart attempts have failed. The system will retry later.');
-                            
-                        } else if (data.error && data.error.includes('Claude executor service is not available')) {
-                            addLog(`❌ Claude executor is offline`, 'error');
-                            addLog(`📍 ${data.details}`, 'error');
-                            alert('Claude executor is offline and could not be restarted automatically.');
-                            
-                        } else {
-                            addLog(data.error || 'Failed to create task', 'error');
+                            addLog(`✅ Updated issue #${issueNumber} with session`, 'success');
+                        } catch (error) {
+                            console.error('Failed to update issue:', error);
                         }
                     }
+                    
+                    // Step 4: Add task to UI
+                    const newTask = {
+                        id: issueNumber ? `issue-${issueNumber}` : `session-${sessionId}`,
+                        name: state.request.substring(0, 100),
+                        objective: state.request,
+                        status: 'In Progress',
+                        threadId: sessionId,
+                        sessionId: sessionId,
+                        issueNumber: issueNumber,
+                        issueUrl: issue?.html_url || null,
+                        created: new Date().toISOString()
+                    };
+                    
+                    // Update state
+                    setState(prev => ({
+                        ...prev,
+                        request: '',
+                        projectContext: '',
+                        reviewTasks: [newTask, ...prev.reviewTasks]
+                    }));
+                    
+                    addLog('✅ Task created successfully!', 'success');
+                    addLog('📋 Claude is now decomposing into checkpoints...', 'info');
+                    
                 } catch (error) {
-                    addLog(`Error: ${error.message}`, 'error');
-                }
+                    console.error('Task creation error:', error);
+                    addLog(`❌ Error: ${error.message}`, 'error');
+                    
+                    // If it's NOT an actual task creation error, show alternatives
+                    if (!error.message.includes('create task')) {
+                        addLog('💡 Try checking Claude executor status', 'info');
+                    }
+                } finally {
                 setLoading(false);
             };
 
