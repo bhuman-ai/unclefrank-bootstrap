@@ -4484,22 +4484,25 @@ Claude Session ID: ${task.threadId}
                                         {/* Session Info - Key forces re-render on session change */}
                                         {(workspaceTask?.sessionId || workspaceTask?.threadId) && (
                                             <div className="mb-4" key={`session-${workspaceTask.sessionId || workspaceTask.threadId}`}>
-                                                <label className="text-xs text-gray-400">Claude Session</label>
+                                                <label className="text-xs text-gray-400">Current Claude Session</label>
                                                 <div>
                                                     <p className="mt-1 text-sm font-mono text-gray-300">
                                                         {(workspaceTask.sessionId || workspaceTask.threadId || 'none').substring(0, 12)}...
                                                         {workspaceTask.sessionExpired && !workspaceTask.justRestarted && (
-                                                            <span className="ml-2 text-red-500 text-xs">(Expired - Restart Required)</span>
+                                                            <span className="ml-2 text-red-500 text-xs">(Expired - Needs Restart)</span>
                                                         )}
                                                         {workspaceTask.justRestarted && (
-                                                            <span className="ml-2 text-green-500 text-xs">(Just Restarted - Active)</span>
+                                                            <span className="ml-2 text-green-500 text-xs">✅ (Active - Just Created)</span>
+                                                        )}
+                                                        {!workspaceTask.sessionExpired && !workspaceTask.justRestarted && (
+                                                            <span className="ml-2 text-blue-500 text-xs">(Active)</span>
                                                         )}
                                                     </p>
                                                 </div>
                                                 {workspaceTask.oldSessionId && workspaceTask.oldSessionId !== workspaceTask.sessionId && (
-                                                    <p className="mt-1 text-xs text-gray-500">
-                                                        Previous: {workspaceTask.oldSessionId.substring(0, 12)}... (Closed)
-                                                    </p>
+                                                    <div className="mt-2 p-2 bg-gray-800 rounded text-xs">
+                                                        <span className="text-gray-500">Replaced session: {workspaceTask.oldSessionId.substring(0, 12)}...</span>
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
@@ -4619,6 +4622,7 @@ Claude Session ID: ${task.threadId}
                                                                 const session = await claudeResponse.json();
                                                                 
                                                                 // Execute the task
+                                                                addLog(`📝 Sending task to Claude: "${workspaceTask.objective || workspaceTask.name}"`, 'info');
                                                                 const executeResponse = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${session.sessionId}/execute`, {
                                                                     method: 'POST',
                                                                     headers: { 'Content-Type': 'application/json' },
@@ -4627,14 +4631,23 @@ Claude Session ID: ${task.threadId}
                                                                     })
                                                                 });
                                                                 
-                                                                const restartResponse = executeResponse;
+                                                                if (!executeResponse.ok) {
+                                                                    const errorText = await executeResponse.text();
+                                                                    addLog(`❌ Failed to execute task on Claude: ${errorText}`, 'error');
+                                                                    throw new Error(`Execute failed: ${errorText}`);
+                                                                }
                                                                 
-                                                                if (restartResponse.ok) {
-                                                                    const result = await restartResponse.json();
-                                                                    addLog('✅ Task restarted successfully!', 'success');
-                                                                    addLog(`📍 New Session: ${session.sessionId}`, 'info');
-                                                                    addLog(`🌿 Branch: ${session.branch}`, 'info');
-                                                                    addLog(`📋 Response: ${result.response?.substring(0, 100) || 'Processing...'}`, 'info');
+                                                                const result = await executeResponse.json();
+                                                                addLog('✅ Task sent to Claude successfully!', 'success');
+                                                                addLog(`📍 New Session: ${session.sessionId}`, 'info');
+                                                                addLog(`🌿 Branch: ${session.branch}`, 'info');
+                                                                
+                                                                // Show Claude's response (or indication it's processing)
+                                                                if (result.response) {
+                                                                    addLog(`🤖 Claude says: ${result.response.substring(0, 200)}...`, 'info');
+                                                                } else {
+                                                                    addLog(`⏳ Claude is processing the task...`, 'info');
+                                                                }
                                                                     
                                                                     // Store the task ID before updating state (closure issue)
                                                                     const currentTaskId = workspaceTask.id;
@@ -4674,10 +4687,6 @@ Claude Session ID: ${task.threadId}
                                                                     setTimeout(() => {
                                                                         addLog(`✨ Session updated to: ${session.sessionId.substring(0, 12)}...`, 'success');
                                                                     }, 100);
-                                                                } else {
-                                                                    const error = await restartResponse.json();
-                                                                    addLog(`❌ Failed to restart task: ${error.error}`, 'error');
-                                                                }
                                                             } catch (error) {
                                                                 addLog(`❌ Error restarting task: ${error.message}`, 'error');
                                                             }
