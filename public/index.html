@@ -1483,22 +1483,31 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                     if (response.ok) {
                         const data = await response.json();
                         
-                        // Extract messages from the Claude session status
-                        if (data.messages && data.messages.length > 0) {
-                            setSessionMessages(data.messages);
-                        } else if (data.lastResponse) {
-                            // If no message history, at least show the last response
-                            setSessionMessages([{
-                                role: 'assistant',
-                                content: data.lastResponse,
-                                timestamp: new Date().toISOString()
-                            }]);
+                        // CRITICAL FIX: Fetch messages from the separate /messages endpoint
+                        const messagesResponse = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${sessionId}/messages`, {
+                            method: 'GET',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                        
+                        if (messagesResponse.ok) {
+                            const messagesData = await messagesResponse.json();
+                            if (messagesData.messages && messagesData.messages.length > 0) {
+                                setSessionMessages(messagesData.messages);
+                                addLog(`Loaded ${messagesData.messages.length} messages from session ${sessionId}`, 'success');
+                            } else {
+                                // No messages yet but session exists
+                                addLog(`Session ${sessionId} exists but has no messages yet`, 'info');
+                                setSessionMessages([{
+                                    role: 'system',
+                                    content: `Session ID: ${sessionId}\nStatus: ${data.status || 'Active'}\nBranch: ${data.branch || 'Not set'}\nMessage Count: ${data.messageCount || 0}\n\nNo messages loaded. The session may still be initializing.`,
+                                    timestamp: new Date().toISOString()
+                                }]);
+                            }
                         } else {
-                            // No messages available yet
-                            addLog(`Session ${sessionId} exists but has no messages yet`, 'info');
+                            // Couldn't fetch messages, show session info
                             setSessionMessages([{
                                 role: 'system',
-                                content: `Session ID: ${sessionId}\nStatus: ${data.status || 'Active'}\nBranch: ${data.branch || 'Not set'}\n\nNo conversation messages available yet. The session may still be initializing.`,
+                                content: `Session ID: ${sessionId}\nStatus: ${data.status || 'Active'}\nBranch: ${data.branch || 'Not set'}\nMessage Count: ${data.messageCount || 0}\n\nCould not load messages from this session.`,
                                 timestamp: new Date().toISOString()
                             }]);
                         }
