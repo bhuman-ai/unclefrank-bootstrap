@@ -1665,79 +1665,8 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                 }
                 
                 try {
-                    // Step 1: Decompose the task using the new API
-                    const decomposeResponse = await fetch('/api/tasks/decompose', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            request: state.request,
-                            context: state.projectContext 
-                        })
-                    });
-
-                    if (decomposeResponse.ok) {
-                        const decomposed = await decomposeResponse.json();
-                        addLog(`✅ Task decomposed into ${decomposed.task.checkpoints.length} checkpoints`, 'success');
-                        addLog(`📊 Complexity: ${decomposed.task.complexity} | Est. Time: ${decomposed.task.estimatedTime}`, 'info');
-                        
-                        // Display checkpoints
-                        decomposed.task.checkpoints.forEach((cp, i) => {
-                            addLog(`  ${i+1}. ${cp.name}`, 'info');
-                        });
-                        
-                        // Update state with checkpoints
-                        setState(prev => ({
-                            ...prev,
-                            checkpoints: decomposed.task.checkpoints
-                        }));
-                        
-                        // Step 2: Execute with Claude using decomposed format
-                        addLog('🚀 Sending decomposed task to Claude...', 'info');
-                        addLog('⏳ Note: Claude needs time to process. Do not interrupt!', 'warning');
-                        
-                        const executeResponse = await fetch('/api/claude/execute', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                task: decomposed.claudeFormat,
-                                context: {
-                                    projectMd: state.projectContext,
-                                    checkpoints: decomposed.task.checkpoints,
-                                    complexity: decomposed.task.complexity,
-                                    estimatedTime: decomposed.task.estimatedTime
-                                }
-                            })
-                        });
-                        
-                        if (executeResponse.ok) {
-                            const executeResult = await executeResponse.json();
-                            addLog(`✅ Task execution started!`, 'success');
-                            addLog(`📍 Session ID: ${executeResult.sessionId}`, 'info');
-                            addLog(`🌿 Branch: ${executeResult.branch}`, 'info');
-                            if (executeResult.issueNumber) {
-                                addLog(`📝 GitHub Issue: #${executeResult.issueNumber}`, 'info');
-                            }
-                            
-                            // Clear the form
-                            setState(prev => ({
-                                ...prev,
-                                request: '',
-                                projectContext: '',
-                                taskThreadId: executeResult.sessionId
-                            }));
-                            
-                            return;
-                        } else {
-                            const error = await executeResponse.json();
-                            addLog(`❌ Failed to execute task: ${error.error}`, 'error');
-                        }
-                    } else {
-                        const error = await decomposeResponse.json();
-                        addLog(`❌ Failed to decompose task: ${error.error}`, 'error');
-                    }
-                    
-                    // Fallback to original implementation if new API fails
-                    addLog('⚠️ Falling back to original task creation...', 'warning');
+                    // Skip the non-existent decompose API and go straight to task creation
+                    addLog('📝 Creating task with Claude...', 'info');
                     // First, create a GitHub issue to track this task
                     const issueBody = `## Task Request
 ${state.request}
