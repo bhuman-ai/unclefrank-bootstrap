@@ -1189,32 +1189,12 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
             
             // Open Task Workspace View
             const openTaskWorkspace = async (task) => {
-                // ALWAYS check localStorage for the most recent version of this task
-                let savedTasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
-                let latestTask = savedTasks.find(t => t.id === task.id);
-                
-                // If task doesn't exist in localStorage, add it (happens with GitHub-loaded tasks)
-                if (!latestTask) {
-                    addLog(`📝 Task ${task.id} not in localStorage, adding it now`, 'info');
-                    savedTasks.push(task);
-                    localStorage.setItem('unclefrank-tasks', JSON.stringify(savedTasks));
-                    latestTask = task;
-                }
-                
-                // Use the localStorage version if it has a newer session
-                let taskToOpen = task;
-                if (latestTask && latestTask.sessionId !== task.sessionId) {
-                    addLog(`📦 Found updated task in localStorage with new session`, 'info');
-                    addLog(`Old session: ${(task.sessionId || task.threadId || 'none').substring(0, 12)}...`, 'info');
-                    addLog(`New session: ${(latestTask.sessionId || latestTask.threadId || 'none').substring(0, 12)}...`, 'info');
-                    taskToOpen = latestTask;
-                }
-                
-                const taskWithLatestSession = { ...taskToOpen };
+                // Just use the task directly - no localStorage!
+                const taskWithLatestSession = { ...task };
                 
                 // Check if the session exists
-                if (taskToOpen.sessionId || taskToOpen.threadId) {
-                    const sessionId = taskToOpen.sessionId || taskToOpen.threadId;
+                if (task.sessionId || task.threadId) {
+                    const sessionId = task.sessionId || task.threadId;
                     // Quick check if session exists
                     try {
                         const checkResponse = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${sessionId}`);
@@ -4501,13 +4481,13 @@ Claude Session ID: ${task.threadId}
                                             </div>
                                         </div>
                                         
-                                        {/* Session Info */}
+                                        {/* Session Info - Key forces re-render on session change */}
                                         {(workspaceTask?.sessionId || workspaceTask?.threadId) && (
-                                            <div className="mb-4">
+                                            <div className="mb-4" key={`session-${workspaceTask.sessionId || workspaceTask.threadId}`}>
                                                 <label className="text-xs text-gray-400">Claude Session</label>
-                                                <div id={`session-display-${workspaceTask.id}`}>
+                                                <div>
                                                     <p className="mt-1 text-sm font-mono text-gray-300">
-                                                        {(workspaceTask.sessionId || workspaceTask.threadId).substring(0, 12)}...
+                                                        {(workspaceTask.sessionId || workspaceTask.threadId || 'none').substring(0, 12)}...
                                                         {workspaceTask.sessionExpired && !workspaceTask.justRestarted && (
                                                             <span className="ml-2 text-red-500 text-xs">(Expired - Restart Required)</span>
                                                         )}
@@ -4687,29 +4667,6 @@ Claude Session ID: ${task.threadId}
                                                                         )
                                                                     }));
                                                                     
-                                                                    // Update localStorage to persist the new session ID
-                                                                    const savedTasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
-                                                                    addLog(`🔍 DEBUG: Found ${savedTasks.length} tasks in localStorage`, 'warning');
-                                                                    const taskIndex = savedTasks.findIndex(t => t.id === currentTaskId);
-                                                                    if (taskIndex !== -1) {
-                                                                        addLog(`🔍 DEBUG: Found task at index ${taskIndex}, updating...`, 'warning');
-                                                                        savedTasks[taskIndex].sessionId = session.sessionId;
-                                                                        savedTasks[taskIndex].threadId = session.sessionId;
-                                                                        savedTasks[taskIndex].branch = session.branch;
-                                                                        savedTasks[taskIndex].status = 'In Progress';
-                                                                        savedTasks[taskIndex].oldSessionId = workspaceTask.sessionId || workspaceTask.threadId;
-                                                                        localStorage.setItem('unclefrank-tasks', JSON.stringify(savedTasks));
-                                                                        addLog('💾 Updated task in localStorage with new session', 'success');
-                                                                        
-                                                                        // Verify the update
-                                                                        const verifyTasks = JSON.parse(localStorage.getItem('unclefrank-tasks'));
-                                                                        const verifyTask = verifyTasks[taskIndex];
-                                                                        addLog(`🔍 DEBUG: Verified - task now has session ${verifyTask.sessionId}`, 'warning');
-                                                                    } else {
-                                                                        addLog(`⚠️ Could not find task with ID ${currentTaskId} in localStorage`, 'warning');
-                                                                        addLog(`🔍 DEBUG: Task IDs in localStorage: ${savedTasks.map(t => t.id).join(', ')}`, 'warning');
-                                                                    }
-                                                                    
                                                                     // Don't close the modal - user might want to view the new session
                                                                     addLog('📌 Task workspace updated with new session', 'success');
                                                                     
@@ -4767,14 +4724,12 @@ Claude Session ID: ${task.threadId}
                                     </div>
                                     <button 
                                         onClick={() => {
-                                            // Get the freshest task data from localStorage in case it was updated
-                                            const savedTasks = JSON.parse(localStorage.getItem('unclefrank-tasks') || '[]');
-                                            const currentTask = savedTasks.find(t => t.id === workspaceTask.id) || workspaceTask;
-                                            const currentSessionId = currentTask.sessionId || currentTask.threadId;
+                                            // Use the current workspaceTask state directly
+                                            const currentSessionId = workspaceTask.sessionId || workspaceTask.threadId;
                                             
                                             if (currentSessionId) {
                                                 addLog(`📂 Opening session viewer for: ${currentSessionId}`, 'info');
-                                                addLog(`📌 Task ID: ${currentTask.id}`, 'info');
+                                                addLog(`📌 Task ID: ${workspaceTask.id}`, 'info');
                                                 setTaskWorkspaceOpen(false);
                                                 openSessionViewer(currentSessionId);
                                             } else {
