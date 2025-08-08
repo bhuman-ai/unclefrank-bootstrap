@@ -1875,12 +1875,26 @@ Please help me implement this task.`;
                             }, 2000);
                         }
                         
-                        // Clear the form
+                        // Add the new task to reviewTasks with all necessary info
+                        const newTask = {
+                            id: taskId,
+                            name: state.request.substring(0, 100),
+                            objective: state.request,
+                            status: 'Processing',
+                            threadId: threadId,
+                            sessionId: threadId,
+                            issueNumber: issue?.number || null,
+                            issueUrl: issue?.html_url || null,
+                            created: new Date().toISOString()
+                        };
+                        
+                        // Clear the form and add task to list
                         setState(prev => ({
                             ...prev,
                             request: '',
                             projectContext: '',
-                            taskThreadId: threadId
+                            taskThreadId: threadId,
+                            reviewTasks: [newTask, ...prev.reviewTasks]
                         }));
                         
                         // Task is running in Claude - no new tabs needed!
@@ -4935,7 +4949,44 @@ Original task description: ${taskName}`;
                                                                             addLog(`⚠️ Could not update GitHub issue: ${error.message}`, 'warning');
                                                                         }
                                                                     } else {
-                                                                        addLog(`⚠️ Task has no GitHub issue number - cannot update GitHub`, 'warning');
+                                                                        // Create a GitHub issue for this task if it doesn't have one
+                                                                        addLog(`📝 Creating GitHub issue for task tracking...`, 'info');
+                                                                        try {
+                                                                            const issueResponse = await fetch('/api/github', {
+                                                                                method: 'POST',
+                                                                                headers: { 'Content-Type': 'application/json' },
+                                                                                body: JSON.stringify({
+                                                                                    endpoint: '/repos/bhuman-ai/unclefrank-bootstrap/issues',
+                                                                                    method: 'POST',
+                                                                                    body: {
+                                                                                        title: `Task: ${taskName}`,
+                                                                                        body: `## Task Details
+- Name: ${taskName}
+- Status: Restarted
+- Claude Session: ${session.sessionId}
+- Previous Session: ${oldSession || 'N/A'}
+
+## Task Information
+This task was restarted and is being tracked.
+
+---
+*Automatically created by Uncle Frank's Task Management System*`,
+                                                                                        labels: ['task', 'auto-generated', 'restarted']
+                                                                                    }
+                                                                                })
+                                                                            });
+                                                                            
+                                                                            if (issueResponse.ok) {
+                                                                                const issueData = await issueResponse.json();
+                                                                                updatedTask.issueNumber = issueData.number;
+                                                                                updatedTask.issueUrl = issueData.html_url;
+                                                                                addLog(`✅ Created GitHub issue #${issueData.number}`, 'success');
+                                                                            } else {
+                                                                                addLog(`⚠️ Failed to create GitHub issue - task won't persist`, 'warning');
+                                                                            }
+                                                                        } catch (error) {
+                                                                            addLog(`⚠️ Could not create GitHub issue: ${error.message}`, 'warning');
+                                                                        }
                                                                     }
                                                                     
                                                                     // CRITICAL: Force React to see this as a new object
