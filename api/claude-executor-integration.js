@@ -135,30 +135,13 @@ export default async function handler(req, res) {
         // Parse task to extract checkpoints
         const checkpoints = extractCheckpoints(taskMessage);
         
-        // Create Claude session with GitHub repo using latest Opus model
+        // Create Claude session with GitHub repo - simplified for our server
         const sessionResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            systemPrompt: `You are Uncle Frank's GitHub-integrated task executor.
-            
-CRITICAL INSTRUCTIONS:
-1. You have full access to a cloned git repository
-2. Create REAL files using standard commands (echo, cat, etc.)
-3. Use git commands to track changes (git add, git status)
-4. Execute REAL code - no placeholders, no "would" statements
-5. Test everything - if it says "npm run build", actually run it
-6. Report actual results, not hypothetical outcomes
-
-Your job:
-- Execute checkpoints in order
-- Write REAL code in REAL files
-- Test everything with REAL commands
-- Report REAL results
-
-Remember: Every checkpoint MUST have actual, testable outcomes. No BS.`,
-            model: CLAUDE_MODEL,  // Use configured model
-            modelCommand: `/model ${CLAUDE_MODEL}`  // Set model command first
+            // Just create the session - our server clones the repo and uses existing Claude
+            repoUrl: `https://github.com/${GITHUB_REPO}`
           })
         });
 
@@ -180,45 +163,32 @@ Remember: Every checkpoint MUST have actual, testable outcomes. No BS.`,
           branch: session.branch,
           githubUrl: session.githubUrl
         });
-
-        // First set the model to latest Opus
-        const setModelResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${session.sessionId}/execute`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: `/model ${CLAUDE_MODEL}`
-          })
-        });
         
-        if (!setModelResponse.ok) {
-          console.warn('[Claude Integration] Failed to set model, continuing anyway');
-        }
-        
-        // Send task with explicit GitHub context
+        // Send task directly - Claude is already running in the session
         const executeResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${session.sessionId}/execute`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: `# TASK EXECUTION REQUEST
-Using model: ${CLAUDE_MODEL} (Latest Opus)
 
 ${taskMessage}
 
-## CRITICAL CONTEXT:
+## CONTEXT:
 - You are in a git repository at: ${session.repoPath}
 - Current branch: ${session.branch}
 - You have full file system access
 - Use real commands: touch, echo, cat, npm, git, etc.
-- Create real files, not descriptions
+- Create real files with actual code
 
-## Your Mission:
-1. Execute each checkpoint in order
-2. Create actual files with actual code
-3. Run actual tests (npm install, npm run build, etc.)
-4. Use git add to track new files
-5. Report actual results
+## INSTRUCTIONS:
+1. First, decompose this task into 3-5 checkpoints
+2. Execute each checkpoint in order
+3. Create actual files with actual code
+4. Run actual tests if applicable
+5. Use git add to track new files
+6. Report actual results
 
-Start with Checkpoint 1 now. Create real files!`
+Start by decomposing into checkpoints, then execute Checkpoint 1.`
           })
         });
 
