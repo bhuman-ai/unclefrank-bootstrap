@@ -4535,40 +4535,101 @@ Claude Session ID: ${task.threadId}
                                             </div>
                                         </div>
                                         
-                                        {/* Session Info - Key forces re-render on session change */}
-                                        {(workspaceTask?.sessionId || workspaceTask?.threadId) && (
-                                            <div className="mb-4" key={`session-${workspaceTask.sessionId || workspaceTask.threadId}-${workspaceTask.lastUpdated || Date.now()}`}>
-                                                <label className="text-xs text-gray-400">Current Claude Session</label>
-                                                <div>
-                                                    <p className="mt-1 text-sm font-mono text-gray-300">
-                                                        {/* CRITICAL: Always show CURRENT session from workspaceTask state */}
-                                                        {workspaceTask.isRestarting ? (
-                                                            <span className="text-yellow-400 animate-pulse">🔄 Restarting...</span>
-                                                        ) : (
-                                                            <>
-                                                                {(workspaceTask.sessionId || workspaceTask.threadId || 'none').substring(0, 12)}...
-                                                                {workspaceTask.sessionExpired && !workspaceTask.justRestarted && (
-                                                                    <span className="ml-2 text-red-500 text-xs">(Expired - Needs Restart)</span>
+                                        {/* Session Info with History */}
+                                        <div className="mb-4">
+                                            <label className="text-xs text-gray-400">Claude Sessions</label>
+                                            
+                                            {/* Current Session */}
+                                            {(workspaceTask?.sessionId || workspaceTask?.threadId) && (
+                                                <div className="mt-2" key={`session-${workspaceTask.sessionId || workspaceTask.threadId}-${workspaceTask.lastUpdated || Date.now()}`}>
+                                                    <div className="bg-gray-800 rounded p-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-sm font-mono text-gray-300">
+                                                                {workspaceTask.isRestarting ? (
+                                                                    <span className="text-yellow-400 animate-pulse">🔄 Restarting...</span>
+                                                                ) : (
+                                                                    <>
+                                                                        <span className="text-green-400">●</span> {(workspaceTask.sessionId || workspaceTask.threadId || 'none').substring(0, 12)}...
+                                                                        {workspaceTask.sessionExpired && !workspaceTask.justRestarted && (
+                                                                            <span className="ml-2 text-red-500 text-xs">(Expired)</span>
+                                                                        )}
+                                                                        {workspaceTask.justRestarted && (
+                                                                            <span className="ml-2 text-green-500 text-xs">✅ (Just Created)</span>
+                                                                        )}
+                                                                        {!workspaceTask.sessionExpired && !workspaceTask.justRestarted && (
+                                                                            <span className="ml-2 text-blue-500 text-xs">(Active)</span>
+                                                                        )}
+                                                                    </>
                                                                 )}
-                                                                {workspaceTask.justRestarted && (
-                                                                    <span className="ml-2 text-green-500 text-xs">✅ (Active - Just Created)</span>
-                                                                )}
-                                                                {!workspaceTask.sessionExpired && !workspaceTask.justRestarted && (
-                                                                    <span className="ml-2 text-blue-500 text-xs">(Active)</span>
-                                                                )}
-                                                            </>
-                                                        )}
-                                                    </p>
-                                                    {/* Debug logging */}
-                                                    {console.log('[Session Display] Current session:', workspaceTask.sessionId || workspaceTask.threadId, 'Expired:', workspaceTask.sessionExpired, 'JustRestarted:', workspaceTask.justRestarted)}
-                                                </div>
-                                                {workspaceTask.oldSessionId && workspaceTask.oldSessionId !== workspaceTask.sessionId && (
-                                                    <div className="mt-2 p-2 bg-gray-800 rounded text-xs">
-                                                        <span className="text-gray-500">Replaced session: {workspaceTask.oldSessionId.substring(0, 12)}...</span>
+                                                            </p>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSelectedSessionId(workspaceTask.sessionId || workspaceTask.threadId);
+                                                                    fetchSessionMessages(workspaceTask.sessionId || workspaceTask.threadId);
+                                                                    setSessionViewerOpen(true);
+                                                                }}
+                                                                className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded transition"
+                                                            >
+                                                                View
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                )}
-                                            </div>
-                                        )}
+                                                </div>
+                                            )}
+                                            
+                                            {/* Session History */}
+                                            {workspaceTask?.sessionHistory && workspaceTask.sessionHistory.length > 0 && (
+                                                <div className="mt-2">
+                                                    <p className="text-xs text-gray-500 mb-1">Previous Sessions:</p>
+                                                    <div className="space-y-1">
+                                                        {workspaceTask.sessionHistory.map((session, idx) => (
+                                                            <div key={session.id || idx} className="bg-gray-900 rounded p-2">
+                                                                <div className="flex items-center justify-between">
+                                                                    <p className="text-xs font-mono text-gray-400">
+                                                                        <span className="text-gray-600">●</span> {session.id.substring(0, 12)}...
+                                                                        <span className="ml-2 text-gray-600 text-xs">
+                                                                            ({session.timestamp ? new Date(session.timestamp).toLocaleTimeString() : 'Unknown time'})
+                                                                        </span>
+                                                                    </p>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setSelectedSessionId(session.id);
+                                                                            fetchSessionMessages(session.id);
+                                                                            setSessionViewerOpen(true);
+                                                                        }}
+                                                                        className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded transition"
+                                                                    >
+                                                                        View
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Old session reference if exists */}
+                                            {workspaceTask?.oldSessionId && workspaceTask.oldSessionId !== workspaceTask.sessionId && 
+                                             (!workspaceTask?.sessionHistory || !workspaceTask.sessionHistory.find(s => s.id === workspaceTask.oldSessionId)) && (
+                                                <div className="mt-2 p-2 bg-gray-900 rounded text-xs">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-gray-500">
+                                                            <span className="text-gray-600">●</span> Previous: {workspaceTask.oldSessionId.substring(0, 12)}...
+                                                        </span>
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedSessionId(workspaceTask.oldSessionId);
+                                                                fetchSessionMessages(workspaceTask.oldSessionId);
+                                                                setSessionViewerOpen(true);
+                                                            }}
+                                                            className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded transition"
+                                                        >
+                                                            View
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     
                                     {/* Middle Panel - Checkpoints */}
@@ -4815,6 +4876,19 @@ Original task description: ${taskName}`;
                                                                     addLog(`🔍 DEBUG: Old session = ${oldSession}`, 'warning');
                                                                     addLog(`🔍 DEBUG: New session = ${session.sessionId}`, 'warning');
                                                                     
+                                                                    // Build session history
+                                                                    const sessionHistory = currentTask.sessionHistory || [];
+                                                                    if (oldSession && oldSession !== 'restarting...') {
+                                                                        // Add old session to history if not already there
+                                                                        if (!sessionHistory.find(s => s.id === oldSession)) {
+                                                                            sessionHistory.push({
+                                                                                id: oldSession,
+                                                                                timestamp: new Date().toISOString(),
+                                                                                reason: 'Restarted'
+                                                                            });
+                                                                        }
+                                                                    }
+                                                                    
                                                                     // UPDATE the workspace task with new session ID using CAPTURED values
                                                                     const updatedTask = {
                                                                         ...currentTask,  // Use captured task, not closure
@@ -4826,6 +4900,7 @@ Original task description: ${taskName}`;
                                                                         justRestarted: true,
                                                                         isRestarting: false,  // Clear restarting flag
                                                                         oldSessionId: oldSession,  // Use captured old session
+                                                                        sessionHistory: sessionHistory,  // Add session history
                                                                         checkpoints: checkpoints.length > 0 ? checkpoints : currentTask.checkpoints,  // Add checkpoints
                                                                         lastUpdated: Date.now()  // Force re-render
                                                                     };

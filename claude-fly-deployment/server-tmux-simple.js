@@ -78,7 +78,7 @@ async function startClaudeTmuxSession(sessionId, repoPath) {
     }
 }
 
-// Send command to Claude via tmux with VERIFICATION
+// Send command to Claude via tmux with VERIFICATION and SMART PARSING
 async function sendToClaudeTmux(tmuxSession, message) {
     const tmuxConfig = '/etc/tmux.conf';
     // Always use the manual session
@@ -86,9 +86,12 @@ async function sendToClaudeTmux(tmuxSession, message) {
     
     try {
         // VERIFICATION STEP 1: Capture output before sending command
-        const outputBefore = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -50`)
+        const outputBefore = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -100`)
             .then(res => res.stdout)
             .catch(() => '');
+        
+        // Mark where the user input starts for parsing
+        const inputMarker = `> ${message.substring(0, 50)}`;
         
         // Special case: if message is empty or just whitespace, only send Enter
         if (!message || message.trim() === '') {
@@ -108,35 +111,80 @@ async function sendToClaudeTmux(tmuxSession, message) {
             await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${actualSession} Enter`);
         }
         
-        // Wait for Claude to process
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Wait for Claude to START processing
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // VERIFICATION STEP 2: Capture output after command
-        const { stdout: outputAfter } = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -50`);
+        // SMART WAITING: Poll for Claude to finish processing
+        let isProcessing = true;
+        let attempts = 0;
+        let lastOutput = '';
+        const maxAttempts = 60; // Max 5 minutes (60 * 5 seconds)
         
-        // VERIFICATION STEP 3: Verify command was actually executed
-        if (outputBefore === outputAfter && message && message.trim()) {
-            console.warn('⚠️ Frank says: Command might not have been executed - output unchanged');
+        while (isProcessing && attempts < maxAttempts) {
+            attempts++;
             
-            // Try to verify in a different way
-            const extendedOutput = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -100`)
-                .then(res => res.stdout)
-                .catch(() => '');
+            // Capture current output
+            const { stdout: currentOutput } = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -200`);
             
-            if (extendedOutput.length > outputBefore.length || extendedOutput.includes(message.substring(0, 20))) {
-                console.log('✅ Command verified through extended output check');
+            // Check if Claude is still processing
+            const processingIndicators = ['Germinating', 'Envisioning', 'Pondering', 'Moseying', 'esc to interrupt'];
+            const stillProcessing = processingIndicators.some(indicator => 
+                currentOutput.includes(indicator) && 
+                currentOutput.lastIndexOf(indicator) > currentOutput.lastIndexOf('●')
+            );
+            
+            if (!stillProcessing && currentOutput !== lastOutput) {
+                // Output changed and no processing indicators - Claude finished
+                isProcessing = false;
+                console.log(`✅ Claude finished processing after ${attempts * 5} seconds`);
+            } else if (currentOutput === lastOutput && attempts > 3) {
+                // No change for 15+ seconds - probably done
+                isProcessing = false;
+                console.log(`✅ Claude appears done (no changes for 15+ seconds)`);
             } else {
-                console.error('❌ Frank says: Command execution could not be verified!');
-                // Log for debugging
-                console.log('Command sent:', message.substring(0, 50));
-                console.log('Output length before:', outputBefore.length);
-                console.log('Output length after:', outputAfter.length);
+                // Still processing, wait more
+                console.log(`⏳ Claude still processing... (attempt ${attempts}/${maxAttempts})`);
+                await new Promise(resolve => setTimeout(resolve, 5000));
             }
-        } else {
-            console.log('✅ Frank verified: Command was executed (output changed)');
+            
+            lastOutput = currentOutput;
         }
         
-        return outputAfter;
+        // VERIFICATION STEP 2: Capture FINAL output
+        const { stdout: outputAfter } = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -200`);
+        
+        // SMART PARSING: Extract only Claude's response, not the echo or status
+        let claudeResponse = outputAfter;
+        
+        // Remove the output that was there before
+        if (outputBefore && outputAfter.startsWith(outputBefore)) {
+            claudeResponse = outputAfter.substring(outputBefore.length);
+        }
+        
+        // Remove the echoed input if present
+        const inputEchoIndex = claudeResponse.indexOf(message);
+        if (inputEchoIndex !== -1) {
+            // Skip past the echoed input
+            claudeResponse = claudeResponse.substring(inputEchoIndex + message.length);
+        }
+        
+        // Clean up the response
+        claudeResponse = claudeResponse
+            .replace(/^[\s\n]+/, '') // Remove leading whitespace
+            .replace(/\n\s*\?\s+for shortcuts.*$/m, '') // Remove shortcuts line
+            .replace(/\s*Bypassing Permissions.*$/m, '') // Remove permissions line
+            .replace(/Context left until auto-compact:.*$/m, '') // Remove context line
+            .trim();
+        
+        // Verify we got a real response
+        if (!claudeResponse || claudeResponse.length < 10) {
+            console.warn('⚠️ Response seems too short, using full output');
+            claudeResponse = outputAfter.substring(outputBefore.length).trim();
+        }
+        
+        console.log(`✅ Extracted Claude response: ${claudeResponse.substring(0, 100)}...`);
+        
+        return claudeResponse;
     } catch (error) {
         console.error('Failed to send to tmux:', error);
         throw error;
