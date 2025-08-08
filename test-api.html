@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Uncle Frank API Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover {
+            background: #00cc00;
+        }
+        #log {
+            background: #000;
+            padding: 10px;
+            margin-top: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>Uncle Frank API Test</h1>
+    
+    <button onclick="testHealth()">Test Health</button>
+    <button onclick="createTask()">Create Test Task</button>
+    <button onclick="checkStatus()">Check Status</button>
+    
+    <div id="log"></div>
+    
+    <script>
+        let currentSessionId = null;
+        const API_URL = 'https://unclefrank-bootstrap.vercel.app';
+        
+        function log(message, data = null) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            if (data) {
+                logDiv.innerHTML += JSON.stringify(data, null, 2) + '\n';
+            }
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        async function testHealth() {
+            log('Testing Claude executor health...');
+            try {
+                const response = await fetch(`${API_URL}/api/claude-executor-integration`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'health-check' })
+                });
+                
+                const data = await response.json();
+                log('Health check result:', data);
+            } catch (error) {
+                log('Health check failed:', error.message);
+            }
+        }
+        
+        async function createTask() {
+            const taskMessage = prompt('Enter task message:', 'Create a simple hello.txt file with "Hello Frank!" content');
+            if (!taskMessage) return;
+            
+            log('Creating task: ' + taskMessage);
+            
+            try {
+                const response = await fetch(`${API_URL}/api/claude-executor-integration`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'create-task',
+                        payload: [{
+                            message: taskMessage
+                        }]
+                    })
+                });
+                
+                const data = await response.json();
+                log('Task creation result:', data);
+                
+                if (data.threadId) {
+                    currentSessionId = data.threadId;
+                    log(`Session ID saved: ${currentSessionId}`);
+                }
+            } catch (error) {
+                log('Task creation failed:', error.message);
+            }
+        }
+        
+        async function checkStatus() {
+            if (!currentSessionId) {
+                const sessionId = prompt('Enter session ID:');
+                if (!sessionId) return;
+                currentSessionId = sessionId;
+            }
+            
+            log(`Checking status for session: ${currentSessionId}`);
+            
+            try {
+                const response = await fetch(`${API_URL}/api/execute`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'check-claude-status',
+                        payload: {
+                            threadId: currentSessionId
+                        }
+                    })
+                });
+                
+                const data = await response.json();
+                log('Status check result:', data);
+            } catch (error) {
+                log('Status check failed:', error.message);
+            }
+        }
+        
+        log('Uncle Frank API Test Ready');
+        log('Click buttons above to test the API');
+    </script>
+</body>
+</html>

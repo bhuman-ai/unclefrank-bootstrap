@@ -20,6 +20,21 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  // Handle GET requests with basic info
+  if (req.method === 'GET') {
+    return res.status(200).json({
+      service: 'Uncle Frank Claude Executor Integration',
+      status: 'online',
+      executor: CLAUDE_EXECUTOR_URL,
+      github: GITHUB_REPO
+    });
+  }
+
+  // Only handle POST requests for actions
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
   const { action, payload } = req.body;
 
   try {
