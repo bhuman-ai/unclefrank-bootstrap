@@ -1791,7 +1791,8 @@ ${state.projectContext ? `## Project Context\n${state.projectContext}` : ''}`;
                         addLog('⚠️ Response format error - API may have changed', 'warning');
                     }
                 } finally {
-                setLoading(false);
+                    setLoading(false);
+                }
             };
 
             // Execute checkpoints sequentially
