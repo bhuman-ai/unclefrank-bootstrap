@@ -4716,6 +4716,37 @@ Claude Session ID: ${task.threadId}
                                                                     
                                                                     addLog(`🔍 DEBUG: Updating state with new session`, 'warning');
                                                                     
+                                                                    // CRITICAL: UPDATE GITHUB ISSUE WITH NEW SESSION ID
+                                                                    if (currentTask.issueNumber) {
+                                                                        addLog(`📝 Updating GitHub issue #${currentTask.issueNumber} with new session...`, 'info');
+                                                                        try {
+                                                                            // Use gh CLI to update the issue
+                                                                            const updateCmd = `gh issue edit ${currentTask.issueNumber} --repo bhuman-ai/unclefrank-bootstrap --body "$(gh issue view ${currentTask.issueNumber} --repo bhuman-ai/unclefrank-bootstrap --json body -q .body | sed 's/Claude Session: [a-f0-9-]*/Claude Session: ${session.sessionId}/g')"`;
+                                                                            
+                                                                            const updateResponse = await fetch('/api/github', {
+                                                                                method: 'POST',
+                                                                                headers: { 'Content-Type': 'application/json' },
+                                                                                body: JSON.stringify({
+                                                                                    action: 'update-issue-session',
+                                                                                    issueNumber: currentTask.issueNumber,
+                                                                                    newSessionId: session.sessionId,
+                                                                                    oldSessionId: oldSession
+                                                                                })
+                                                                            });
+                                                                            
+                                                                            if (updateResponse.ok) {
+                                                                                addLog(`✅ Updated GitHub issue #${currentTask.issueNumber} with new session`, 'success');
+                                                                            } else {
+                                                                                addLog(`⚠️ Failed to update GitHub issue #${currentTask.issueNumber}`, 'warning');
+                                                                            }
+                                                                        } catch (error) {
+                                                                            console.error('Failed to update GitHub issue:', error);
+                                                                            addLog(`⚠️ Could not update GitHub issue: ${error.message}`, 'warning');
+                                                                        }
+                                                                    } else {
+                                                                        addLog(`⚠️ Task has no GitHub issue number - cannot update GitHub`, 'warning');
+                                                                    }
+                                                                    
                                                                     // CRITICAL: Force React to see this as a new object
                                                                     setWorkspaceTask(prev => {
                                                                         console.log('Previous workspace task:', prev);
