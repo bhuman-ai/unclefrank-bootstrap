@@ -4594,17 +4594,18 @@ Claude Session ID: ${task.threadId}
                                                         if (confirm('Restart this task with checkpoint decomposition?\n\nThis will close the current session and restart with proper checkpoints.')) {
                                                             addLog('🔄 Restarting task with checkpoint decomposition...', 'info');
                                                             
+                                                            // CAPTURE CURRENT VALUES BEFORE ANY ASYNC OPERATIONS
+                                                            const currentTask = { ...workspaceTask };
+                                                            const taskId = currentTask.id;
+                                                            const taskName = currentTask.objective || currentTask.name;
+                                                            const oldSession = currentTask.sessionId || currentTask.threadId;
+                                                            
                                                             try {
-                                                                // Skip trying to delete old session - it's causing errors
-                                                                // Just create a new one
-                                                                const sessionId = workspaceTask.sessionId || workspaceTask.threadId;
-                                                                if (sessionId) {
-                                                                    addLog(`📝 Previous session: ${sessionId}`, 'info');
+                                                                if (oldSession) {
+                                                                    addLog(`📝 Previous session: ${oldSession}`, 'info');
                                                                 }
                                                                 
-                                                                // For now, just use the Claude executor directly
-                                                                // Since we don't have a Next.js server running locally
-                                                                addLog('🔄 Restarting task with Claude...', 'info');
+                                                                addLog('🔄 Creating new Claude session...', 'info');
                                                                 
                                                                 // Create a new Claude session directly on Fly.io
                                                                 const claudeResponse = await fetch('https://uncle-frank-claude.fly.dev/api/sessions', {
@@ -4621,13 +4622,17 @@ Claude Session ID: ${task.threadId}
                                                                 
                                                                 const session = await claudeResponse.json();
                                                                 
-                                                                // Execute the task
-                                                                addLog(`📝 Sending task to Claude: "${workspaceTask.objective || workspaceTask.name}"`, 'info');
+                                                                // WAIT FOR SESSION TO BE READY (fix race condition)
+                                                                addLog('⏳ Waiting for session to initialize...', 'info');
+                                                                await new Promise(resolve => setTimeout(resolve, 2000));
+                                                                
+                                                                // Execute the task using CAPTURED values, not closure values
+                                                                addLog(`📝 Sending task to Claude: "${taskName}"`, 'info');
                                                                 const executeResponse = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${session.sessionId}/execute`, {
                                                                     method: 'POST',
                                                                     headers: { 'Content-Type': 'application/json' },
                                                                     body: JSON.stringify({
-                                                                        message: `Restart and continue this task: ${workspaceTask.objective || workspaceTask.name}`
+                                                                        message: `Restart and continue this task: ${taskName}`
                                                                     })
                                                                 });
                                                                 
@@ -4638,6 +4643,8 @@ Claude Session ID: ${task.threadId}
                                                                 }
                                                                 
                                                                 const result = await executeResponse.json();
+                                                                
+                                                                // ONLY UPDATE STATE AFTER VERIFICATION
                                                                 addLog('✅ Task sent to Claude successfully!', 'success');
                                                                 addLog(`📍 New Session: ${session.sessionId}`, 'info');
                                                                 addLog(`🌿 Branch: ${session.branch}`, 'info');
@@ -4648,33 +4655,53 @@ Claude Session ID: ${task.threadId}
                                                                 } else {
                                                                     addLog(`⏳ Claude is processing the task...`, 'info');
                                                                 }
+                                                                
+                                                                // VERIFY the task was actually executed
+                                                                let executeSuccess = false;
+                                                                try {
+                                                                    addLog('🔍 Verifying task execution...', 'info');
+                                                                    const verifyResponse = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${session.sessionId}`);
+                                                                    if (verifyResponse.ok) {
+                                                                        const verifyData = await verifyResponse.json();
+                                                                        executeSuccess = verifyData.messageCount > 0;
+                                                                        addLog(`✅ Verified: ${verifyData.messageCount} messages in session`, 'success');
+                                                                    }
+                                                                } catch (e) {
+                                                                    console.error('Failed to verify execution:', e);
+                                                                    // If verification fails, assume success since execute didn't throw
+                                                                    executeSuccess = true;
+                                                                }
+                                                                
+                                                                if (!executeSuccess) {
+                                                                    addLog('⚠️ Task execution could not be verified - keeping old session', 'warning');
+                                                                    return;
+                                                                }
                                                                     
-                                                                    // Store the task ID before updating state (closure issue)
-                                                                    const currentTaskId = workspaceTask.id;
-                                                                    addLog(`🔍 DEBUG: Task ID = ${currentTaskId}`, 'warning');
-                                                                    addLog(`🔍 DEBUG: Old session = ${workspaceTask.sessionId || workspaceTask.threadId}`, 'warning');
+                                                                    // Debug logging with CAPTURED values
+                                                                    addLog(`🔍 DEBUG: Task ID = ${taskId}`, 'warning');
+                                                                    addLog(`🔍 DEBUG: Old session = ${oldSession}`, 'warning');
                                                                     addLog(`🔍 DEBUG: New session = ${session.sessionId}`, 'warning');
                                                                     
-                                                                    // UPDATE the workspace task with new session ID
+                                                                    // UPDATE the workspace task with new session ID using CAPTURED values
                                                                     const updatedTask = {
-                                                                        ...workspaceTask,
+                                                                        ...currentTask,  // Use captured task, not closure
                                                                         sessionId: session.sessionId,
                                                                         threadId: session.sessionId,
                                                                         branch: session.branch,
                                                                         status: 'In Progress',
                                                                         sessionExpired: false,
                                                                         justRestarted: true,
-                                                                        oldSessionId: workspaceTask.sessionId || workspaceTask.threadId // Keep track of old session
+                                                                        oldSessionId: oldSession  // Use captured old session
                                                                     };
                                                                     
-                                                                    addLog(`🔍 DEBUG: Calling setWorkspaceTask with new session`, 'warning');
+                                                                    addLog(`🔍 DEBUG: Updating state with new session`, 'warning');
                                                                     setWorkspaceTask(updatedTask);
                                                                     
-                                                                    // Update state tasks as well
+                                                                    // Update state tasks using CAPTURED task ID
                                                                     setState(prev => ({
                                                                         ...prev,
                                                                         tasks: prev.tasks.map(t => 
-                                                                            t.id === currentTaskId 
+                                                                            t.id === taskId  // Use captured ID, not closure
                                                                                 ? { ...t, sessionId: session.sessionId, threadId: session.sessionId, status: 'In Progress' }
                                                                                 : t
                                                                         )
@@ -4686,6 +4713,10 @@ Claude Session ID: ${task.threadId}
                                                                     // Force a re-render by setting a dummy state change
                                                                     setTimeout(() => {
                                                                         addLog(`✨ Session updated to: ${session.sessionId.substring(0, 12)}...`, 'success');
+                                                                        // Also update any global tracking of current session
+                                                                        if (window.currentViewingSessionId === oldSession) {
+                                                                            window.currentViewingSessionId = session.sessionId;
+                                                                        }
                                                                     }, 100);
                                                             } catch (error) {
                                                                 addLog(`❌ Error restarting task: ${error.message}`, 'error');
