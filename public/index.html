@@ -4655,11 +4655,50 @@ Claude Session ID: ${task.threadId}
                                                                 
                                                                 // Execute the task using CAPTURED values, not closure values
                                                                 addLog(`📝 Sending task to Claude: "${taskName}"`, 'info');
+                                                                
+                                                                // CRITICAL: Tell Claude to decompose into checkpoints FIRST
+                                                                const checkpointMessage = `# Task: ${taskName}
+
+## CRITICAL: Follow the Sacred Flow
+
+**FIRST, before doing ANY implementation:**
+1. Break this task down into 3-5 specific checkpoints
+2. Each checkpoint must have:
+   - Clear objective
+   - Specific deliverables
+   - Pass/Fail criteria
+   - Dependencies on other checkpoints
+
+**Format your response as:**
+
+### Checkpoint Decomposition
+
+#### Checkpoint 1: [Name]
+- Objective: [What to achieve]
+- Deliverables: [What files/code to create]
+- Pass Criteria: [How to verify success]
+- Dependencies: None
+
+#### Checkpoint 2: [Name]
+- Objective: [What to achieve]
+- Deliverables: [What files/code to create]
+- Pass Criteria: [How to verify success]
+- Dependencies: Checkpoint 1
+
+[Continue for all checkpoints...]
+
+### Execution Plan
+[Describe how you'll execute these checkpoints]
+
+**THEN proceed with Checkpoint 1 implementation.**
+
+Original task description: ${taskName}`;
+                                                                
                                                                 const executeResponse = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${session.sessionId}/execute`, {
                                                                     method: 'POST',
                                                                     headers: { 'Content-Type': 'application/json' },
                                                                     body: JSON.stringify({
-                                                                        message: `Restart and continue this task: ${taskName}`
+                                                                        message: checkpointMessage
                                                                     })
                                                                 });
                                                                 
@@ -4675,6 +4714,28 @@ Claude Session ID: ${task.threadId}
                                                                 addLog('✅ Task sent to Claude successfully!', 'success');
                                                                 addLog(`📍 New Session: ${session.sessionId}`, 'info');
                                                                 addLog(`🌿 Branch: ${session.branch}`, 'info');
+                                                                
+                                                                // Parse checkpoints from response if present
+                                                                const checkpoints = [];
+                                                                if (result.response) {
+                                                                    // Look for checkpoint definitions in Claude's response
+                                                                    const checkpointPattern = /#### Checkpoint (\d+): ([^\n]+)\n- Objective: ([^\n]+)\n- Deliverables: ([^\n]+)\n- Pass Criteria: ([^\n]+)/g;
+                                                                    let match;
+                                                                    while ((match = checkpointPattern.exec(result.response)) !== null) {
+                                                                        checkpoints.push({
+                                                                            number: parseInt(match[1]),
+                                                                            name: match[2],
+                                                                            objective: match[3],
+                                                                            deliverables: match[4],
+                                                                            passCriteria: match[5],
+                                                                            status: 'pending'
+                                                                        });
+                                                                    }
+                                                                    
+                                                                    if (checkpoints.length > 0) {
+                                                                        addLog(`🎯 Extracted ${checkpoints.length} checkpoints from Claude's response`, 'success');
+                                                                    }
+                                                                }
                                                                 
                                                                 // Show Claude's response (or indication it's processing)
                                                                 if (result.response) {
@@ -4720,6 +4781,7 @@ Claude Session ID: ${task.threadId}
                                                                         justRestarted: true,
                                                                         isRestarting: false,  // Clear restarting flag
                                                                         oldSessionId: oldSession,  // Use captured old session
+                                                                        checkpoints: checkpoints.length > 0 ? checkpoints : currentTask.checkpoints,  // Add checkpoints
                                                                         lastUpdated: Date.now()  // Force re-render
                                                                     };
                                                                     
