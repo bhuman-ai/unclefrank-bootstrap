@@ -133,6 +133,7 @@ export default async function handler(req, res) {
         
         // Extract task from request
         const taskData = Array.isArray(payload) ? payload[0] : payload;
+        const issueNumber = taskData.issueNumber; // Get issue number if provided
         
         // Handle different message formats
         let taskMessage = '';
@@ -147,9 +148,6 @@ export default async function handler(req, res) {
         } else {
           taskMessage = JSON.stringify(taskData.message);
         }
-        
-        // Parse task to extract checkpoints
-        const checkpoints = extractCheckpoints(taskMessage);
         
         // Create Claude session with GitHub repo - simplified for our server
         const sessionResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions`, {
@@ -170,50 +168,79 @@ export default async function handler(req, res) {
         console.log(`[Claude Integration] Branch: ${session.branch}`);
         console.log(`[Claude Integration] Repo: ${session.repoPath}`);
         
-        // Store session mapping
+        // FRANK'S TWO-PHASE APPROACH
+        // Phase 1: Get checkpoints from Claude WITHOUT executing
+        console.log('[Claude Integration] Phase 1: Getting checkpoints from Claude...');
+        
+        const decomposeResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${session.sessionId}/execute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: `# CHECKPOINT DECOMPOSITION REQUEST
+
+Task: ${taskMessage}
+
+## CRITICAL INSTRUCTIONS:
+You MUST ONLY decompose this task into checkpoints. DO NOT EXECUTE ANYTHING YET.
+
+Please provide 3-5 checkpoints in this EXACT format:
+
+### Checkpoint 1: [Name]
+- Objective: [Clear goal]
+- Deliverables: [What files/code to create]
+- Pass Criteria: [How to verify success]
+
+### Checkpoint 2: [Name]
+- Objective: [Clear goal]
+- Deliverables: [What files/code to create]
+- Pass Criteria: [How to verify success]
+
+### Checkpoint 3: [Name]
+- Objective: [Clear goal]
+- Deliverables: [What files/code to create]
+- Pass Criteria: [How to verify success]
+
+DO NOT START EXECUTING. Just provide the checkpoint breakdown.`
+          })
+        });
+
+        if (!decomposeResponse.ok) {
+          throw new Error('Failed to get checkpoints from Claude');
+        }
+
+        const decomposeResult = await decomposeResponse.json();
+        
+        // Wait a bit for Claude to process
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Get the decomposition response
+        const messagesResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${session.sessionId}/messages`);
+        let checkpoints = [];
+        
+        if (messagesResponse.ok) {
+          const messagesData = await messagesResponse.json();
+          const messages = messagesData.messages || [];
+          
+          // Extract checkpoints from Claude's response
+          if (messages.length > 1) {
+            const claudeResponse = messages[1].content;
+            checkpoints = extractCheckpointsFromClaudeResponse(claudeResponse);
+            console.log(`[Claude Integration] Extracted ${checkpoints.length} checkpoints from Claude's response`);
+          }
+        }
+        
+        // Store session mapping with checkpoints
         sessionManager.set(session.sessionId, {
           taskData,
           checkpoints,
           created: new Date().toISOString(),
-          status: 'created',
+          status: 'checkpoints_ready',
           branch: session.branch,
-          githubUrl: session.githubUrl
+          githubUrl: session.githubUrl,
+          issueNumber
         });
         
-        // Send task directly - Claude is already running in the session
-        const executeResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${session.sessionId}/execute`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: `# TASK EXECUTION REQUEST
-
-${taskMessage}
-
-## CONTEXT:
-- You are in a git repository at: ${session.repoPath}
-- Current branch: ${session.branch}
-- You have full file system access
-- Use real commands: touch, echo, cat, npm, git, etc.
-- Create real files with actual code
-
-## INSTRUCTIONS:
-1. First, decompose this task into 3-5 checkpoints
-2. Execute each checkpoint in order
-3. Create actual files with actual code
-4. Run actual tests if applicable
-5. Use git add to track new files
-6. Report actual results
-
-Start by decomposing into checkpoints, then execute Checkpoint 1.`
-          })
-        });
-
-        if (!executeResponse.ok) {
-          throw new Error('Failed to send task to Claude');
-        }
-
-        const executeResult = await executeResponse.json();
-
+        // Return immediately with checkpoints
         return res.status(200).json({
           success: true,
           threadId: session.sessionId,
@@ -221,8 +248,61 @@ Start by decomposing into checkpoints, then execute Checkpoint 1.`
           branch: session.branch,
           githubUrl: session.githubUrl,
           repoPath: session.repoPath,
-          checkpoints: checkpoints.length,
-          message: 'Task sent to GitHub-integrated Claude executor'
+          checkpoints: checkpoints,
+          checkpointCount: checkpoints.length,
+          message: 'Checkpoints created. Ready to execute.',
+          issueNumber
+        });
+      }
+
+      case 'execute-checkpoints': {
+        // Phase 2: Execute the checkpoints that were already created
+        const { threadId } = payload;
+        
+        if (!threadId) {
+          return res.status(400).json({ error: 'Thread ID required' });
+        }
+        
+        const sessionData = sessionManager.get(threadId);
+        if (!sessionData) {
+          return res.status(404).json({ error: 'Session not found' });
+        }
+        
+        console.log(`[Claude Integration] Phase 2: Executing ${sessionData.checkpoints.length} checkpoints...`);
+        
+        // Send execution command to Claude
+        const executeResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${threadId}/execute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: `# EXECUTE CHECKPOINTS
+
+Now please execute the checkpoints you just created, starting with Checkpoint 1.
+
+Remember:
+- Execute each checkpoint in order
+- Create actual files with actual code
+- Run actual tests if applicable
+- Use git add to track new files
+- Report actual results for each checkpoint
+
+Start executing Checkpoint 1 now.`
+          })
+        });
+        
+        if (!executeResponse.ok) {
+          throw new Error('Failed to start checkpoint execution');
+        }
+        
+        // Update session status
+        sessionData.status = 'executing';
+        sessionManager.set(threadId, sessionData);
+        
+        return res.status(200).json({
+          success: true,
+          threadId,
+          status: 'executing',
+          message: `Executing ${sessionData.checkpoints.length} checkpoints`
         });
       }
 
@@ -415,7 +495,7 @@ Start by decomposing into checkpoints, then execute Checkpoint 1.`
   }
 }
 
-// Helper functions (same as before)
+// Helper functions
 function extractCheckpoints(taskMessage) {
   const checkpoints = [];
   const messageStr = typeof taskMessage === 'string' ? taskMessage : JSON.stringify(taskMessage);
@@ -448,6 +528,67 @@ function extractCheckpoints(taskMessage) {
     }
   }
   
+  if (currentCheckpoint) {
+    checkpoints.push(currentCheckpoint);
+  }
+  
+  return checkpoints;
+}
+
+// Extract checkpoints from Claude's response format
+function extractCheckpointsFromClaudeResponse(response) {
+  const checkpoints = [];
+  const lines = response.split('\n');
+  
+  let currentCheckpoint = null;
+  let captureMode = null;
+  
+  for (const line of lines) {
+    // Match checkpoint headers like "### Checkpoint 1: Name" or "Checkpoint 1: Name"
+    const checkpointMatch = line.match(/^#{0,3}\s*Checkpoint\s*(\d+):\s*(.+)/i);
+    if (checkpointMatch) {
+      // Save previous checkpoint if exists
+      if (currentCheckpoint) {
+        checkpoints.push(currentCheckpoint);
+      }
+      
+      currentCheckpoint = {
+        id: parseInt(checkpointMatch[1]),
+        name: checkpointMatch[2].trim(),
+        objective: '',
+        deliverables: '',
+        passCriteria: '',
+        raw: line
+      };
+      captureMode = null;
+      continue;
+    }
+    
+    // Capture checkpoint details
+    if (currentCheckpoint) {
+      if (line.match(/^\s*-\s*Objective:/i)) {
+        currentCheckpoint.objective = line.replace(/^\s*-\s*Objective:\s*/i, '').trim();
+        captureMode = 'objective';
+      } else if (line.match(/^\s*-\s*Deliverables?:/i)) {
+        currentCheckpoint.deliverables = line.replace(/^\s*-\s*Deliverables?:\s*/i, '').trim();
+        captureMode = 'deliverables';
+      } else if (line.match(/^\s*-\s*Pass\s*Criteria:/i)) {
+        currentCheckpoint.passCriteria = line.replace(/^\s*-\s*Pass\s*Criteria:\s*/i, '').trim();
+        captureMode = 'passCriteria';
+      } else if (line.trim() && !line.startsWith('#') && captureMode) {
+        // Continuation of previous field
+        if (captureMode === 'objective' && !line.startsWith('-')) {
+          currentCheckpoint.objective += ' ' + line.trim();
+        } else if (captureMode === 'deliverables' && !line.startsWith('-')) {
+          currentCheckpoint.deliverables += ' ' + line.trim();
+        } else if (captureMode === 'passCriteria' && !line.startsWith('-')) {
+          currentCheckpoint.passCriteria += ' ' + line.trim();
+        }
+      }
+    }
+  }
+  
+  // Don't forget the last checkpoint
   if (currentCheckpoint) {
     checkpoints.push(currentCheckpoint);
   }

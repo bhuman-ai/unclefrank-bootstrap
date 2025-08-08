@@ -1691,18 +1691,22 @@ After decomposing into checkpoints, begin implementing Checkpoint 1.
 
 ${state.projectContext ? `## Project Context\n${state.projectContext}` : ''}`;
 
-                    // Try to create Claude session
+                    // FRANK'S TWO-PHASE APPROACH
+                    // Phase 1: Create session and get checkpoints
                     let sessionId = null;
+                    let checkpoints = [];
                     let sessionCreated = false;
                     
                     try {
+                        addLog('🤖 Phase 1: Getting checkpoints from Claude...', 'info');
                         const response = await fetch('/api/claude-executor-integration', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 action: 'create-task',
                                 payload: [{
-                                    message: taskMessage
+                                    message: taskMessage,
+                                    issueNumber: issueNumber
                                 }]
                             })
                         });
@@ -1710,10 +1714,21 @@ ${state.projectContext ? `## Project Context\n${state.projectContext}` : ''}`;
                         if (response.ok) {
                             const data = await response.json();
                             sessionId = data.threadId || data.sessionId;
+                            checkpoints = data.checkpoints || [];
+                            
                             if (sessionId) {
                                 sessionCreated = true;
-                                addLog(`✅ Task created in Claude!`, 'success');
+                                addLog(`✅ Claude decomposed task into ${checkpoints.length} checkpoints!`, 'success');
                                 addLog(`📍 Session ID: ${sessionId}`, 'info');
+                                
+                                // Display checkpoints
+                                if (checkpoints.length > 0) {
+                                    addLog('📋 Checkpoints:', 'info');
+                                    checkpoints.forEach(cp => {
+                                        addLog(`  ☐ Checkpoint ${cp.id}: ${cp.name}`, 'info');
+                                        if (cp.objective) addLog(`     Objective: ${cp.objective}`, 'info');
+                                    });
+                                }
                             }
                         } else {
                             const errorText = await response.text();
@@ -1733,9 +1748,10 @@ ${state.projectContext ? `## Project Context\n${state.projectContext}` : ''}`;
                         addLog('💡 You can restart the task later when Claude is available', 'info');
                     }
                     
-                    // Step 3: Update GitHub issue with session ID
+                    // Step 3: Update GitHub issue with session ID and checkpoints
                     if (issueNumber) {
                         try {
+                            // Update with session ID
                             await fetch('/api/github', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -1746,22 +1762,37 @@ ${state.projectContext ? `## Project Context\n${state.projectContext}` : ''}`;
                                 })
                             });
                             addLog(`✅ Updated issue #${issueNumber} with session`, 'success');
+                            
+                            // Update with checkpoints if we have them
+                            if (checkpoints.length > 0) {
+                                await fetch('/api/github', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        action: 'update-issue-checkpoints',
+                                        issueNumber: issueNumber,
+                                        checkpoints: checkpoints
+                                    })
+                                });
+                                addLog(`✅ Updated issue #${issueNumber} with ${checkpoints.length} checkpoints`, 'success');
+                            }
                         } catch (error) {
                             console.error('Failed to update issue:', error);
                         }
                     }
                     
-                    // Step 4: Add task to UI
+                    // Step 4: Add task to UI with checkpoints
                     const newTask = {
                         id: issueNumber ? `issue-${issueNumber}` : `session-${sessionId}`,
                         name: state.request.substring(0, 100),
                         objective: state.request,
-                        status: 'In Progress',
+                        status: checkpoints.length > 0 ? 'Checkpoints Ready' : 'In Progress',
                         threadId: sessionId,
                         sessionId: sessionId,
                         issueNumber: issueNumber,
                         issueUrl: issue?.html_url || null,
-                        created: new Date().toISOString()
+                        created: new Date().toISOString(),
+                        checkpoints: checkpoints
                     };
                     
                     // Update state
@@ -1769,11 +1800,52 @@ ${state.projectContext ? `## Project Context\n${state.projectContext}` : ''}`;
                         ...prev,
                         request: '',
                         projectContext: '',
-                        reviewTasks: [newTask, ...prev.reviewTasks]
+                        reviewTasks: [newTask, ...prev.reviewTasks],
+                        checkpoints: checkpoints // Store checkpoints in state for execution
                     }));
                     
                     addLog('✅ Task created successfully!', 'success');
-                    addLog('📋 Claude is now decomposing into checkpoints...', 'info');
+                    
+                    // Phase 2: Automatically start execution if we have checkpoints
+                    if (sessionCreated && checkpoints.length > 0) {
+                        addLog('🚀 Phase 2: Starting checkpoint execution...', 'info');
+                        
+                        try {
+                            const executeResponse = await fetch('/api/claude-executor-integration', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    action: 'execute-checkpoints',
+                                    payload: {
+                                        threadId: sessionId
+                                    }
+                                })
+                            });
+                            
+                            if (executeResponse.ok) {
+                                addLog('✅ Claude is now executing checkpoints!', 'success');
+                                addLog('⏳ Monitor progress in the task card above', 'info');
+                                
+                                // Update task status
+                                setState(prev => ({
+                                    ...prev,
+                                    reviewTasks: prev.reviewTasks.map(t => 
+                                        t.sessionId === sessionId 
+                                            ? { ...t, status: 'Executing' }
+                                            : t
+                                    )
+                                }));
+                            } else {
+                                addLog('⚠️ Failed to start execution', 'warning');
+                                addLog('💡 You can manually execute checkpoints later', 'info');
+                            }
+                        } catch (error) {
+                            console.error('Execution start error:', error);
+                            addLog('⚠️ Could not start execution', 'warning');
+                        }
+                    } else {
+                        addLog('📋 Task is ready. Checkpoints can be executed when Claude is available.', 'info');
+                    }
                     
                 } catch (error) {
                     console.error('Task creation error:', error);
