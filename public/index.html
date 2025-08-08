@@ -4483,21 +4483,30 @@ Claude Session ID: ${task.threadId}
                                         
                                         {/* Session Info - Key forces re-render on session change */}
                                         {(workspaceTask?.sessionId || workspaceTask?.threadId) && (
-                                            <div className="mb-4" key={`session-${workspaceTask.sessionId || workspaceTask.threadId}`}>
+                                            <div className="mb-4" key={`session-${workspaceTask.sessionId || workspaceTask.threadId}-${workspaceTask.lastUpdated || Date.now()}`}>
                                                 <label className="text-xs text-gray-400">Current Claude Session</label>
                                                 <div>
                                                     <p className="mt-1 text-sm font-mono text-gray-300">
-                                                        {(workspaceTask.sessionId || workspaceTask.threadId || 'none').substring(0, 12)}...
-                                                        {workspaceTask.sessionExpired && !workspaceTask.justRestarted && (
-                                                            <span className="ml-2 text-red-500 text-xs">(Expired - Needs Restart)</span>
-                                                        )}
-                                                        {workspaceTask.justRestarted && (
-                                                            <span className="ml-2 text-green-500 text-xs">✅ (Active - Just Created)</span>
-                                                        )}
-                                                        {!workspaceTask.sessionExpired && !workspaceTask.justRestarted && (
-                                                            <span className="ml-2 text-blue-500 text-xs">(Active)</span>
+                                                        {/* CRITICAL: Always show CURRENT session from workspaceTask state */}
+                                                        {workspaceTask.isRestarting ? (
+                                                            <span className="text-yellow-400 animate-pulse">🔄 Restarting...</span>
+                                                        ) : (
+                                                            <>
+                                                                {(workspaceTask.sessionId || workspaceTask.threadId || 'none').substring(0, 12)}...
+                                                                {workspaceTask.sessionExpired && !workspaceTask.justRestarted && (
+                                                                    <span className="ml-2 text-red-500 text-xs">(Expired - Needs Restart)</span>
+                                                                )}
+                                                                {workspaceTask.justRestarted && (
+                                                                    <span className="ml-2 text-green-500 text-xs">✅ (Active - Just Created)</span>
+                                                                )}
+                                                                {!workspaceTask.sessionExpired && !workspaceTask.justRestarted && (
+                                                                    <span className="ml-2 text-blue-500 text-xs">(Active)</span>
+                                                                )}
+                                                            </>
                                                         )}
                                                     </p>
+                                                    {/* Debug logging */}
+                                                    {console.log('[Session Display] Current session:', workspaceTask.sessionId || workspaceTask.threadId, 'Expired:', workspaceTask.sessionExpired, 'JustRestarted:', workspaceTask.justRestarted)}
                                                 </div>
                                                 {workspaceTask.oldSessionId && workspaceTask.oldSessionId !== workspaceTask.sessionId && (
                                                     <div className="mt-2 p-2 bg-gray-800 rounded text-xs">
@@ -4600,6 +4609,15 @@ Claude Session ID: ${task.threadId}
                                                             const taskName = currentTask.objective || currentTask.name;
                                                             const oldSession = currentTask.sessionId || currentTask.threadId;
                                                             
+                                                            // IMMEDIATELY mark session as restarting
+                                                            setWorkspaceTask(prev => ({
+                                                                ...prev,
+                                                                sessionExpired: false,
+                                                                justRestarted: false,
+                                                                isRestarting: true,
+                                                                sessionId: 'restarting...'
+                                                            }));
+                                                            
                                                             try {
                                                                 if (oldSession) {
                                                                     addLog(`📝 Previous session: ${oldSession}`, 'info');
@@ -4691,11 +4709,19 @@ Claude Session ID: ${task.threadId}
                                                                         status: 'In Progress',
                                                                         sessionExpired: false,
                                                                         justRestarted: true,
-                                                                        oldSessionId: oldSession  // Use captured old session
+                                                                        isRestarting: false,  // Clear restarting flag
+                                                                        oldSessionId: oldSession,  // Use captured old session
+                                                                        lastUpdated: Date.now()  // Force re-render
                                                                     };
                                                                     
                                                                     addLog(`🔍 DEBUG: Updating state with new session`, 'warning');
-                                                                    setWorkspaceTask(updatedTask);
+                                                                    
+                                                                    // CRITICAL: Force React to see this as a new object
+                                                                    setWorkspaceTask(prev => {
+                                                                        console.log('Previous workspace task:', prev);
+                                                                        console.log('New updated task:', updatedTask);
+                                                                        return updatedTask;
+                                                                    });
                                                                     
                                                                     // Update state tasks using CAPTURED task ID
                                                                     setState(prev => ({
@@ -4710,13 +4736,24 @@ Claude Session ID: ${task.threadId}
                                                                     // Don't close the modal - user might want to view the new session
                                                                     addLog('📌 Task workspace updated with new session', 'success');
                                                                     
-                                                                    // Force a re-render by setting a dummy state change
+                                                                    // Force a re-render and update UI
                                                                     setTimeout(() => {
                                                                         addLog(`✨ Session updated to: ${session.sessionId.substring(0, 12)}...`, 'success');
                                                                         // Also update any global tracking of current session
                                                                         if (window.currentViewingSessionId === oldSession) {
                                                                             window.currentViewingSessionId = session.sessionId;
                                                                         }
+                                                                        
+                                                                        // FORCE UPDATE: Set a flag to trigger re-render
+                                                                        setWorkspaceTask(prev => ({
+                                                                            ...prev,
+                                                                            sessionId: session.sessionId,
+                                                                            threadId: session.sessionId,
+                                                                            isRestarting: false,
+                                                                            justRestarted: true,
+                                                                            sessionExpired: false,
+                                                                            lastUpdated: Date.now()
+                                                                        }));
                                                                     }, 100);
                                                             } catch (error) {
                                                                 addLog(`❌ Error restarting task: ${error.message}`, 'error');
