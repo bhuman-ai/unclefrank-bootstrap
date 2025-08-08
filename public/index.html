@@ -1691,32 +1691,47 @@ After decomposing into checkpoints, begin implementing Checkpoint 1.
 
 ${state.projectContext ? `## Project Context\n${state.projectContext}` : ''}`;
 
-                    // Use the claude-executor-integration API that ACTUALLY EXISTS
-                    const response = await fetch('/api/claude-executor-integration', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: 'create-task',
-                            payload: [{
-                                message: taskMessage
-                            }]
-                        })
-                    });
+                    // Try to create Claude session
+                    let sessionId = null;
+                    let sessionCreated = false;
                     
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        throw new Error(`Failed to create task: ${errorText}`);
+                    try {
+                        const response = await fetch('/api/claude-executor-integration', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'create-task',
+                                payload: [{
+                                    message: taskMessage
+                                }]
+                            })
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            sessionId = data.threadId || data.sessionId;
+                            if (sessionId) {
+                                sessionCreated = true;
+                                addLog(`✅ Task created in Claude!`, 'success');
+                                addLog(`📍 Session ID: ${sessionId}`, 'info');
+                            }
+                        } else {
+                            const errorText = await response.text();
+                            console.error('Claude creation failed:', errorText);
+                            addLog('⚠️ Claude executor not available', 'warning');
+                        }
+                    } catch (claudeError) {
+                        console.error('Claude error:', claudeError);
+                        addLog('⚠️ Could not connect to Claude executor', 'warning');
+                        addLog('📝 Task will be tracked in GitHub only', 'info');
                     }
                     
-                    const data = await response.json();
-                    const sessionId = data.threadId || data.sessionId;
-                    
+                    // If no Claude session, create a placeholder ID
                     if (!sessionId) {
-                        throw new Error('No session ID returned from Claude');
+                        sessionId = `pending-${Date.now()}`;
+                        addLog('📝 Task created without Claude session', 'info');
+                        addLog('💡 You can restart the task later when Claude is available', 'info');
                     }
-                    
-                    addLog(`✅ Task created in Claude!`, 'success');
-                    addLog(`📍 Session ID: ${sessionId}`, 'info');
                     
                     // Step 3: Update GitHub issue with session ID
                     if (issueNumber) {
@@ -1764,9 +1779,16 @@ ${state.projectContext ? `## Project Context\n${state.projectContext}` : ''}`;
                     console.error('Task creation error:', error);
                     addLog(`❌ Error: ${error.message}`, 'error');
                     
-                    // If it's NOT an actual task creation error, show alternatives
-                    if (!error.message.includes('create task')) {
-                        addLog('💡 Try checking Claude executor status', 'info');
+                    // Provide helpful error messages
+                    if (error.message.includes('500') || error.message.includes('executor')) {
+                        addLog('⚠️ Claude executor is not ready', 'warning');
+                        addLog('📝 The Claude tmux session needs to be set up on Fly.io', 'info');
+                        addLog('💡 SSH into the Fly.io instance and run: tmux new -s claude-manual', 'info');
+                        addLog('💡 Then start Claude in that session', 'info');
+                    } else if (error.message.includes('GitHub')) {
+                        addLog('⚠️ GitHub API issue - check your token', 'warning');
+                    } else if (error.message.includes('JSON')) {
+                        addLog('⚠️ Response format error - API may have changed', 'warning');
                     }
                 } finally {
                 setLoading(false);
