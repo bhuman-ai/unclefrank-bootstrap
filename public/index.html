@@ -1470,30 +1470,75 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
             };
 
             // Fetch Claude session messages
-            const fetchSessionMessages = async (sessionId) => {
+            const fetchSessionMessages = async (sessionId, forceRefresh = false) => {
                 setLoadingSession(true);
                 setSessionMessages([]);
+                
+                // Add timestamp to force cache bypass
+                const timestamp = Date.now();
+                
                 try {
-                    // Try to fetch session details from Fly.io Claude instance
-                    const response = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${sessionId}`, {
+                    // Try to fetch session details from Fly.io Claude instance with cache-busting
+                    const response = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${sessionId}?t=${timestamp}`, {
                         method: 'GET',
-                        headers: { 'Content-Type': 'application/json' }
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache'
+                        }
                     });
                     
                     if (response.ok) {
                         const data = await response.json();
                         
-                        // CRITICAL FIX: Fetch messages from the separate /messages endpoint
-                        const messagesResponse = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${sessionId}/messages`, {
+                        // CRITICAL FIX: Fetch messages from the separate /messages endpoint with cache-busting
+                        const messagesResponse = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${sessionId}/messages?t=${timestamp}`, {
                             method: 'GET',
-                            headers: { 'Content-Type': 'application/json' }
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                                'Pragma': 'no-cache'
+                            }
                         });
                         
                         if (messagesResponse.ok) {
                             const messagesData = await messagesResponse.json();
                             if (messagesData.messages && messagesData.messages.length > 0) {
-                                setSessionMessages(messagesData.messages);
-                                addLog(`Loaded ${messagesData.messages.length} messages from session ${sessionId}`, 'success');
+                                // Check if the last message shows Claude is still processing
+                                const messages = messagesData.messages;
+                                const lastMessage = messages[messages.length - 1];
+                                
+                                // If Claude is still "Germinating" or processing, auto-refresh in a few seconds
+                                if (lastMessage.content && 
+                                    (lastMessage.content.includes('Germinating...') || 
+                                     lastMessage.content.includes('Envisioning...') ||
+                                     lastMessage.content.includes('Moseying...') ||
+                                     lastMessage.content.includes('Pondering...') ||
+                                     lastMessage.content.includes('esc to interrupt'))) {
+                                    
+                                    addLog('⏳ Claude is still processing...', 'info');
+                                    
+                                    // Add a note to the message that it's still processing
+                                    messages.push({
+                                        role: 'system',
+                                        content: '🔄 Claude is still thinking. Click Refresh again in a few seconds to check for updates.',
+                                        timestamp: new Date().toISOString(),
+                                        isProcessing: true
+                                    });
+                                    
+                                    // Auto-refresh after 3 seconds if modal is still open
+                                    if (forceRefresh && sessionViewerOpen) {
+                                        setTimeout(() => {
+                                            if (sessionViewerOpen && selectedSessionId === sessionId) {
+                                                addLog('🔄 Auto-refreshing session...', 'info');
+                                                fetchSessionMessages(sessionId, true);
+                                            }
+                                        }, 3000);
+                                    }
+                                }
+                                
+                                setSessionMessages(messages);
+                                addLog(`Loaded ${messages.length} messages from session ${sessionId}`, 'success');
                             } else {
                                 // No messages yet but session exists
                                 addLog(`Session ${sessionId} exists but has no messages yet`, 'info');
@@ -4975,10 +5020,13 @@ Original task description: ${taskName}`;
                                 
                                 <div className="mt-4 flex justify-end">
                                     <button 
-                                        onClick={() => fetchSessionMessages(selectedSessionId)}
+                                        onClick={() => {
+                                            addLog('🔄 Refreshing session data...', 'info');
+                                            fetchSessionMessages(selectedSessionId, true);
+                                        }}
                                         className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 mr-2"
                                     >
-                                        Refresh
+                                        🔄 Refresh
                                     </button>
                                     <button 
                                         onClick={() => setSessionViewerOpen(false)}
