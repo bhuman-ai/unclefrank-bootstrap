@@ -4,6 +4,7 @@
 const CLAUDE_EXECUTOR_URL = process.env.CLAUDE_EXECUTOR_URL || 'https://uncle-frank-claude.fly.dev';
 const CLAUDE_FALLBACK_MODE = process.env.CLAUDE_FALLBACK_MODE === 'true' || false;
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-opus-4-1-20250805'; // Latest Opus model
+const GITHUB_REPO = process.env.GITHUB_REPO || 'bhuman-ai/unclefrank-bootstrap';
 
 // Session manager to track Claude sessions by task
 const sessionManager = new Map();
