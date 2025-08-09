@@ -32,13 +32,14 @@ RUN npm install -g @anthropic-ai/claude-code && \
 COPY package.json ./
 RUN npm install
 
-# Copy server code - async version that doesn't block health checks
-COPY server-async-fixed.js ./server.js
+# Copy server code - queue-based version with tmux injector
+COPY server-queue.js ./
+COPY tmux-injector.sh ./
 COPY setup-claude-auth.sh ./
 COPY tmux.conf /etc/tmux.conf
 
 # Make scripts executable
-RUN chmod +x setup-claude-auth.sh
+RUN chmod +x setup-claude-auth.sh tmux-injector.sh
 
 # Don't initialize config here - let startup.sh handle it with persistent storage
 

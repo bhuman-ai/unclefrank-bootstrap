@@ -52,26 +52,83 @@ async function checkClaudeSession() {
     }
 }
 
-// Inject command into Claude using the proven 3-step approach
+// Inject command into Claude - based on Claude-Code-Remote's working implementation
 async function injectCommand(command) {
     try {
         // 1. Clear input field (Ctrl+U)
         await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} C-u`);
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        // 2. Send command (escape single quotes)
-        const escapedCommand = command.replace(/'/g, "'\"'\"'");
+        // 2. Send the ENTIRE command at once (NOT line by line!)
+        // This is the key - Claude expects the full multi-line command
+        const escapedCommand = command.replace(/'/g, "'\\''");
         await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} '${escapedCommand}'`);
         await new Promise(resolve => setTimeout(resolve, 200));
         
-        // 3. Send Enter (Ctrl+M)
-        await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} C-m`);
+        // 3. Send Enter ONCE to submit
+        await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} Enter`);
         
         console.log(`Command injected: ${command.substring(0, 100)}...`);
+        
+        // 4. Wait and handle any confirmations (like Claude-Code-Remote does)
+        await handleConfirmations();
+        
         return true;
     } catch (error) {
         console.error('Failed to inject command:', error);
         return false;
+    }
+}
+
+// Handle Claude confirmations (based on Claude-Code-Remote)
+async function handleConfirmations() {
+    const maxAttempts = 5;
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+        attempts++;
+        
+        // Wait for Claude to process
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Get current output
+        const output = await captureClaudeOutput();
+        
+        // Check for various confirmation prompts
+        if (output.includes('Do you want to proceed?') && output.includes('1. Yes')) {
+            console.log('Detected confirmation prompt, auto-confirming...');
+            // Send "2" for "Yes, and don't ask again" if available, otherwise "1"
+            if (output.includes('2. Yes, and don\'t ask again')) {
+                await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} '2'`);
+            } else {
+                await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} '1'`);
+            }
+            await new Promise(resolve => setTimeout(resolve, 300));
+            await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} Enter`);
+            continue;
+        }
+        
+        // Check for y/n prompts
+        if (output.includes('(y/n)') || output.includes('[Y/n]')) {
+            console.log('Detected y/n prompt, sending y...');
+            await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} 'y'`);
+            await new Promise(resolve => setTimeout(resolve, 300));
+            await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} Enter`);
+            continue;
+        }
+        
+        // Check if Claude is processing
+        if (output.includes('Thinking') || output.includes('Processing') || 
+            output.includes('Working') || output.includes('●')) {
+            console.log('Claude is processing, waiting...');
+            continue;
+        }
+        
+        // If we see a new prompt, command is likely done
+        if (output.includes('> ') && !output.includes('Do you want')) {
+            console.log('Command appears to be complete');
+            break;
+        }
     }
 }
 

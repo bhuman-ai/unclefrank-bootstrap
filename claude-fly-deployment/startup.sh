@@ -96,9 +96,13 @@ EOF
     unset ANTHROPIC_API_KEY
     
     # Auto-start tmux session with Claude if credentials exist
-    # Use IS_SANDBOX=1 to bypass root check for --dangerously-skip-permissions
-    echo "Starting Claude in tmux session (OAuth mode, skip permissions)..."
-    tmux -f /etc/tmux.conf new-session -d -s claude-manual -c /app "cd /app && IS_SANDBOX=1 claude --dangerously-skip-permissions"
+    echo "Starting Claude in tmux session..."
+    # Start tmux session first
+    tmux -f /etc/tmux.conf new-session -d -s claude-manual -c /app
+    
+    # Then send the claude command to it
+    sleep 2
+    tmux -f /etc/tmux.conf send-keys -t claude-manual "claude --dangerously-skip-permissions" Enter
     
     # Wait a bit for Claude to start
     sleep 5
@@ -117,14 +121,24 @@ EOF
         echo "❌ Failed to start Claude tmux session"
     fi
 else
-    echo "⚠️  Claude not authenticated yet. You'll need to set up claude-manual session."
-    # Create empty tmux session for manual setup (in /app directory)
+    echo "⚠️  Claude not authenticated yet. Starting Claude for manual setup..."
+    # Create tmux session and start Claude for manual auth
     tmux -f /etc/tmux.conf new-session -d -s claude-manual -c /app
+    sleep 2
+    tmux -f /etc/tmux.conf send-keys -t claude-manual "claude" Enter
+    echo "Claude started in tmux session for manual authentication"
 fi
 
 # Run the auth setup script
 ./setup-claude-auth.sh
 
+# Start the tmux injector in background
+echo "Starting tmux injector..."
+chmod +x tmux-injector.sh
+nohup ./tmux-injector.sh > /app/tmux-injector.log 2>&1 &
+INJECTOR_PID=$!
+echo "Tmux injector started with PID: $INJECTOR_PID"
+
 # Start the server
 echo "Starting Uncle Frank's Claude Executor..."
-node server.js
+node server-queue.js
