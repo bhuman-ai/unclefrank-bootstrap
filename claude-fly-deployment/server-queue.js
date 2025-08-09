@@ -146,8 +146,15 @@ async function processClaudeExecution(session, message) {
             }
             
             if (!stillProcessing) {
-                // Don't require stability - if Claude is ready, it's ready
-                if (attempts >= 2) {  // Just wait for 2 checks to be sure
+                // Wait for output to stabilize (no more changes)
+                if (currentOutput === lastOutput) {
+                    stableCount++;
+                } else {
+                    stableCount = 0;
+                }
+                
+                // Require 2 stable checks (10 seconds of no changes) after Claude stops processing
+                if (stableCount >= 2) {
                         clearInterval(checkInterval);
                         
                         // Extract response - find everything between the user message and the prompt box
