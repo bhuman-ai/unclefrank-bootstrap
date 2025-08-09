@@ -28,9 +28,14 @@ while true; do
         /usr/bin/tmux send-keys -t "$CLAUDE_SESSION" C-u
         sleep 0.2
         
-        # Send the command
-        /usr/bin/tmux send-keys -t "$CLAUDE_SESSION" "$COMMAND"
-        sleep 0.2
+        # Send the command in chunks to handle long commands
+        # tmux send-keys has a buffer limit, so we need to chunk it
+        echo "[TMUX-INJECTOR] Command length: ${#COMMAND} characters"
+        
+        # Method 1: Try to paste from buffer (works for long text)
+        echo "$COMMAND" | /usr/bin/tmux load-buffer -
+        /usr/bin/tmux paste-buffer -t "$CLAUDE_SESSION"
+        sleep 0.5
         
         # Press Enter
         /usr/bin/tmux send-keys -t "$CLAUDE_SESSION" C-m
