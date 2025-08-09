@@ -89,25 +89,23 @@ async function isClaudeProcessing(output) {
     const lastLines = output.trim().split('\n').slice(-10).join('\n');
     
     // Claude is processing if we see any of these:
-    // - "✻ Cerebrating..." / "✻ Hatching..." / "✻ Pondering..."
-    // - Any thinking indicator with token count
-    // - "⎿ Running..." - Command is executing
-    // - "ctrl+b" - Background process indicator
-    // - Tool use indicators like "Bash(" or "Write(" or "Edit("
-    const isThinking = lastLines.includes('Cerebrating') || 
-                      lastLines.includes('Hatching') ||
-                      lastLines.includes('Pondering') ||
-                      lastLines.includes('tokens · esc to interrupt') ||
-                      lastLines.includes('✻');
+    // - "✻ Cerebrating..." / "✻ Hatching..." / "✻ Pondering..." with tokens
+    // - Any thinking indicator with "tokens · esc to interrupt"
+    const isThinking = (lastLines.includes('Cerebrating') || 
+                       lastLines.includes('Hatching') ||
+                       lastLines.includes('Pondering') ||
+                       lastLines.includes('✻')) && 
+                       lastLines.includes('tokens');
     
     // Check if Claude is running commands
-    const isRunningCommand = lastLines.includes('⎿ Running') ||
+    // When running commands, we see "esc to interrupt" WITHOUT "tokens"
+    // Or we see specific running indicators
+    const hasEscInterrupt = lastLines.includes('esc to interrupt');
+    const hasTokens = lastLines.includes('tokens');
+    const isRunningCommand = (hasEscInterrupt && !hasTokens) ||  // "esc to interrupt" without tokens = command running
+                            lastLines.includes('⎿ Running') ||
                             lastLines.includes('⎿  Running') ||
                             lastLines.includes('ctrl+b ctrl+b to run in background') ||
-                            lastLines.includes('Bash(') ||
-                            lastLines.includes('Write(') ||
-                            lastLines.includes('Edit(') ||
-                            lastLines.includes('Read(') ||
                             lastLines.includes('to run in background');
     
     if (isThinking || isRunningCommand) {
