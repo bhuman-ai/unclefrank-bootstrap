@@ -9,6 +9,7 @@ const path = require('path');
 const { exec } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
+const Anthropic = require('@anthropic-ai/sdk');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -20,6 +21,11 @@ app.use(express.json({ limit: '50mb' }));
 // GitHub configuration
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = process.env.GITHUB_REPO || 'bhuman-ai/unclefrank-bootstrap';
+
+// Initialize Claude API client
+const anthropic = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY || 'placeholder-key'
+});
 
 // Session storage
 const sessions = new Map();
@@ -105,12 +111,58 @@ async function queueCommand(sessionId, command) {
 // Capture Claude's output
 async function captureClaudeOutput() {
     try {
-        // Capture more lines to ensure we get full responses (-S -500 = last 500 lines)
-        const { stdout } = await execAsync(`/usr/bin/tmux capture-pane -t ${CLAUDE_SESSION} -p -S -500`);
+        // Capture more lines to ensure we get full responses (-S -2000 = last 2000 lines)
+        const { stdout } = await execAsync(`/usr/bin/tmux capture-pane -t ${CLAUDE_SESSION} -p -S -2000`);
         return stdout;
     } catch (error) {
         console.error('Failed to capture output:', error);
         return '';
+    }
+}
+
+// Parse checkpoints using Claude API
+async function parseCheckpointsWithClaude(rawResponse) {
+    try {
+        // If we don't have a real API key, fallback to basic parsing
+        if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'placeholder-key') {
+            console.log('[Parser] No API key, using fallback parsing');
+            return rawResponse;
+        }
+
+        const prompt = `You are a checkpoint parser. Extract and format checkpoints from the following text into a clean, structured format.
+
+Input text:
+${rawResponse}
+
+Return ONLY the checkpoints in this exact format (no other text):
+
+### Checkpoint 1: [Name]
+- Objective: [objective in one line]
+- Deliverables: [deliverables in one line, semicolon separated if multiple]
+- Pass Criteria: [pass criteria in one line, semicolon separated if multiple]
+
+### Checkpoint 2: [Name]
+- Objective: [objective in one line]
+- Deliverables: [deliverables in one line]
+- Pass Criteria: [pass criteria in one line]
+
+If there are no valid checkpoints in the text, return the original text unchanged.
+Keep all items on single lines. Do not use sub-bullets.`;
+
+        const response = await anthropic.messages.create({
+            model: 'claude-3-haiku-20240307',
+            max_tokens: 2000,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0
+        });
+
+        const parsed = response.content[0].text;
+        console.log('[Parser] Successfully parsed checkpoints with Claude API');
+        return parsed;
+    } catch (error) {
+        console.error('[Parser] Failed to parse with Claude API:', error.message);
+        // Fallback to original response if API fails
+        return rawResponse;
     }
 }
 
@@ -269,83 +321,9 @@ async function processClaudeExecution(session, message) {
                             }
                         }
                         
-                        // Format checkpoints if present
-                        if (response.includes('Checkpoint') && (response.includes('Objective:') || response.includes('Deliverables:'))) {
-                            // Parse and reformat checkpoints to ensure consistent structure
-                            const lines = response.split('\n');
-                            const formattedLines = [];
-                            let inDeliverables = false;
-                            let inPassCriteria = false;
-                            let deliverables = [];
-                            let passCriteria = [];
-                            
-                            for (let i = 0; i < lines.length; i++) {
-                                const line = lines[i];
-                                const trimmedLine = line.trim();
-                                
-                                // Detect section changes
-                                if (trimmedLine.startsWith('Checkpoint ')) {
-                                    // Flush any pending deliverables/criteria
-                                    if (deliverables.length > 0) {
-                                        formattedLines.push(`- Deliverables: ${deliverables.join('; ')}`);
-                                        deliverables = [];
-                                    }
-                                    if (passCriteria.length > 0) {
-                                        formattedLines.push(`- Pass Criteria: ${passCriteria.join('; ')}`);
-                                        passCriteria = [];
-                                    }
-                                    // Add checkpoint header with ### if missing
-                                    if (!trimmedLine.startsWith('###')) {
-                                        formattedLines.push(`### ${trimmedLine}`);
-                                    } else {
-                                        formattedLines.push(trimmedLine);
-                                    }
-                                    inDeliverables = false;
-                                    inPassCriteria = false;
-                                } else if (trimmedLine.startsWith('- Objective:')) {
-                                    formattedLines.push(trimmedLine);
-                                    inDeliverables = false;
-                                    inPassCriteria = false;
-                                } else if (trimmedLine.startsWith('- Deliverables:')) {
-                                    inDeliverables = true;
-                                    inPassCriteria = false;
-                                    // Don't add yet, collect sub-items first
-                                } else if (trimmedLine.startsWith('- Pass Criteria:')) {
-                                    // Flush deliverables if any
-                                    if (deliverables.length > 0) {
-                                        formattedLines.push(`- Deliverables: ${deliverables.join('; ')}`);
-                                        deliverables = [];
-                                    }
-                                    inDeliverables = false;
-                                    inPassCriteria = true;
-                                    // Don't add yet, collect sub-items first
-                                } else if (trimmedLine.startsWith('- ') && (inDeliverables || inPassCriteria)) {
-                                    // Sub-item of deliverables or pass criteria
-                                    const item = trimmedLine.substring(2).trim();
-                                    if (inDeliverables) {
-                                        deliverables.push(item);
-                                    } else if (inPassCriteria) {
-                                        passCriteria.push(item);
-                                    }
-                                } else if (trimmedLine && (inDeliverables || inPassCriteria)) {
-                                    // Continuation of previous item
-                                    if (inDeliverables && deliverables.length > 0) {
-                                        deliverables[deliverables.length - 1] += ' ' + trimmedLine;
-                                    } else if (inPassCriteria && passCriteria.length > 0) {
-                                        passCriteria[passCriteria.length - 1] += ' ' + trimmedLine;
-                                    }
-                                }
-                            }
-                            
-                            // Flush any remaining items
-                            if (deliverables.length > 0) {
-                                formattedLines.push(`- Deliverables: ${deliverables.join('; ')}`);
-                            }
-                            if (passCriteria.length > 0) {
-                                formattedLines.push(`- Pass Criteria: ${passCriteria.join('; ')}`);
-                            }
-                            
-                            response = formattedLines.join('\n');
+                        // Parse checkpoints intelligently if present
+                        if (response.includes('Checkpoint') || response.includes('checkpoint')) {
+                            response = await parseCheckpointsWithClaude(response);
                         }
                         
                         // Clean up the response
