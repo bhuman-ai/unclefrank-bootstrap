@@ -23,7 +23,7 @@ const GITHUB_REPO = process.env.GITHUB_REPO || 'bhuman-ai/unclefrank-bootstrap';
 
 // Session storage
 const sessions = new Map();
-const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/workspace';
+const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/app/sessions';
 const CLAUDE_SESSION = 'claude-manual'; // Use the manually authenticated session
 
 // Configure git
@@ -53,19 +53,8 @@ async function checkClaudeSession() {
 }
 
 // Inject command into Claude using the proven 3-step approach
-async function injectCommand(command, workDir = '/app') {
+async function injectCommand(command) {
     try {
-        // Change directory first if needed
-        if (workDir !== '/app') {
-            const cdCommand = `cd ${workDir}`;
-            await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} C-u`);
-            await new Promise(resolve => setTimeout(resolve, 100));
-            await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} '${cdCommand}'`);
-            await new Promise(resolve => setTimeout(resolve, 100));
-            await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} C-m`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        
         // 1. Clear input field (Ctrl+U)
         await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} C-u`);
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -111,8 +100,8 @@ async function processClaudeExecution(session, message) {
     try {
         console.log(`[Session ${session.id}] Starting background execution`);
         
-        // Inject the command
-        const injected = await injectCommand(message, session.repoPath);
+        // Inject the command directly without confusing context
+        const injected = await injectCommand(message);
         if (!injected) {
             session.status = 'error';
             session.error = 'Failed to inject command';
@@ -407,4 +396,5 @@ app.listen(PORT, () => {
     console.log(`Uncle Frank's Async Claude Executor running on port ${PORT}`);
     console.log(`GitHub repo: ${GITHUB_REPO}`);
     console.log(`Non-blocking execution prevents health check failures`);
+    console.log(`Workspace: ${WORKSPACE_DIR}`);
 });
