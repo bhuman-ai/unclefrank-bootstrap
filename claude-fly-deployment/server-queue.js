@@ -135,22 +135,44 @@ async function processClaudeExecution(session, message) {
                 if (attempts >= 2) {  // Just wait for 2 checks to be sure
                         clearInterval(checkInterval);
                         
-                        // Extract response
-                        const messageIndex = currentOutput.indexOf(message);
+                        // Extract response - find everything between the user message and the prompt box
+                        const messageIndex = currentOutput.indexOf(message.substring(0, 100)); // Find by first 100 chars
                         let response = '';
                         
                         if (messageIndex !== -1) {
                             const afterMessage = currentOutput.substring(messageIndex + message.length);
-                            // Find Claude's response (everything between the message and the next prompt box)
-                            const responseMatch = afterMessage.match(/\n+●\s+(.+?)(?:\n╭─|$)/s);
-                            if (responseMatch) {
-                                response = responseMatch[1].trim();
+                            // Look for text between the message and the prompt box
+                            // Claude's response starts after the message and ends before ╭─ prompt box
+                            const promptBoxIndex = afterMessage.indexOf('╭─');
+                            
+                            if (promptBoxIndex > 0) {
+                                response = afterMessage.substring(0, promptBoxIndex).trim();
+                                // Clean up any leading bullet points or whitespace
+                                response = response.replace(/^[●\s]+/, '').trim();
                             } else {
-                                // Fallback: try to get any text after the message before the prompt
-                                const simpleMatch = afterMessage.match(/\n+(.+?)(?:\n╭─|$)/s);
-                                if (simpleMatch) {
-                                    response = simpleMatch[1].replace(/^●\s*/, '').trim();
+                                // No prompt box found, take everything after the message
+                                response = afterMessage.trim();
+                            }
+                        } else {
+                            // Message not found, try to extract last response before prompt
+                            const promptBoxIndex = currentOutput.lastIndexOf('╭─');
+                            if (promptBoxIndex > 0) {
+                                // Get content before the prompt box
+                                const beforePrompt = currentOutput.substring(0, promptBoxIndex);
+                                // Find the last substantial block of text
+                                const lines = beforePrompt.split('\n');
+                                let responseLines = [];
+                                // Work backwards to find response
+                                for (let i = lines.length - 1; i >= 0; i--) {
+                                    const line = lines[i].trim();
+                                    if (line && !line.includes('bypass permissions')) {
+                                        responseLines.unshift(lines[i]);
+                                    } else if (responseLines.length > 0) {
+                                        // Found start of response
+                                        break;
+                                    }
                                 }
+                                response = responseLines.join('\n').trim();
                             }
                         }
                         
