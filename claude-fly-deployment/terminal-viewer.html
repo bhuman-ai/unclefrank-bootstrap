@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Terminal Viewer</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .controls {
+            background: #2d2d30;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .controls input, .controls button {
+            padding: 8px 12px;
+            margin: 5px;
+            background: #3c3c3c;
+            color: #d4d4d4;
+            border: 1px solid #555;
+            border-radius: 3px;
+        }
+        
+        .controls button:hover {
+            background: #4c4c4c;
+            cursor: pointer;
+        }
+        
+        .terminal {
+            background: #1e1e1e;
+            border: 1px solid #3c3c3c;
+            border-radius: 5px;
+            padding: 15px;
+            min-height: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            margin-left: 10px;
+            font-size: 12px;
+        }
+        
+        .status.processing {
+            background: #0e7490;
+            color: white;
+        }
+        
+        .status.completed {
+            background: #059669;
+            color: white;
+        }
+        
+        .status.error {
+            background: #dc2626;
+            color: white;
+        }
+        
+        .timestamp {
+            color: #888;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            background: #2d2d30;
+            border-radius: 3px;
+        }
+        
+        .thinking {
+            color: #60a5fa;
+        }
+        
+        .running {
+            color: #34d399;
+        }
+        
+        .prompt-box {
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Claude Terminal Viewer</h1>
+        
+        <div class="controls">
+            <input type="text" id="sessionId" placeholder="Enter Session ID" style="width: 400px;">
+            <button onclick="startStreaming()">Start Streaming</button>
+            <button onclick="stopStreaming()">Stop</button>
+            <button onclick="clearTerminal()">Clear</button>
+            <span class="status" id="status">Idle</span>
+            <span class="timestamp" id="timestamp"></span>
+        </div>
+        
+        <div class="message">
+            <strong>Instructions:</strong><br>
+            1. Enter a Claude session ID from the frontend<br>
+            2. Click "Start Streaming" to see real-time output<br>
+            3. Terminal refreshes every 2 seconds while Claude is processing<br>
+            4. Automatically stops when Claude completes
+        </div>
+        
+        <div class="terminal" id="terminal">
+            Waiting for session ID...
+        </div>
+    </div>
+    
+    <script>
+        let intervalId = null;
+        const API_URL = 'https://uncle-frank-claude.fly.dev';
+        
+        function formatTerminalOutput(text) {
+            // Add color coding for different types of output
+            text = text.replace(/✻\s*(Cerebrating|Hatching|Pondering|Thinking).*tokens/g, '<span class="thinking">$&</span>');
+            text = text.replace(/⎿\s*Running.*/g, '<span class="running">$&</span>');
+            text = text.replace(/╭─.*╯/gs, '<span class="prompt-box">$&</span>');
+            text = text.replace(/###\s*Checkpoint\s*\d+:/g, '<strong>$&</strong>');
+            return text;
+        }
+        
+        async function fetchTerminal() {
+            const sessionId = document.getElementById('sessionId').value;
+            if (!sessionId) {
+                document.getElementById('terminal').textContent = 'Please enter a session ID';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/api/sessions/${sessionId}/terminal`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Update terminal output
+                    document.getElementById('terminal').innerHTML = formatTerminalOutput(data.terminal);
+                    
+                    // Update status
+                    const statusEl = document.getElementById('status');
+                    statusEl.textContent = data.isProcessing ? 'Processing' : data.status;
+                    statusEl.className = 'status ' + (data.isProcessing ? 'processing' : data.status);
+                    
+                    // Update timestamp
+                    document.getElementById('timestamp').textContent = new Date(data.timestamp).toLocaleTimeString();
+                    
+                    // Auto-scroll to bottom
+                    const terminal = document.getElementById('terminal');
+                    terminal.scrollTop = terminal.scrollHeight;
+                    
+                    // Stop if completed
+                    if (!data.isProcessing && data.status === 'completed') {
+                        stopStreaming();
+                        console.log('Session completed, stopping auto-refresh');
+                    }
+                } else {
+                    document.getElementById('terminal').textContent = `Error: ${data.error}`;
+                    stopStreaming();
+                }
+            } catch (error) {
+                document.getElementById('terminal').textContent = `Failed to fetch: ${error.message}`;
+            }
+        }
+        
+        function startStreaming() {
+            // Clear any existing interval
+            stopStreaming();
+            
+            // Fetch immediately
+            fetchTerminal();
+            
+            // Then fetch every 2 seconds
+            intervalId = setInterval(fetchTerminal, 2000);
+            
+            document.getElementById('status').textContent = 'Streaming';
+            document.getElementById('status').className = 'status processing';
+        }
+        
+        function stopStreaming() {
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+            
+            const statusEl = document.getElementById('status');
+            if (statusEl.textContent === 'Streaming') {
+                statusEl.textContent = 'Stopped';
+                statusEl.className = 'status';
+            }
+        }
+        
+        function clearTerminal() {
+            document.getElementById('terminal').textContent = '';
+        }
+        
+        // Allow Enter key to start streaming
+        document.getElementById('sessionId').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                startStreaming();
+            }
+        });
+    </script>
+</body>
+</html>

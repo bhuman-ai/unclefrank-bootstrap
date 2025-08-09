@@ -603,6 +603,57 @@ app.get('/api/sessions/:sessionId/messages', (req, res) => {
     });
 });
 
+// Get real-time terminal output (stream current Claude output)
+app.get('/api/sessions/:sessionId/terminal', async (req, res) => {
+    const session = sessions.get(req.params.sessionId);
+    
+    if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    try {
+        // Capture current terminal output
+        const terminalOutput = await captureClaudeOutput();
+        
+        // Find where the user's message starts
+        const userMessage = session.messages.find(m => m.role === 'user');
+        let relevantOutput = terminalOutput;
+        
+        if (userMessage) {
+            // Try to find the message in the output and get everything after it
+            const messageStart = userMessage.content.substring(0, 100);
+            const messageIndex = terminalOutput.indexOf(messageStart);
+            
+            if (messageIndex !== -1) {
+                // Get everything from the message onwards
+                relevantOutput = terminalOutput.substring(messageIndex);
+            } else {
+                // If we can't find the message, try to get the last significant portion
+                const lines = terminalOutput.split('\n');
+                // Get last 200 lines or so
+                relevantOutput = lines.slice(-200).join('\n');
+            }
+        }
+        
+        // Check if still processing
+        const isProcessing = await isClaudeProcessing(terminalOutput);
+        
+        res.json({
+            sessionId: session.id,
+            status: session.status,
+            isProcessing,
+            terminal: relevantOutput,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error(`[Session ${req.params.sessionId}] Failed to get terminal output:`, error);
+        res.status(500).json({ 
+            error: 'Failed to capture terminal output',
+            details: error.message 
+        });
+    }
+});
+
 // Get session details
 app.get('/api/sessions/:sessionId', async (req, res) => {
     const session = sessions.get(req.params.sessionId);
