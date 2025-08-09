@@ -222,6 +222,85 @@ async function processClaudeExecution(session, message) {
                             }
                         }
                         
+                        // Format checkpoints if present
+                        if (response.includes('Checkpoint') && (response.includes('Objective:') || response.includes('Deliverables:'))) {
+                            // Parse and reformat checkpoints to ensure consistent structure
+                            const lines = response.split('\n');
+                            const formattedLines = [];
+                            let inDeliverables = false;
+                            let inPassCriteria = false;
+                            let deliverables = [];
+                            let passCriteria = [];
+                            
+                            for (let i = 0; i < lines.length; i++) {
+                                const line = lines[i];
+                                const trimmedLine = line.trim();
+                                
+                                // Detect section changes
+                                if (trimmedLine.startsWith('Checkpoint ')) {
+                                    // Flush any pending deliverables/criteria
+                                    if (deliverables.length > 0) {
+                                        formattedLines.push(`- Deliverables: ${deliverables.join('; ')}`);
+                                        deliverables = [];
+                                    }
+                                    if (passCriteria.length > 0) {
+                                        formattedLines.push(`- Pass Criteria: ${passCriteria.join('; ')}`);
+                                        passCriteria = [];
+                                    }
+                                    // Add checkpoint header with ### if missing
+                                    if (!trimmedLine.startsWith('###')) {
+                                        formattedLines.push(`### ${trimmedLine}`);
+                                    } else {
+                                        formattedLines.push(trimmedLine);
+                                    }
+                                    inDeliverables = false;
+                                    inPassCriteria = false;
+                                } else if (trimmedLine.startsWith('- Objective:')) {
+                                    formattedLines.push(trimmedLine);
+                                    inDeliverables = false;
+                                    inPassCriteria = false;
+                                } else if (trimmedLine.startsWith('- Deliverables:')) {
+                                    inDeliverables = true;
+                                    inPassCriteria = false;
+                                    // Don't add yet, collect sub-items first
+                                } else if (trimmedLine.startsWith('- Pass Criteria:')) {
+                                    // Flush deliverables if any
+                                    if (deliverables.length > 0) {
+                                        formattedLines.push(`- Deliverables: ${deliverables.join('; ')}`);
+                                        deliverables = [];
+                                    }
+                                    inDeliverables = false;
+                                    inPassCriteria = true;
+                                    // Don't add yet, collect sub-items first
+                                } else if (trimmedLine.startsWith('- ') && (inDeliverables || inPassCriteria)) {
+                                    // Sub-item of deliverables or pass criteria
+                                    const item = trimmedLine.substring(2).trim();
+                                    if (inDeliverables) {
+                                        deliverables.push(item);
+                                    } else if (inPassCriteria) {
+                                        passCriteria.push(item);
+                                    }
+                                } else if (trimmedLine && (inDeliverables || inPassCriteria)) {
+                                    // Continuation of previous item
+                                    if (inDeliverables && deliverables.length > 0) {
+                                        deliverables[deliverables.length - 1] += ' ' + trimmedLine;
+                                    } else if (inPassCriteria && passCriteria.length > 0) {
+                                        passCriteria[passCriteria.length - 1] += ' ' + trimmedLine;
+                                    }
+                                }
+                            }
+                            
+                            // Flush any remaining items
+                            if (deliverables.length > 0) {
+                                formattedLines.push(`- Deliverables: ${deliverables.join('; ')}`);
+                            }
+                            if (passCriteria.length > 0) {
+                                formattedLines.push(`- Pass Criteria: ${passCriteria.join('; ')}`);
+                            }
+                            
+                            response = formattedLines.join('\n');
+                        }
+                        
                         // Clean up the response
                         // Remove Todo wrappers if present
                         if (response.includes('Update Todos')) {
