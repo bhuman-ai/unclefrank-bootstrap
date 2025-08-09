@@ -100,7 +100,12 @@ async function processClaudeExecution(session, message) {
     try {
         console.log(`[Session ${session.id}] Starting background execution`);
         
-        // Inject the command directly without confusing context
+        // CRITICAL: First cd into the session's repo directory
+        const cdCommand = `cd ${session.repoPath}`;
+        await injectCommand(cdCommand);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Now inject the actual command
         const injected = await injectCommand(message);
         if (!injected) {
             session.status = 'error';
@@ -129,11 +134,29 @@ async function processClaudeExecution(session, message) {
                     if (stableCount >= 3 || attempts >= maxAttempts) {
                         clearInterval(checkInterval);
                         
-                        // Extract response
-                        const responseStart = currentOutput.lastIndexOf(message);
-                        let response = currentOutput;
-                        if (responseStart !== -1) {
-                            response = currentOutput.substring(responseStart + message.length);
+                        // Better response extraction using markers
+                        // Find where our message ends and Claude's response begins
+                        const messageEnd = currentOutput.lastIndexOf(message.substring(0, 50));
+                        let response = '';
+                        
+                        if (messageEnd !== -1) {
+                            // Get everything after our message
+                            const afterMessage = currentOutput.substring(messageEnd + message.length);
+                            
+                            // Find Claude's response (starts after the prompt)
+                            const responseMatch = afterMessage.match(/\n([^●]+?)(?:\n●|$)/s);
+                            if (responseMatch) {
+                                response = responseMatch[1];
+                            } else {
+                                response = afterMessage;
+                            }
+                        } else {
+                            // Fallback: just get the last part
+                            const lines = currentOutput.split('\n');
+                            const promptIndex = lines.findIndex(line => line.includes('●'));
+                            if (promptIndex > 0) {
+                                response = lines.slice(0, promptIndex).join('\n');
+                            }
                         }
                         
                         // Clean response
@@ -142,6 +165,7 @@ async function processClaudeExecution(session, message) {
                             .replace(/╭─+╮[\s\S]*?╰─+╯/g, '')
                             .replace(/\n\s*\?\s+for shortcuts.*$/m, '')
                             .replace(/●\s+/g, '')
+                            .replace(/bypass permissions.*$/m, '')
                             .trim();
                         
                         // Store response
@@ -150,6 +174,17 @@ async function processClaudeExecution(session, message) {
                             content: response,
                             timestamp: new Date().toISOString()
                         });
+                        
+                        // Save to GitHub issue if configured
+                        if (session.issueNumber && GITHUB_TOKEN) {
+                            try {
+                                const issueComment = `## Claude Response - ${new Date().toISOString()}\n\n\`\`\`\n${response}\n\`\`\``;
+                                await execAsync(`cd ${session.repoPath} && gh issue comment ${session.issueNumber} -b "${issueComment.replace(/"/g, '\\"')}"`);
+                                console.log(`[Session ${session.id}] Saved response to GitHub issue #${session.issueNumber}`);
+                            } catch (ghError) {
+                                console.error('Failed to save to GitHub issue:', ghError);
+                            }
+                        }
                         
                         // Update files
                         try {
@@ -221,7 +256,7 @@ app.get('/health', async (req, res) => {
 
 // Create session
 app.post('/api/sessions', async (req, res) => {
-    const { testOnly, repoUrl } = req.body;
+    const { testOnly, repoUrl, taskTitle, taskDescription } = req.body;
     const sessionId = uuidv4();
     
     if (testOnly) {
@@ -247,6 +282,29 @@ app.post('/api/sessions', async (req, res) => {
         const branchName = `claude-session-${sessionId}`;
         await execAsync(`cd ${repoPath} && git checkout -b ${branchName}`);
         
+        // Create GitHub issue for this task
+        let issueNumber = null;
+        if (GITHUB_TOKEN && taskTitle) {
+            try {
+                const issueTitle = taskTitle || `Task: ${sessionId}`;
+                const issueBody = `## Task Session: ${sessionId}\n\n${taskDescription || 'Task execution in progress'}\n\n**Branch:** ${branchName}\n**Started:** ${new Date().toISOString()}`;
+                
+                const { stdout } = await execAsync(
+                    `cd ${repoPath} && gh issue create --title "${issueTitle}" --body "${issueBody.replace(/"/g, '\\"')}" --label "claude-task"`,
+                    { timeout: 10000 }
+                );
+                
+                // Extract issue number from output
+                const issueMatch = stdout.match(/#(\d+)/);
+                if (issueMatch) {
+                    issueNumber = issueMatch[1];
+                    console.log(`Created GitHub issue #${issueNumber} for session ${sessionId}`);
+                }
+            } catch (issueError) {
+                console.error('Failed to create GitHub issue:', issueError);
+            }
+        }
+        
         // Initialize session
         const session = {
             id: sessionId,
@@ -256,7 +314,8 @@ app.post('/api/sessions', async (req, res) => {
             files: [],
             branch: branchName,
             repoPath,
-            workspaceDir
+            workspaceDir,
+            issueNumber
         };
         
         sessions.set(sessionId, session);

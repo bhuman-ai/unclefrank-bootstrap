@@ -149,13 +149,14 @@ export default async function handler(req, res) {
           taskMessage = JSON.stringify(taskData.message);
         }
         
-        // Create Claude session with GitHub repo - simplified for our server
+        // Create Claude session with GitHub repo and issue tracking
         const sessionResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            // Just create the session - our server clones the repo and uses existing Claude
-            repoUrl: `https://github.com/${GITHUB_REPO}`
+            repoUrl: `https://github.com/${GITHUB_REPO}`,
+            taskTitle: `Task: ${taskMessage.substring(0, 100)}`,
+            taskDescription: taskMessage
           })
         });
 
@@ -289,35 +290,34 @@ DO NOT START EXECUTING. Just provide the checkpoint breakdown.`
         
         console.log(`[Claude Integration] Phase 2: Executing ${sessionData.checkpoints.length} checkpoints...`);
         
+        // Filter out duplicate checkpoints and template placeholders
+        const uniqueCheckpoints = sessionData.checkpoints
+          .filter((cp, index, self) => 
+            index === self.findIndex(c => c.id === cp.id) && // Remove duplicates by ID
+            !cp.objective.includes('[Clear goal]') && // Remove template placeholders
+            !cp.deliverables.includes('[What files/code to create]')
+          );
+        
         // Build message with actual checkpoint details
-        let checkpointDetails = sessionData.checkpoints.map((cp, i) => 
-          `### Checkpoint ${i + 1}: ${cp.name}
+        let checkpointDetails = uniqueCheckpoints.map((cp, i) => 
+          `### Checkpoint ${cp.id}: ${cp.name}
 - Objective: ${cp.objective}
 - Deliverables: ${cp.deliverables}
 - Pass Criteria: ${cp.passCriteria}`
         ).join('\n\n');
         
-        // Send execution command to Claude WITH the checkpoint details
+        // Send execution command to Claude (in the SAME session, so Claude remembers the task!)
         const executeResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${threadId}/execute`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: `# EXECUTE CHECKPOINTS
-
-Here are the checkpoints to execute:
+            message: `Now execute the checkpoints you just created:
 
 ${checkpointDetails}
 
-Now please execute these checkpoints in order, starting with Checkpoint 1.
-
-Remember:
-- Execute each checkpoint in order
-- Create actual files with actual code
-- Run actual tests if applicable
-- Use git add to track new files
-- Report actual results for each checkpoint
-
-Start executing Checkpoint 1 now.`
+Execute each checkpoint in order, starting with Checkpoint 1.
+After each checkpoint, run tests to verify it works.
+Report results for each checkpoint.`
           })
         });
         
