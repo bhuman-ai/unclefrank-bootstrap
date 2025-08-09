@@ -26,6 +26,37 @@ const sessions = new Map();
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/app/sessions';
 const CLAUDE_SESSION = 'claude-manual';
 const QUEUE_DIR = '/app/command-queue';
+const SESSIONS_FILE = '/persistent/sessions.json';
+
+// Load sessions from persistent storage
+async function loadSessions() {
+    try {
+        const data = await fs.readFile(SESSIONS_FILE, 'utf8');
+        const savedSessions = JSON.parse(data);
+        for (const [id, session] of Object.entries(savedSessions)) {
+            sessions.set(id, session);
+        }
+        console.log(`Loaded ${sessions.size} sessions from persistent storage`);
+    } catch (error) {
+        if (error.code !== 'ENOENT') {
+            console.error('Failed to load sessions:', error);
+        }
+    }
+}
+
+// Save sessions to persistent storage
+async function saveSessions() {
+    try {
+        const sessionsObj = {};
+        for (const [id, session] of sessions.entries()) {
+            sessionsObj[id] = session;
+        }
+        await fs.mkdir('/persistent', { recursive: true });
+        await fs.writeFile(SESSIONS_FILE, JSON.stringify(sessionsObj, null, 2));
+    } catch (error) {
+        console.error('Failed to save sessions:', error);
+    }
+}
 
 // Configure git
 async function configureGit() {
@@ -370,6 +401,7 @@ async function processClaudeExecution(session, message) {
                         });
                         
                         session.status = 'completed';
+                        await saveSessions(); // Persist after completion
                         console.log(`[Session ${session.id}] Execution completed with response: ${response}`);
                 }
             }
@@ -379,6 +411,7 @@ async function processClaudeExecution(session, message) {
                 clearInterval(checkInterval);
                 session.status = 'timeout';
                 session.error = 'Command timed out';
+                await saveSessions(); // Persist timeout status
                 console.log(`[Session ${session.id}] Timed out after ${attempts} attempts`);
             }
             
@@ -389,14 +422,19 @@ async function processClaudeExecution(session, message) {
         console.error(`[Session ${session.id}] Background execution error:`, error);
         session.status = 'error';
         session.error = error.message;
+        await saveSessions(); // Persist error status
     }
 }
 
 // Initialize
-configureGit();
+async function initialize() {
+    await configureGit();
+    await loadSessions();
+    // Ensure queue directory exists
+    await fs.mkdir(QUEUE_DIR, { recursive: true }).catch(console.error);
+}
 
-// Ensure queue directory exists
-fs.mkdir(QUEUE_DIR, { recursive: true }).catch(console.error);
+initialize();
 
 // Routes
 app.get('/', (req, res) => {
@@ -475,6 +513,7 @@ app.post('/api/sessions', async (req, res) => {
         };
         
         sessions.set(sessionId, session);
+        await saveSessions(); // Persist sessions
         
         res.json({
             sessionId,
@@ -515,6 +554,7 @@ app.post('/api/sessions/:sessionId/execute', async (req, res) => {
         
         // Update status
         session.status = 'processing';
+        await saveSessions(); // Persist status change
         
         // Start background processing
         processClaudeExecution(session, message);
