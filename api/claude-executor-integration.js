@@ -179,26 +179,28 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             message: `# CHECKPOINT DECOMPOSITION REQUEST
 
+Working Directory: ${session.repoPath}
 Task: ${taskMessage}
 
 ## CRITICAL INSTRUCTIONS:
 You MUST ONLY decompose this task into checkpoints. DO NOT EXECUTE ANYTHING YET.
+All file operations should use the working directory: ${session.repoPath}
 
 Please provide 3-5 checkpoints in this EXACT format:
 
 ### Checkpoint 1: [Name]
 - Objective: [Clear goal]
-- Deliverables: [What files/code to create]
+- Deliverables: [What files/code to create in ${session.repoPath}]
 - Pass Criteria: [How to verify success]
 
 ### Checkpoint 2: [Name]
 - Objective: [Clear goal]
-- Deliverables: [What files/code to create]
+- Deliverables: [What files/code to create in ${session.repoPath}]
 - Pass Criteria: [How to verify success]
 
 ### Checkpoint 3: [Name]
 - Objective: [Clear goal]
-- Deliverables: [What files/code to create]
+- Deliverables: [What files/code to create in ${session.repoPath}]
 - Pass Criteria: [How to verify success]
 
 DO NOT START EXECUTING. Just provide the checkpoint breakdown.`
@@ -311,11 +313,12 @@ DO NOT START EXECUTING. Just provide the checkpoint breakdown.`
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: `Now execute the checkpoints you just created:
+            message: `Now execute the checkpoints in ${sessionData.repoPath || '/app/sessions/' + threadId + '/repo'}:
 
 ${checkpointDetails}
 
 Execute each checkpoint in order, starting with Checkpoint 1.
+Create all files in the working directory: ${sessionData.repoPath || '/app/sessions/' + threadId + '/repo'}
 After each checkpoint, run tests to verify it works.
 Report results for each checkpoint.`
           })

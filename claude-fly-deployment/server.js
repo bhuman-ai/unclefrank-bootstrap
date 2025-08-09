@@ -100,12 +100,8 @@ async function processClaudeExecution(session, message) {
     try {
         console.log(`[Session ${session.id}] Starting background execution`);
         
-        // CRITICAL: First cd into the session's repo directory
-        const cdCommand = `cd ${session.repoPath}`;
-        await injectCommand(cdCommand);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Now inject the actual command
+        // Just send the message directly to Claude - no cd command needed
+        // Claude will use its Read/Write tools with full paths
         const injected = await injectCommand(message);
         if (!injected) {
             session.status = 'error';
