@@ -86,27 +86,42 @@ async function captureClaudeOutput() {
 // Check if Claude is still processing
 async function isClaudeProcessing(output) {
     // Check for Claude's processing indicators
-    const lastLines = output.trim().split('\n').slice(-5).join('\n');
+    const lastLines = output.trim().split('\n').slice(-10).join('\n');
     
     // Claude is processing if we see any of these:
-    // - "✻ Cerebrating..." 
-    // - "✻ Hatching..."
-    // - "✻ Pondering..."
-    // - Any similar thinking indicator with token count
+    // - "✻ Cerebrating..." / "✻ Hatching..." / "✻ Pondering..."
+    // - Any thinking indicator with token count
+    // - "⎿ Running..." - Command is executing
+    // - "ctrl+b" - Background process indicator
+    // - Tool use indicators like "Bash(" or "Write(" or "Edit("
     const isThinking = lastLines.includes('Cerebrating') || 
                       lastLines.includes('Hatching') ||
                       lastLines.includes('Pondering') ||
                       lastLines.includes('tokens · esc to interrupt') ||
                       lastLines.includes('✻');
     
-    if (isThinking) {
-        return true; // Still processing
+    // Check if Claude is running commands
+    const isRunningCommand = lastLines.includes('⎿ Running') ||
+                            lastLines.includes('⎿  Running') ||
+                            lastLines.includes('ctrl+b ctrl+b to run in background') ||
+                            lastLines.includes('Bash(') ||
+                            lastLines.includes('Write(') ||
+                            lastLines.includes('Edit(') ||
+                            lastLines.includes('Read(') ||
+                            lastLines.includes('to run in background');
+    
+    if (isThinking || isRunningCommand) {
+        return true; // Still processing or running commands
     }
     
     // Check if we see the prompt box (Claude is ready)
-    const isReady = lastLines.includes('bypass permissions') || 
-                    lastLines.includes('shift+tab to cycle') ||
-                    (lastLines.includes('>') && lastLines.includes('│'));
+    // But ONLY consider it ready if there's no running indicator
+    const hasPromptBox = lastLines.includes('bypass permissions') || 
+                        lastLines.includes('shift+tab to cycle') ||
+                        (lastLines.includes('>') && lastLines.includes('│'));
+    
+    // Claude is ready ONLY if prompt box is present AND no commands running
+    const isReady = hasPromptBox && !isRunningCommand;
     
     // If we see these indicators, Claude is NOT processing (it's ready)
     return !isReady;
@@ -145,8 +160,11 @@ async function processClaudeExecution(session, message) {
                 const runningMinutes = Math.floor((attempts * 5) / 60);
                 console.log(`[Session ${session.id}] Check ${attempts}: processing=${stillProcessing}, stable=${stableCount}, running for ${runningMinutes} minutes`);
                 
-                // Log thinking status if detected
-                if (stillProcessing && currentOutput.includes('tokens')) {
+                // Log specific status
+                const lastLines = currentOutput.trim().split('\n').slice(-5).join('\n');
+                if (lastLines.includes('⎿ Running') || lastLines.includes('ctrl+b')) {
+                    console.log(`[Session ${session.id}] Claude is executing commands...`);
+                } else if (stillProcessing && currentOutput.includes('tokens')) {
                     const tokenMatch = currentOutput.match(/(\d+)\s+tokens/);
                     if (tokenMatch) {
                         console.log(`[Session ${session.id}] Claude is thinking... (${tokenMatch[1]} tokens processed)`);
