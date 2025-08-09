@@ -223,8 +223,45 @@ async function processClaudeExecution(session, message) {
                         }
                         
                         // Clean up the response
+                        // Remove Todo wrappers if present
+                        if (response.includes('Update Todos')) {
+                            // Extract content between Todo markers
+                            const todoStart = response.indexOf('Update Todos');
+                            const checkpointStart = response.indexOf('CP-');
+                            if (checkpointStart > todoStart) {
+                                // Find the actual checkpoint content
+                                const lines = response.split('\n');
+                                const cpLines = [];
+                                let inCheckpoints = false;
+                                
+                                for (const line of lines) {
+                                    // Start capturing when we see CP-
+                                    if (line.includes('CP-')) {
+                                        inCheckpoints = true;
+                                    }
+                                    // Stop if we see another Todo marker
+                                    if (inCheckpoints && line.includes('Update Todos') && cpLines.length > 0) {
+                                        break;
+                                    }
+                                    // Capture checkpoint lines
+                                    if (inCheckpoints && (line.includes('CP-') || line.includes('Pass/Fail:') || 
+                                        line.includes('Files:') || line.includes('Dependencies:') || 
+                                        line.includes('Time:') || line.trim())) {
+                                        // Remove leading bullets and spaces, but preserve checkpoint structure
+                                        const cleanLine = line.replace(/^[\s●⎿☐☒]+/, '').trim();
+                                        if (cleanLine) cpLines.push(cleanLine);
+                                    }
+                                }
+                                
+                                if (cpLines.length > 0) {
+                                    response = cpLines.join('\n');
+                                }
+                            }
+                        }
+                        
+                        // Final cleanup
                         response = response
-                            .replace(/^[●\s]+/, '') // Remove leading bullet
+                            .replace(/^[●\s]+/gm, '') // Remove bullets from all lines
                             .replace(/\s*>?\s*$/, '') // Remove trailing prompt chars
                             .replace(/bypass permissions.*$/m, '') // Remove UI elements
                             .replace(/shift\+tab to cycle.*$/m, '') // Remove UI hints
