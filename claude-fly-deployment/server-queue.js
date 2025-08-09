@@ -231,7 +231,7 @@ app.get('/health', async (req, res) => {
 
 // Create session
 app.post('/api/sessions', async (req, res) => {
-    const { testOnly } = req.body;
+    const { testOnly, forceSync = false } = req.body;
     const sessionId = uuidv4();
     
     if (testOnly) {
@@ -253,7 +253,11 @@ app.post('/api/sessions', async (req, res) => {
         console.log(`Cloning repository to ${repoPath}`);
         await execAsync(`git clone https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git ${repoPath}`);
         
-        // Create unique branch
+        // CRITICAL: Pull latest changes from remote
+        console.log(`Pulling latest changes from origin/master`);
+        await execAsync(`cd ${repoPath} && git fetch origin && git pull origin master`);
+        
+        // Create unique branch FROM LATEST
         const branchName = `claude-session-${sessionId}`;
         await execAsync(`cd ${repoPath} && git checkout -b ${branchName}`);
         
