@@ -363,7 +363,18 @@ app.get('/api/sessions/:sessionId', async (req, res) => {
     }
     
     try {
-        const { stdout: gitStatus } = await execAsync(`cd ${session.repoPath} && git status --porcelain`).catch(() => ({ stdout: '' }));
+        // Try to get git status with timeout
+        let gitStatus = '';
+        try {
+            const { stdout } = await execAsync(
+                `cd ${session.repoPath} && git status --porcelain`,
+                { timeout: 3000 } // 3 second timeout
+            );
+            gitStatus = stdout.trim();
+        } catch (gitError) {
+            console.warn(`Git status failed for session ${req.params.sessionId}:`, gitError.message);
+            gitStatus = 'unavailable';
+        }
         
         res.json({
             id: session.id,
@@ -372,11 +383,113 @@ app.get('/api/sessions/:sessionId', async (req, res) => {
             messageCount: session.messages.length,
             fileCount: session.files.length,
             branch: session.branch,
-            gitStatus: gitStatus.trim(),
+            gitStatus,
             lastActivity: session.messages[session.messages.length - 1]?.timestamp
         });
     } catch (error) {
-        res.status(500).json({ error: 'Failed to get session details' });
+        console.error('Session details error:', error);
+        res.status(500).json({ error: 'Failed to get session details', details: error.message });
+    }
+});
+
+// Get files from session
+app.get('/api/sessions/:sessionId/files', async (req, res) => {
+    const session = sessions.get(req.params.sessionId);
+    
+    if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    try {
+        let files = [];
+        let modified = [];
+        
+        // Try to get git status with timeout
+        try {
+            const { stdout } = await execAsync(
+                `cd ${session.repoPath} && git status --porcelain`,
+                { timeout: 3000 } // 3 second timeout
+            );
+            
+            if (stdout) {
+                const lines = stdout.split('\n').filter(line => line.trim());
+                for (const line of lines) {
+                    const parts = line.trim().split(/\s+/);
+                    const status = parts[0];
+                    const path = parts.slice(1).join(' ');
+                    
+                    if (status.includes('A') || status.includes('?')) {
+                        files.push(path);
+                    }
+                    if (status.includes('M')) {
+                        modified.push(path);
+                    }
+                }
+            }
+        } catch (gitError) {
+            console.warn(`Git status failed for files in session ${req.params.sessionId}:`, gitError.message);
+        }
+        
+        // Also include files from session if tracked
+        if (session.files && session.files.length > 0) {
+            for (const file of session.files) {
+                if (file.status === 'A' || file.status === '??') {
+                    if (!files.includes(file.path)) {
+                        files.push(file.path);
+                    }
+                }
+                if (file.status === 'M') {
+                    if (!modified.includes(file.path)) {
+                        modified.push(file.path);
+                    }
+                }
+            }
+        }
+        
+        res.json({
+            files,
+            modified,
+            total: files.length + modified.length
+        });
+    } catch (error) {
+        console.error('Files endpoint error:', error);
+        res.status(500).json({ error: 'Failed to get files', details: error.message });
+    }
+});
+
+// Commit changes
+app.post('/api/sessions/:sessionId/commit', async (req, res) => {
+    const session = sessions.get(req.params.sessionId);
+    const { message = 'Task completed by Claude' } = req.body;
+    
+    if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    try {
+        // Add all changes
+        await execAsync(`cd ${session.repoPath} && git add -A`, { timeout: 5000 });
+        
+        // Commit
+        await execAsync(
+            `cd ${session.repoPath} && git commit -m "${message.replace(/"/g, '\\"')}"`,
+            { timeout: 5000 }
+        );
+        
+        // Push to remote
+        await execAsync(
+            `cd ${session.repoPath} && git push origin ${session.branch}`,
+            { timeout: 10000 }
+        );
+        
+        res.json({
+            success: true,
+            branch: session.branch,
+            message: 'Changes committed and pushed successfully'
+        });
+    } catch (error) {
+        console.error('Commit error:', error);
+        res.status(500).json({ error: 'Failed to commit changes', details: error.message });
     }
 });
 

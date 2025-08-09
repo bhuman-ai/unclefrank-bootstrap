@@ -1,13 +1,12 @@
-// FRANK'S GITHUB-INTEGRATED CLAUDE EXECUTOR
-// Uses Claude Code CLI with full GitHub integration
-// No more "describing" - actual file creation and git operations!
+// FRANK'S ASYNC CLAUDE EXECUTOR - Non-blocking version
+// Based on Claude-Code-Remote but with async execution to prevent health check failures
 
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs').promises;
 const path = require('path');
-const { spawn, exec } = require('child_process');
+const { exec } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
 
@@ -21,24 +20,19 @@ app.use(express.json({ limit: '50mb' }));
 // GitHub configuration
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = process.env.GITHUB_REPO || 'bhuman-ai/unclefrank-bootstrap';
-const GITHUB_USER = process.env.GITHUB_USER || 'bhuman-ai';
-const GITHUB_EMAIL = process.env.GITHUB_EMAIL || 'frank@unclefrank.ai';
 
 // Session storage
 const sessions = new Map();
-const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/workspace';
+const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/app/sessions';
+const CLAUDE_SESSION = 'claude-manual'; // Use the manually authenticated session
 
-// Ensure workspace exists
-fs.mkdir(WORKSPACE_DIR, { recursive: true }).catch(console.error);
-
-// Configure git globally
+// Configure git
 async function configureGit() {
     try {
-        await execAsync(`git config --global user.name "${GITHUB_USER}"`);
-        await execAsync(`git config --global user.email "${GITHUB_EMAIL}"`);
+        await execAsync(`git config --global user.name "bhuman-ai"`);
+        await execAsync(`git config --global user.email "frank@unclefrank.ai"`);
         if (GITHUB_TOKEN) {
             await execAsync(`git config --global credential.helper store`);
-            // Store credentials
             const credPath = path.join(process.env.HOME || '/root', '.git-credentials');
             await fs.writeFile(credPath, `https://${GITHUB_TOKEN}@github.com\n`, { mode: 0o600 });
         }
@@ -48,222 +42,278 @@ async function configureGit() {
     }
 }
 
-// Initialize git configuration on startup
-configureGit();
-
-// Execute with Claude Code CLI in a git repository
-async function executeWithClaudeInRepo(sessionId, message) {
-    const session = sessions.get(sessionId);
-    const repoPath = session.repoPath;
-    
-    console.log(`[Claude] Starting execution in ${repoPath}`);
-    
-    return new Promise((resolve, reject) => {
-        // Change to repo directory and run Claude with permissions flag
-        const command = `cd ${repoPath} && claude --dangerously-skip-permissions chat`;
-        console.log(`[Claude] Running command: ${command}`);
-        
-        const claudeProcess = spawn('bash', ['-c', command], {
-            env: { ...process.env, HOME: '/root' }
-        });
-        
-        let output = '';
-        let error = '';
-        
-        claudeProcess.stdout.on('data', (data) => {
-            output += data.toString();
-        });
-        
-        claudeProcess.stderr.on('data', (data) => {
-            error += data.toString();
-        });
-        
-        claudeProcess.on('close', (code) => {
-            if (code !== 0 && error) {
-                reject(new Error(`Claude exited with code ${code}: ${error}`));
-            } else {
-                resolve(output);
-            }
-        });
-        
-        // Send the message with file system context
-        const enhancedMessage = `${message}
-
-IMPORTANT: You are in a git repository at ${repoPath}
-- Create actual files using standard commands
-- Use git commands to track changes
-- The repository is already cloned and ready
-- You have full file system access`;
-        
-        claudeProcess.stdin.write(enhancedMessage + '\n');
-        claudeProcess.stdin.end();
-    });
+// Check if Claude session exists
+async function checkClaudeSession() {
+    try {
+        await execAsync(`tmux has-session -t ${CLAUDE_SESSION} 2>/dev/null`);
+        return true;
+    } catch {
+        return false;
+    }
 }
+
+// Inject command into Claude using the proven 3-step approach
+async function injectCommand(command) {
+    try {
+        // 1. Clear input field (Ctrl+U)
+        await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} C-u`);
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // 2. Send command (escape single quotes)
+        const escapedCommand = command.replace(/'/g, "'\"'\"'");
+        await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} '${escapedCommand}'`);
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // 3. Send Enter (Ctrl+M)
+        await execAsync(`tmux send-keys -t ${CLAUDE_SESSION} C-m`);
+        
+        console.log(`Command injected: ${command.substring(0, 100)}...`);
+        return true;
+    } catch (error) {
+        console.error('Failed to inject command:', error);
+        return false;
+    }
+}
+
+// Capture Claude's output
+async function captureClaudeOutput() {
+    try {
+        const { stdout } = await execAsync(`tmux capture-pane -t ${CLAUDE_SESSION} -p -S -200`);
+        return stdout;
+    } catch (error) {
+        console.error('Failed to capture output:', error);
+        return '';
+    }
+}
+
+// Check if Claude is still processing
+async function isClaudeProcessing(output) {
+    const processingIndicators = ['Germinating', 'Envisioning', 'Pondering', 'Moseying', 'esc to interrupt'];
+    return processingIndicators.some(indicator => 
+        output.includes(indicator) && 
+        output.lastIndexOf(indicator) > output.lastIndexOf('●')
+    );
+}
+
+// Process Claude execution in background
+async function processClaudeExecution(session, message) {
+    try {
+        console.log(`[Session ${session.id}] Starting background execution`);
+        
+        // Inject the command directly without confusing context
+        const injected = await injectCommand(message);
+        if (!injected) {
+            session.status = 'error';
+            session.error = 'Failed to inject command';
+            return;
+        }
+        
+        // Wait for Claude to start processing
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Poll for completion (but don't block the server)
+        let attempts = 0;
+        const maxAttempts = 60; // 5 minutes max
+        let lastOutput = '';
+        let stableCount = 0;
+        
+        const checkInterval = setInterval(async () => {
+            attempts++;
+            
+            const currentOutput = await captureClaudeOutput();
+            const stillProcessing = await isClaudeProcessing(currentOutput);
+            
+            if (!stillProcessing) {
+                if (currentOutput === lastOutput) {
+                    stableCount++;
+                    if (stableCount >= 3 || attempts >= maxAttempts) {
+                        clearInterval(checkInterval);
+                        
+                        // Extract response
+                        const responseStart = currentOutput.lastIndexOf(message);
+                        let response = currentOutput;
+                        if (responseStart !== -1) {
+                            response = currentOutput.substring(responseStart + message.length);
+                        }
+                        
+                        // Clean response
+                        response = response
+                            .replace(/^[\s\n]+/, '')
+                            .replace(/╭─+╮[\s\S]*?╰─+╯/g, '')
+                            .replace(/\n\s*\?\s+for shortcuts.*$/m, '')
+                            .replace(/●\s+/g, '')
+                            .trim();
+                        
+                        // Store response
+                        session.messages.push({
+                            role: 'assistant',
+                            content: response,
+                            timestamp: new Date().toISOString()
+                        });
+                        
+                        // Update files
+                        try {
+                            const { stdout } = await execAsync(`cd ${session.repoPath} && git status --porcelain`);
+                            const modifiedFiles = stdout.split('\n').filter(line => line.trim()).map(line => {
+                                const parts = line.trim().split(/\s+/);
+                                return {
+                                    status: parts[0],
+                                    path: parts.slice(1).join(' ')
+                                };
+                            });
+                            session.files = modifiedFiles;
+                        } catch (error) {
+                            console.error('Failed to get git status:', error);
+                        }
+                        
+                        session.status = 'completed';
+                        console.log(`[Session ${session.id}] Execution completed`);
+                    }
+                } else {
+                    stableCount = 0;
+                }
+            }
+            
+            lastOutput = currentOutput;
+        }, 5000); // Check every 5 seconds
+        
+    } catch (error) {
+        console.error(`[Session ${session.id}] Background execution error:`, error);
+        session.status = 'error';
+        session.error = error.message;
+    }
+}
+
+// Initialize
+configureGit();
 
 // Routes
 app.get('/', (req, res) => {
     res.json({
-        status: 'ok',
-        service: 'Uncle Frank GitHub-Integrated Claude Executor',
-        version: '3.0.0',
-        features: [
-            'Claude Code CLI with GitHub integration',
-            'Real file creation and modification',
-            'Git operations (clone, commit, push)',
-            'Branch management',
-            'Full repository access'
-        ],
-        sessions: sessions.size,
-        githubConfigured: !!GITHUB_TOKEN
+        service: 'Uncle Frank Claude Executor',
+        version: '10.0-async-fixed',
+        status: 'operational',
+        mode: 'non-blocking-tmux-injection',
+        activeSessions: sessions.size
     });
 });
 
-app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'healthy',
-        uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        sessions: sessions.size,
-        githubConfigured: !!GITHUB_TOKEN
-    });
-});
-
-// Create session with GitHub repo
-app.post('/api/sessions', async (req, res) => {
+app.get('/health', async (req, res) => {
     try {
-        const sessionId = uuidv4();
-        const sessionPath = path.join(WORKSPACE_DIR, sessionId);
-        const repoPath = path.join(sessionPath, 'repo');
+        const sessionExists = await checkClaudeSession();
         
-        await fs.mkdir(sessionPath, { recursive: true });
+        res.json({ 
+            status: 'healthy',
+            uptime: process.uptime(),
+            memory: process.memoryUsage(),
+            sessions: sessions.size,
+            activeSessions: Array.from(sessions.values()).filter(s => s.status === 'processing').length,
+            githubConfigured: !!GITHUB_TOKEN,
+            claudeSessionActive: sessionExists
+        });
+    } catch (error) {
+        res.status(503).json({ 
+            status: 'unhealthy',
+            error: error.message
+        });
+    }
+});
+
+// Create session
+app.post('/api/sessions', async (req, res) => {
+    const { testOnly, repoUrl } = req.body;
+    const sessionId = uuidv4();
+    
+    if (testOnly) {
+        return res.json({
+            sessionId,
+            status: 'test',
+            testOnly: true,
+            ready: true
+        });
+    }
+    
+    const workspaceDir = path.join(WORKSPACE_DIR, sessionId);
+    const repoPath = path.join(workspaceDir, 'repo');
+    
+    try {
+        await fs.mkdir(workspaceDir, { recursive: true });
         
         // Clone the repository
-        console.log(`Cloning ${GITHUB_REPO} into ${repoPath}...`);
-        const cloneUrl = GITHUB_TOKEN 
-            ? `https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git`
-            : `https://github.com/${GITHUB_REPO}.git`;
-            
-        await execAsync(`git clone ${cloneUrl} ${repoPath}`);
+        console.log(`Cloning repository to ${repoPath}`);
+        await execAsync(`git clone https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git ${repoPath}`);
         
-        // Create a new branch for this session
+        // Create unique branch
         const branchName = `claude-session-${sessionId}`;
         await execAsync(`cd ${repoPath} && git checkout -b ${branchName}`);
         
+        // Initialize session
         const session = {
             id: sessionId,
             created: new Date().toISOString(),
-            status: 'active',
+            status: 'ready',
             messages: [],
             files: [],
-            projectPath: sessionPath,
-            repoPath: repoPath,
             branch: branchName,
-            systemPrompt: req.body.systemPrompt || `You are Uncle Frank's GitHub-integrated task executor.
-You have full access to the git repository and file system.
-Create real files, make real commits, push real changes.
-No placeholders, no "would" statements - DO IT.`
+            repoPath,
+            workspaceDir
         };
         
         sessions.set(sessionId, session);
         
         res.json({
             sessionId,
-            repoPath,
+            status: 'created',
             branch: branchName,
-            githubUrl: `https://github.com/${GITHUB_REPO}/tree/${branchName}`
+            repoPath,
+            ready: true
         });
     } catch (error) {
         console.error('Session creation error:', error);
-        res.status(500).json({ 
-            error: 'Failed to create session', 
-            details: error.message 
-        });
+        res.status(500).json({ error: 'Failed to create session', details: error.message });
     }
 });
 
-// Execute task in repo
+// Execute in session (non-blocking)
 app.post('/api/sessions/:sessionId/execute', async (req, res) => {
     const { sessionId } = req.params;
     const { message } = req.body;
     
     const session = sessions.get(sessionId);
+    
     if (!session) {
         return res.status(404).json({ error: 'Session not found' });
     }
     
     try {
-        session.status = 'executing';
+        // Check Claude session
+        if (!await checkClaudeSession()) {
+            throw new Error('Claude session not found. Please ensure claude-manual session exists.');
+        }
         
-        // Add user message
+        // Store user message
         session.messages.push({
             role: 'user',
             content: message,
             timestamp: new Date().toISOString()
         });
         
-        let responseContent;
-        
-        // Check if Claude Code is available and log the result
-        let claudeAvailable = false;
-        try {
-            const { stdout } = await execAsync('which claude');
-            console.log('Claude Code found at:', stdout.trim());
-            claudeAvailable = true;
-        } catch (error) {
-            console.error('Claude Code not found:', error.message);
-        }
-        
-        if (claudeAvailable) {
-            try {
-                // Execute with real Claude Code in the repo
-                console.log('Executing with Claude Code CLI...');
-                responseContent = await executeWithClaudeInRepo(sessionId, message);
-            } catch (error) {
-                console.error('Claude execution failed:', error);
-                // Fallback if Claude execution fails
-                responseContent = `Claude execution failed: ${error.message}`;
-            }
-        } else {
-            // Fallback: execute git and file operations directly
-            console.log('Claude Code not available, executing directly...');
-            responseContent = await executeDirectly(session, message);
-        }
-        
-        session.messages.push({
-            role: 'assistant',
-            content: responseContent,
-            timestamp: new Date().toISOString()
-        });
-        
-        // List files that were created/modified
-        const { stdout } = await execAsync(`cd ${session.repoPath} && git status --porcelain`);
-        const modifiedFiles = stdout.split('\n').filter(line => line.trim()).map(line => {
-            const parts = line.trim().split(/\s+/);
-            return {
-                status: parts[0],
-                path: parts.slice(1).join(' ')
-            };
-        });
-        
-        session.files = modifiedFiles;
-        
         // Update status
-        const isComplete = responseContent.toLowerCase().includes('complete') ||
-                          responseContent.toLowerCase().includes('done') ||
-                          responseContent.toLowerCase().includes('finished');
+        session.status = 'processing';
         
-        session.status = isComplete ? 'completed' : 'active';
+        // Start background processing (non-blocking)
+        processClaudeExecution(session, message);
         
+        // Return immediately
         res.json({
             success: true,
             sessionId,
-            status: session.status,
-            response: responseContent,
-            files: session.files,
-            branch: session.branch
+            status: 'processing',
+            message: 'Command sent to Claude. Check status endpoint for results.'
         });
+        
     } catch (error) {
-        console.error('Execution error:', error);
+        console.error(`[Session ${sessionId}] Execution error:`, error);
         session.status = 'error';
         res.status(500).json({ 
             error: 'Execution failed', 
@@ -272,47 +322,24 @@ app.post('/api/sessions/:sessionId/execute', async (req, res) => {
     }
 });
 
-// Direct execution fallback (when Claude Code isn't available)
-async function executeDirectly(session, message) {
-    const { repoPath } = session;
+// Get session status
+app.get('/api/sessions/:sessionId/status', (req, res) => {
+    const session = sessions.get(req.params.sessionId);
     
-    // Parse the message to understand what needs to be done
-    // This is a simplified version - in production, you'd use an LLM to parse
-    
-    if (message.toLowerCase().includes('create') && message.toLowerCase().includes('file')) {
-        // Better filename extraction - look for quoted strings or filenames with extensions
-        let filename = 'example.js';
-        
-        // Try to extract filename from various patterns
-        const patterns = [
-            /"([^"]+\.\w+)"/,                    // "filename.ext" in quotes
-            /'([^']+\.\w+)'/,                    // 'filename.ext' in quotes
-            /(?:file|called|named)\s+([^\s,]+\.\w+)/i,  // file named something.ext
-            /([a-zA-Z0-9_-]+\.\w+)/              // any filename.ext pattern
-        ];
-        
-        for (const pattern of patterns) {
-            const match = message.match(pattern);
-            if (match && match[1]) {
-                filename = match[1];
-                break;
-            }
-        }
-        
-        // Create a simple file
-        const filePath = path.join(repoPath, filename);
-        const content = `// Created by Uncle Frank's executor
-// Task: ${message}
-console.log("Hello from ${filename}");
-`;
-        await fs.writeFile(filePath, content);
-        await execAsync(`cd ${repoPath} && git add ${filename}`);
-        
-        return `Created file: ${filename}`;
+    if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
     }
     
-    return 'Direct execution not fully implemented. Please ensure Claude Code is installed.';
-}
+    const lastMessage = session.messages[session.messages.length - 1];
+    
+    res.json({
+        sessionId: session.id,
+        status: session.status,
+        messageCount: session.messages.length,
+        lastResponse: session.status === 'completed' ? lastMessage : null,
+        error: session.error || null
+    });
+});
 
 // Get messages
 app.get('/api/sessions/:sessionId/messages', (req, res) => {
@@ -327,7 +354,7 @@ app.get('/api/sessions/:sessionId/messages', (req, res) => {
     });
 });
 
-// Get session details with git status
+// Get session details
 app.get('/api/sessions/:sessionId', async (req, res) => {
     const session = sessions.get(req.params.sessionId);
     
@@ -336,9 +363,18 @@ app.get('/api/sessions/:sessionId', async (req, res) => {
     }
     
     try {
-        // Get git status
-        const { stdout: status } = await execAsync(`cd ${session.repoPath} && git status --short`);
-        const { stdout: branch } = await execAsync(`cd ${session.repoPath} && git branch --show-current`);
+        // Try to get git status with timeout
+        let gitStatus = '';
+        try {
+            const { stdout } = await execAsync(
+                `cd ${session.repoPath} && git status --porcelain`,
+                { timeout: 3000 } // 3 second timeout
+            );
+            gitStatus = stdout.trim();
+        } catch (gitError) {
+            console.warn(`Git status failed for session ${req.params.sessionId}:`, gitError.message);
+            gitStatus = 'unavailable';
+        }
         
         res.json({
             id: session.id,
@@ -346,75 +382,17 @@ app.get('/api/sessions/:sessionId', async (req, res) => {
             status: session.status,
             messageCount: session.messages.length,
             fileCount: session.files.length,
-            branch: branch.trim(),
-            gitStatus: status.trim(),
+            branch: session.branch,
+            gitStatus,
             lastActivity: session.messages[session.messages.length - 1]?.timestamp
         });
     } catch (error) {
-        res.json({
-            id: session.id,
-            created: session.created,
-            status: session.status,
-            messageCount: session.messages.length,
-            fileCount: session.files.length,
-            error: error.message
-        });
+        console.error('Session details error:', error);
+        res.status(500).json({ error: 'Failed to get session details', details: error.message });
     }
 });
 
-// Commit and push changes
-app.post('/api/sessions/:sessionId/commit', async (req, res) => {
-    const { sessionId } = req.params;
-    const { message = 'Updates from Claude session' } = req.body;
-    
-    const session = sessions.get(sessionId);
-    if (!session) {
-        return res.status(404).json({ error: 'Session not found' });
-    }
-    
-    try {
-        const { repoPath, branch } = session;
-        
-        // Check if there are changes
-        const { stdout: status } = await execAsync(`cd ${repoPath} && git status --porcelain`);
-        if (!status.trim()) {
-            return res.json({ 
-                success: true, 
-                message: 'No changes to commit' 
-            });
-        }
-        
-        // Commit all changes
-        await execAsync(`cd ${repoPath} && git add -A`);
-        await execAsync(`cd ${repoPath} && git commit -m "${message}"`);
-        
-        // Push to remote
-        if (GITHUB_TOKEN) {
-            await execAsync(`cd ${repoPath} && git push origin ${branch}`);
-            
-            return res.json({
-                success: true,
-                message: 'Changes committed and pushed',
-                branch,
-                githubUrl: `https://github.com/${GITHUB_REPO}/tree/${branch}`
-            });
-        } else {
-            return res.json({
-                success: true,
-                message: 'Changes committed locally (no GitHub token for push)',
-                branch
-            });
-        }
-    } catch (error) {
-        console.error('Commit error:', error);
-        res.status(500).json({ 
-            error: 'Commit failed', 
-            details: error.message 
-        });
-    }
-});
-
-// List files in the repository
+// Get files from session
 app.get('/api/sessions/:sessionId/files', async (req, res) => {
     const session = sessions.get(req.params.sessionId);
     
@@ -423,39 +401,113 @@ app.get('/api/sessions/:sessionId/files', async (req, res) => {
     }
     
     try {
-        const { repoPath } = session;
+        let files = [];
+        let modified = [];
         
-        // Get list of files from git
-        const { stdout } = await execAsync(`cd ${repoPath} && git ls-files`);
-        const files = stdout.trim().split('\n').filter(f => f);
+        // Try to get git status with timeout
+        try {
+            const { stdout } = await execAsync(
+                `cd ${session.repoPath} && git status --porcelain`,
+                { timeout: 3000 } // 3 second timeout
+            );
+            
+            if (stdout) {
+                const lines = stdout.split('\n').filter(line => line.trim());
+                for (const line of lines) {
+                    const parts = line.trim().split(/\s+/);
+                    const status = parts[0];
+                    const path = parts.slice(1).join(' ');
+                    
+                    if (status.includes('A') || status.includes('?')) {
+                        files.push(path);
+                    }
+                    if (status.includes('M')) {
+                        modified.push(path);
+                    }
+                }
+            }
+        } catch (gitError) {
+            console.warn(`Git status failed for files in session ${req.params.sessionId}:`, gitError.message);
+        }
         
-        // Get modified files
-        const { stdout: modified } = await execAsync(`cd ${repoPath} && git status --porcelain`);
-        const modifiedFiles = modified.trim().split('\n')
-            .filter(line => line)
-            .map(line => ({
-                status: line.substring(0, 2).trim(),
-                path: line.substring(3)
-            }));
+        // Also include files from session if tracked
+        if (session.files && session.files.length > 0) {
+            for (const file of session.files) {
+                if (file.status === 'A' || file.status === '??') {
+                    if (!files.includes(file.path)) {
+                        files.push(file.path);
+                    }
+                }
+                if (file.status === 'M') {
+                    if (!modified.includes(file.path)) {
+                        modified.push(file.path);
+                    }
+                }
+            }
+        }
         
         res.json({
             files,
-            modified: modifiedFiles,
-            total: files.length
+            modified,
+            total: files.length + modified.length
         });
     } catch (error) {
-        console.error('File listing error:', error);
-        res.status(500).json({ 
-            error: 'Failed to list files', 
-            details: error.message 
-        });
+        console.error('Files endpoint error:', error);
+        res.status(500).json({ error: 'Failed to get files', details: error.message });
     }
 });
 
-// Start server
+// Commit changes
+app.post('/api/sessions/:sessionId/commit', async (req, res) => {
+    const session = sessions.get(req.params.sessionId);
+    const { message = 'Task completed by Claude' } = req.body;
+    
+    if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    try {
+        // Add all changes
+        await execAsync(`cd ${session.repoPath} && git add -A`, { timeout: 5000 });
+        
+        // Commit
+        await execAsync(
+            `cd ${session.repoPath} && git commit -m "${message.replace(/"/g, '\\"')}"`,
+            { timeout: 5000 }
+        );
+        
+        // Push to remote
+        await execAsync(
+            `cd ${session.repoPath} && git push origin ${session.branch}`,
+            { timeout: 10000 }
+        );
+        
+        res.json({
+            success: true,
+            branch: session.branch,
+            message: 'Changes committed and pushed successfully'
+        });
+    } catch (error) {
+        console.error('Commit error:', error);
+        res.status(500).json({ error: 'Failed to commit changes', details: error.message });
+    }
+});
+
+// Cleanup dead sessions periodically
+setInterval(() => {
+    const now = Date.now();
+    for (const [id, session] of sessions) {
+        const lastActivity = new Date(session.messages[session.messages.length - 1]?.timestamp || session.created).getTime();
+        if (now - lastActivity > 3600000) { // 1 hour
+            sessions.delete(id);
+            console.log(`Cleaned up inactive session ${id}`);
+        }
+    }
+}, 300000); // Every 5 minutes
+
 app.listen(PORT, () => {
-    console.log(`🚀 Uncle Frank GitHub-Integrated Claude Executor running on port ${PORT}`);
-    console.log(`📍 GitHub repo: ${GITHUB_REPO}`);
-    console.log(`🔑 GitHub token: ${GITHUB_TOKEN ? 'Configured' : 'Not configured'}`);
-    console.log(`💾 Workspace directory: ${WORKSPACE_DIR}`);
+    console.log(`Uncle Frank's Async Claude Executor running on port ${PORT}`);
+    console.log(`GitHub repo: ${GITHUB_REPO}`);
+    console.log(`Non-blocking execution prevents health check failures`);
+    console.log(`Workspace: ${WORKSPACE_DIR}`);
 });

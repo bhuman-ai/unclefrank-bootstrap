@@ -228,7 +228,10 @@ DO NOT START EXECUTING. Just provide the checkpoint breakdown.`
             if (statusData.status === 'completed') {
               // Get the completed response
               if (statusData.lastResponse) {
-                const claudeResponse = statusData.lastResponse.content;
+                // Handle both formats: lastResponse.content and lastResponse as string
+                const claudeResponse = typeof statusData.lastResponse === 'string' 
+                  ? statusData.lastResponse 
+                  : statusData.lastResponse.content;
                 checkpoints = extractCheckpointsFromClaudeResponse(claudeResponse);
                 console.log(`[Claude Integration] Extracted ${checkpoints.length} checkpoints after ${pollAttempts} polls`);
                 break;
