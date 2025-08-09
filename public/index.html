@@ -1579,11 +1579,52 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                 }
             };
 
-            // Open session viewer
+            // Fetch terminal output
+            const fetchTerminalOutput = async (sessionId) => {
+                try {
+                    const response = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${sessionId}/terminal`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        return data.terminal || 'No output yet...';
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch terminal:', error);
+                    return 'Error fetching terminal output';
+                }
+                return 'No terminal output available';
+            };
+
+            // Open session viewer with terminal streaming
             const openSessionViewer = (sessionId) => {
                 setSelectedSessionId(sessionId);
                 setSessionViewerOpen(true);
-                fetchSessionMessages(sessionId);
+                
+                // Clear previous messages
+                setSessionMessages([]);
+                setLoadingSession(true);
+                
+                // Start fetching terminal output
+                const fetchTerminal = async () => {
+                    const output = await fetchTerminalOutput(sessionId);
+                    setSessionMessages([{
+                        role: 'terminal',
+                        content: output,
+                        timestamp: new Date().toISOString()
+                    }]);
+                    setLoadingSession(false);
+                };
+                
+                // Initial fetch
+                fetchTerminal();
+                
+                // Poll every 2 seconds while modal is open
+                const intervalId = setInterval(() => {
+                    if (sessionViewerOpen && selectedSessionId === sessionId) {
+                        fetchTerminal();
+                    } else {
+                        clearInterval(intervalId);
+                    }
+                }, 2000);
             };
 
             // Classify request
@@ -5014,20 +5055,28 @@ This task was restarted and is being tracked.
                                         ) : (
                                             <div className="space-y-4">
                                                 {sessionMessages.map((msg, idx) => (
-                                                    <div key={idx} className="border-b border-gray-700 pb-4">
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                            <span className={`px-2 py-1 rounded text-xs ${
-                                                                msg.role === 'user' ? 'bg-blue-600' : 'bg-green-600'
-                                                            }`}>
-                                                                {msg.role}
-                                                            </span>
-                                                            <span className="text-gray-500 text-xs">
-                                                                {new Date(msg.timestamp).toLocaleString()}
-                                                            </span>
-                                                        </div>
-                                                        <div className="text-gray-300 whitespace-pre-wrap">
-                                                            {msg.content}
-                                                        </div>
+                                                    <div key={idx}>
+                                                        {msg.role === 'terminal' ? (
+                                                            <div className="font-mono text-sm text-gray-300 whitespace-pre-wrap">
+                                                                {msg.content}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="border-b border-gray-700 pb-4">
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <span className={`px-2 py-1 rounded text-xs ${
+                                                                        msg.role === 'user' ? 'bg-blue-600' : 'bg-green-600'
+                                                                    }`}>
+                                                                        {msg.role}
+                                                                    </span>
+                                                                    <span className="text-gray-500 text-xs">
+                                                                        {new Date(msg.timestamp).toLocaleString()}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="text-gray-300 whitespace-pre-wrap">
+                                                                    {msg.content}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 ))}
                                             </div>
@@ -5037,9 +5086,14 @@ This task was restarted and is being tracked.
                                 
                                 <div className="mt-4 flex justify-end">
                                     <button 
-                                        onClick={() => {
-                                            addLog('🔄 Refreshing session data...', 'info');
-                                            fetchSessionMessages(selectedSessionId, true);
+                                        onClick={async () => {
+                                            addLog('🔄 Refreshing terminal output...', 'info');
+                                            const output = await fetchTerminalOutput(selectedSessionId);
+                                            setSessionMessages([{
+                                                role: 'terminal',
+                                                content: output,
+                                                timestamp: new Date().toISOString()
+                                            }]);
                                         }}
                                         className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 mr-2"
                                     >
