@@ -129,7 +129,7 @@ async function processClaudeExecution(session, message) {
         
         // Poll for completion
         let attempts = 0;
-        const maxAttempts = 120; // 10 minutes max (Claude can take time for complex tasks)
+        const maxAttempts = 1440; // 2 hours max (5 sec * 1440 = 7200 sec = 120 min)
         let lastOutput = '';
         let stableCount = 0;
         
@@ -139,10 +139,29 @@ async function processClaudeExecution(session, message) {
             const currentOutput = await captureClaudeOutput();
             const stillProcessing = await isClaudeProcessing(currentOutput);
             
-            // Debug logging
-            if (attempts % 2 === 0) {
-                console.log(`[Session ${session.id}] Check ${attempts}: processing=${stillProcessing}, stable=${stableCount}`);
-                console.log(`Last 100 chars: ${currentOutput.slice(-100)}`);
+            // Debug logging - more verbose for long-running tasks
+            if (attempts % 2 === 0) {  // Every 10 seconds
+                const runningMinutes = Math.floor((attempts * 5) / 60);
+                console.log(`[Session ${session.id}] Check ${attempts}: processing=${stillProcessing}, stable=${stableCount}, running for ${runningMinutes} minutes`);
+                
+                // Log thinking status if detected
+                if (stillProcessing && currentOutput.includes('tokens')) {
+                    const tokenMatch = currentOutput.match(/(\d+)\s+tokens/);
+                    if (tokenMatch) {
+                        console.log(`[Session ${session.id}] Claude is thinking... (${tokenMatch[1]} tokens processed)`);
+                    }
+                } else {
+                    console.log(`Last 100 chars: ${currentOutput.slice(-100)}`);
+                }
+            }
+            
+            // Log milestone timings
+            if (attempts === 120) { // 10 minutes
+                console.log(`[Session ${session.id}] ⏰ 10 minutes elapsed - Claude still processing complex task`);
+            } else if (attempts === 360) { // 30 minutes
+                console.log(`[Session ${session.id}] ⏰ 30 minutes elapsed - Long-running task in progress`);
+            } else if (attempts === 720) { // 1 hour
+                console.log(`[Session ${session.id}] ⏰ 1 hour elapsed - Very complex task, continuing...`);
             }
             
             if (!stillProcessing) {
