@@ -264,9 +264,9 @@ export default function TaskWorkspace() {
               <button 
                 onClick={viewTerminal}
                 style={{
-                  background: 'transparent',
-                  color: '#8899a6',
-                  border: '1px solid #2f3b47',
+                  background: '#1d9bf0',
+                  color: 'white',
+                  border: 'none',
                   padding: '10px 20px',
                   borderRadius: '6px',
                   fontSize: '14px',
@@ -274,7 +274,7 @@ export default function TaskWorkspace() {
                   cursor: 'pointer'
                 }}
               >
-                View Terminal
+                🖥️ View Terminal
               </button>
             </div>
           </div>
