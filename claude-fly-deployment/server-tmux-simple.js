@@ -48,32 +48,54 @@ async function configureGit() {
 
 configureGit();
 
-// Use the existing manual Claude session
+// Create a new tmux session for each task to isolate contexts
 async function startClaudeTmuxSession(sessionId, repoPath) {
-    // ALWAYS use the manual session that's already set up and authenticated
-    const tmuxSession = 'claude-manual';
     const tmuxConfig = '/etc/tmux.conf';
+    const sessionName = `claude-${sessionId.substring(0, 8)}`; // Short session name
     
     try {
-        // Check if manual session exists
+        // First check if claude-manual exists as fallback
         try {
-            await execAsync(`tmux -f ${tmuxConfig} has-session -t ${tmuxSession} 2>/dev/null`);
-            console.log(`Using existing manual session ${tmuxSession}`);
+            await execAsync(`tmux -f ${tmuxConfig} has-session -t claude-manual 2>/dev/null`);
+            console.log(`Found fallback session claude-manual`);
         } catch (e) {
-            // Manual session doesn't exist - user needs to set it up
             throw new Error('Manual Claude session not found. Please SSH in and set up claude-manual session first.');
         }
         
-        // Change to the repo directory in the existing session
-        await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${tmuxSession} "cd ${repoPath}" Enter`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // FRANK'S FIX: Create a NEW tmux session for isolation
+        console.log(`Creating new tmux session ${sessionName} for isolated context`);
         
-        console.log(`Using manual Claude session ${tmuxSession} in ${repoPath}`);
-        
-        // Claude should be ready immediately thanks to config
-        return tmuxSession;
+        try {
+            // Create new detached session
+            await execAsync(`tmux -f ${tmuxConfig} new-session -d -s ${sessionName} -c ${repoPath}`);
+            console.log(`Created tmux session ${sessionName}`);
+            
+            // Start Claude in the new session
+            await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${sessionName} "claude --dangerously-skip-permissions" Enter`);
+            
+            // Wait for Claude to initialize
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            console.log(`Claude started in isolated session ${sessionName}`);
+            return sessionName;
+        } catch (error) {
+            // If session creation fails, fall back to claude-manual but clear it
+            console.warn(`Failed to create new session, using claude-manual: ${error.message}`);
+            
+            const fallbackSession = 'claude-manual';
+            
+            // Clear the buffer
+            await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${fallbackSession} C-l`);
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Change directory
+            await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${fallbackSession} "cd ${repoPath}" Enter`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            return fallbackSession;
+        }
     } catch (error) {
-        console.error('Failed to start tmux session:', error);
+        console.error('Failed to prepare tmux session:', error);
         throw error;
     }
 }
@@ -81,34 +103,61 @@ async function startClaudeTmuxSession(sessionId, repoPath) {
 // Send command to Claude via tmux with VERIFICATION and SMART PARSING
 async function sendToClaudeTmux(tmuxSession, message) {
     const tmuxConfig = '/etc/tmux.conf';
-    // Always use the manual session
-    const actualSession = 'claude-manual';
+    // Use the session name
+    const targetSession = tmuxSession;
     
     try {
+        // FRANK'S FIX: Wait for Claude to be ready first
+        console.log(`Checking if Claude is ready in session ${targetSession}...`);
+        let claudeReady = false;
+        let attempts = 0;
+        const maxAttempts = 10;
+        
+        while (!claudeReady && attempts < maxAttempts) {
+            attempts++;
+            const { stdout: currentBuffer } = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${targetSession} -p`);
+            
+            // Check if Claude is ready (shows the prompt box)
+            if (currentBuffer.includes('Welcome to Claude') || 
+                currentBuffer.includes('│ >') || 
+                currentBuffer.includes('cwd:')) {
+                claudeReady = true;
+                console.log(`✅ Claude is ready in session ${targetSession}`);
+            } else {
+                console.log(`⏳ Waiting for Claude to initialize... (${attempts}/${maxAttempts})`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+        
+        if (!claudeReady) {
+            throw new Error('Claude failed to initialize in time');
+        }
+        
+        // Add unique markers to identify our request/response
+        const requestId = `REQ-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        const markedMessage = `# REQUEST ${requestId}\n${message}\n# END REQUEST ${requestId}`;
+        
         // VERIFICATION STEP 1: Capture output before sending command
-        const outputBefore = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -100`)
+        const outputBefore = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${targetSession} -p -S -100`)
             .then(res => res.stdout)
             .catch(() => '');
         
-        // Mark where the user input starts for parsing
-        const inputMarker = `> ${message.substring(0, 50)}`;
-        
         // Special case: if message is empty or just whitespace, only send Enter
         if (!message || message.trim() === '') {
-            await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${actualSession} Enter`);
+            await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${targetSession} Enter`);
         } else {
             // Escape special characters in message
-            const escapedMessage = message.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/'/g, "'\\''");
+            const escapedMessage = markedMessage.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/'/g, "'\\''");
             
             // IMPORTANT: Send text and Enter separately to ensure proper execution
             // Step 1: Send the message text to the buffer
-            await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${actualSession} "${escapedMessage}"`);
+            await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${targetSession} "${escapedMessage}"`);
             
             // Step 2: Wait a moment for text to be in buffer
             await new Promise(resolve => setTimeout(resolve, 200));
             
             // Step 3: Send Enter to trigger execution
-            await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${actualSession} Enter`);
+            await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${targetSession} Enter`);
         }
         
         // Wait for Claude to START processing
@@ -124,7 +173,7 @@ async function sendToClaudeTmux(tmuxSession, message) {
             attempts++;
             
             // Capture current output
-            const { stdout: currentOutput } = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -200`);
+            const { stdout: currentOutput } = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${targetSession} -p -S -200`);
             
             // Check if Claude is still processing
             const processingIndicators = ['Germinating', 'Envisioning', 'Pondering', 'Moseying', 'esc to interrupt'];
@@ -151,35 +200,56 @@ async function sendToClaudeTmux(tmuxSession, message) {
         }
         
         // VERIFICATION STEP 2: Capture FINAL output
-        const { stdout: outputAfter } = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${actualSession} -p -S -200`);
+        const { stdout: outputAfter } = await execAsync(`tmux -f ${tmuxConfig} capture-pane -t ${targetSession} -p -S -200`);
         
-        // SMART PARSING: Extract only Claude's response, not the echo or status
+        // SMART PARSING: Extract only Claude's response using our request markers
         let claudeResponse = outputAfter;
         
-        // Remove the output that was there before
-        if (outputBefore && outputAfter.startsWith(outputBefore)) {
-            claudeResponse = outputAfter.substring(outputBefore.length);
-        }
+        // Look for our request marker to find where Claude's response starts
+        const requestMarker = `REQUEST ${requestId}`;
+        const endRequestMarker = `END REQUEST ${requestId}`;
         
-        // Remove the echoed input if present
-        const inputEchoIndex = claudeResponse.indexOf(message);
-        if (inputEchoIndex !== -1) {
-            // Skip past the echoed input
-            claudeResponse = claudeResponse.substring(inputEchoIndex + message.length);
+        // Find the end of our request
+        const endRequestIndex = claudeResponse.indexOf(endRequestMarker);
+        if (endRequestIndex !== -1) {
+            // Extract everything after our request
+            claudeResponse = claudeResponse.substring(endRequestIndex + endRequestMarker.length);
+            
+            // Remove any Claude UI elements
+            claudeResponse = claudeResponse
+                .replace(/^[\s\n]+/, '') // Remove leading whitespace
+                .replace(/╭─+╮[\s\S]*?╰─+╯/g, '') // Remove UI boxes
+                .replace(/\n\s*\?\s+for shortcuts.*$/m, '') // Remove shortcuts line
+                .replace(/\s*Bypassing Permissions.*$/m, '') // Remove permissions line
+                .replace(/Context left until auto-compact:.*$/m, '') // Remove context line
+                .replace(/│\s*>\s*│/g, '') // Remove prompt indicators
+                .replace(/●\s+/g, '') // Remove bullet points from Claude's UI
+                .trim();
+        } else {
+            // Fallback: Remove the output that was there before
+            if (outputBefore && outputAfter.startsWith(outputBefore)) {
+                claudeResponse = outputAfter.substring(outputBefore.length);
+            }
+            
+            // Clean up the response
+            claudeResponse = claudeResponse
+                .replace(/^[\s\n]+/, '') // Remove leading whitespace
+                .replace(/\n\s*\?\s+for shortcuts.*$/m, '') // Remove shortcuts line
+                .replace(/\s*Bypassing Permissions.*$/m, '') // Remove permissions line
+                .replace(/Context left until auto-compact:.*$/m, '') // Remove context line
+                .trim();
         }
-        
-        // Clean up the response
-        claudeResponse = claudeResponse
-            .replace(/^[\s\n]+/, '') // Remove leading whitespace
-            .replace(/\n\s*\?\s+for shortcuts.*$/m, '') // Remove shortcuts line
-            .replace(/\s*Bypassing Permissions.*$/m, '') // Remove permissions line
-            .replace(/Context left until auto-compact:.*$/m, '') // Remove context line
-            .trim();
         
         // Verify we got a real response
         if (!claudeResponse || claudeResponse.length < 10) {
-            console.warn('⚠️ Response seems too short, using full output');
-            claudeResponse = outputAfter.substring(outputBefore.length).trim();
+            console.warn('⚠️ Response seems too short, checking for Claude welcome message');
+            
+            // Check if Claude just showed the welcome message (means it wasn't ready)
+            if (outputAfter.includes('Welcome to Claude')) {
+                throw new Error('Claude was not ready to receive messages - showing welcome screen');
+            }
+            
+            claudeResponse = outputAfter.substring(outputBefore ? outputBefore.length : 0).trim();
         }
         
         console.log(`✅ Extracted Claude response: ${claudeResponse.substring(0, 100)}...`);
@@ -276,10 +346,10 @@ app.post('/api/sessions', async (req, res) => {
         const branchName = `claude-session-${sessionId}`;
         await execAsync(`cd ${repoPath} && git checkout -b ${branchName}`);
         
-        // Use the existing manual Claude session
+        // Prepare the tmux session (clears buffer and changes directory)
         const tmuxSession = await startClaudeTmuxSession(sessionId, repoPath);
         
-        // Initialize session (always uses claude-manual)
+        // Initialize session
         const session = {
             id: sessionId,
             created: new Date().toISOString(),
@@ -289,7 +359,7 @@ app.post('/api/sessions', async (req, res) => {
             branch: branchName,
             repoPath,
             workspaceDir,
-            tmuxSession: 'claude-manual'  // Always use the manual session
+            tmuxSession: tmuxSession  // Always 'claude-manual'
         };
         
         sessions.set(sessionId, session);
@@ -421,7 +491,7 @@ app.get('/api/sessions/:sessionId', async (req, res) => {
     }
 });
 
-// Kill tmux session on cleanup
+// Clean up session
 app.delete('/api/sessions/:sessionId', async (req, res) => {
     const session = sessions.get(req.params.sessionId);
     const tmuxConfig = '/etc/tmux.conf';
@@ -431,8 +501,15 @@ app.delete('/api/sessions/:sessionId', async (req, res) => {
     }
     
     try {
-        // Kill tmux session (using config for consistency)
-        await execAsync(`tmux -f ${tmuxConfig} kill-session -t ${session.tmuxSession} 2>/dev/null || true`);
+        // Kill the tmux session if it's not the manual one
+        if (session.tmuxSession && session.tmuxSession !== 'claude-manual') {
+            await execAsync(`tmux -f ${tmuxConfig} kill-session -t ${session.tmuxSession} 2>/dev/null || true`);
+            console.log(`Killed tmux session ${session.tmuxSession}`);
+        } else {
+            // Just clear the screen for the manual session
+            await execAsync(`tmux -f ${tmuxConfig} send-keys -t ${session.tmuxSession} C-l`);
+            console.log(`Cleared session ${req.params.sessionId}`);
+        }
         
         // Remove from sessions
         sessions.delete(req.params.sessionId);
@@ -449,7 +526,9 @@ process.on('SIGTERM', async () => {
     console.log('Cleaning up tmux sessions...');
     for (const [id, session] of sessions) {
         try {
-            await execAsync(`tmux -f ${tmuxConfig} kill-session -t ${session.tmuxSession} 2>/dev/null || true`);
+            if (session.tmuxSession && session.tmuxSession !== 'claude-manual') {
+                await execAsync(`tmux -f ${tmuxConfig} kill-session -t ${session.tmuxSession} 2>/dev/null || true`);
+            }
         } catch (e) {}
     }
     process.exit(0);

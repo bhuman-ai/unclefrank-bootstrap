@@ -210,23 +210,39 @@ DO NOT START EXECUTING. Just provide the checkpoint breakdown.`
 
         const decomposeResult = await decomposeResponse.json();
         
-        // Wait a bit for Claude to process
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        // Get the decomposition response
-        const messagesResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${session.sessionId}/messages`);
+        // Poll for completion since server is now async
         let checkpoints = [];
+        let pollAttempts = 0;
+        const maxPollAttempts = 30; // 60 seconds max
         
-        if (messagesResponse.ok) {
-          const messagesData = await messagesResponse.json();
-          const messages = messagesData.messages || [];
+        while (pollAttempts < maxPollAttempts) {
+          pollAttempts++;
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds between polls
           
-          // Extract checkpoints from Claude's response
-          if (messages.length > 1) {
-            const claudeResponse = messages[1].content;
-            checkpoints = extractCheckpointsFromClaudeResponse(claudeResponse);
-            console.log(`[Claude Integration] Extracted ${checkpoints.length} checkpoints from Claude's response`);
+          // Check status
+          const statusResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${session.sessionId}/status`);
+          
+          if (statusResponse.ok) {
+            const statusData = await statusResponse.json();
+            
+            if (statusData.status === 'completed') {
+              // Get the completed response
+              if (statusData.lastResponse) {
+                const claudeResponse = statusData.lastResponse.content;
+                checkpoints = extractCheckpointsFromClaudeResponse(claudeResponse);
+                console.log(`[Claude Integration] Extracted ${checkpoints.length} checkpoints after ${pollAttempts} polls`);
+                break;
+              }
+            } else if (statusData.status === 'error') {
+              console.error('[Claude Integration] Claude execution failed:', statusData.error);
+              throw new Error('Claude execution failed: ' + (statusData.error || 'Unknown error'));
+            }
+            // If still processing, continue polling
           }
+        }
+        
+        if (checkpoints.length === 0 && pollAttempts >= maxPollAttempts) {
+          console.warn('[Claude Integration] Timeout waiting for Claude response');
         }
         
         // Store session mapping with checkpoints

@@ -25,12 +25,15 @@ RUN npm install -g @anthropic-ai/claude-code && \
     echo "Claude Code installed at: $(which claude)" && \
     claude --version || echo "Claude version check failed"
 
+# Note: claunch is for local development, not server deployment
+# Using direct Claude CLI instead for server environment
+
 # Copy package.json and install dependencies
 COPY package.json ./
 RUN npm install
 
-# Copy server code and auth setup
-COPY server-tmux-simple.js ./server.js
+# Copy server code - async version that doesn't block health checks
+COPY server-async-fixed.js ./server.js
 COPY setup-claude-auth.sh ./
 COPY tmux.conf /etc/tmux.conf
 
