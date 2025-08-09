@@ -638,11 +638,16 @@ app.get('/api/sessions/:sessionId/terminal', async (req, res) => {
         // Check if still processing
         const isProcessing = await isClaudeProcessing(terminalOutput);
         
+        // Clean control characters that break JSON
+        const cleanOutput = relevantOutput
+            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control chars except \t \n \r
+            .replace(/\x1B\[[0-9;]*[a-zA-Z]/g, ''); // Remove ANSI escape codes
+        
         res.json({
             sessionId: session.id,
             status: session.status,
             isProcessing,
-            terminal: relevantOutput,
+            terminal: cleanOutput,
             timestamp: new Date().toISOString()
         });
     } catch (error) {
