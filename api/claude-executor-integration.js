@@ -182,28 +182,35 @@ export default async function handler(req, res) {
 Working Directory: ${session.repoPath}
 Task: ${taskMessage}
 
-## CRITICAL INSTRUCTIONS:
-You MUST ONLY decompose this task into checkpoints. DO NOT EXECUTE ANYTHING YET.
-All file operations should use the working directory: ${session.repoPath}
+## CRITICAL FORMAT REQUIREMENTS:
+Return ONLY the checkpoints in the exact format below.
+Do NOT include any other text, explanations, or todo lists.
+Do NOT execute anything - just decompose into checkpoints.
 
-Please provide 3-5 checkpoints in this EXACT format:
+Start your response directly with "### Checkpoint 1:" (no preamble).
 
 ### Checkpoint 1: [Name]
-- Objective: [Clear goal]
-- Deliverables: [What files/code to create in ${session.repoPath}]
-- Pass Criteria: [How to verify success]
+- Objective: [one line objective]
+- Deliverables: [deliverables on one line, semicolon separated if multiple]
+- Pass Criteria: [criteria on one line, semicolon separated if multiple]
 
 ### Checkpoint 2: [Name]
-- Objective: [Clear goal]
-- Deliverables: [What files/code to create in ${session.repoPath}]
-- Pass Criteria: [How to verify success]
+- Objective: [one line objective]
+- Deliverables: [deliverables on one line]
+- Pass Criteria: [criteria on one line]
 
 ### Checkpoint 3: [Name]
-- Objective: [Clear goal]
-- Deliverables: [What files/code to create in ${session.repoPath}]
-- Pass Criteria: [How to verify success]
+- Objective: [one line objective]
+- Deliverables: [deliverables on one line]
+- Pass Criteria: [criteria on one line]
 
-DO NOT START EXECUTING. Just provide the checkpoint breakdown.`
+IMPORTANT RULES:
+1. Start directly with "### Checkpoint 1:"
+2. Keep each item on a single line
+3. Use semicolons to separate multiple items within a line
+4. Do not use sub-bullets or nested lists
+5. Provide exactly 3-5 checkpoints
+6. Do not include any other text before or after the checkpoints`
           })
         });
 

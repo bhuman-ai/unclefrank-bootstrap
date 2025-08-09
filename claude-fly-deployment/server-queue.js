@@ -323,7 +323,23 @@ async function processClaudeExecution(session, message) {
                         
                         // Parse checkpoints intelligently if present
                         if (response.includes('Checkpoint') || response.includes('checkpoint')) {
-                            response = await parseCheckpointsWithClaude(response);
+                            // If we have the API key, use intelligent parsing
+                            if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'placeholder-key') {
+                                response = await parseCheckpointsWithClaude(response);
+                            } else {
+                                // Fallback: Clean up common issues
+                                // Remove todo wrappers
+                                response = response.replace(/Update Todos[\s\S]*?⎿\s*[☐☒]/g, '');
+                                // Remove any leading explanatory text before first checkpoint
+                                const firstCheckpoint = response.search(/###\s*Checkpoint\s*\d+:/i);
+                                if (firstCheckpoint > 0) {
+                                    response = response.substring(firstCheckpoint);
+                                }
+                                // Remove any trailing todo markers
+                                response = response.replace(/Update Todos[\s\S]*$/g, '');
+                                // Ensure proper formatting
+                                response = response.trim();
+                            }
                         }
                         
                         // Clean up the response
