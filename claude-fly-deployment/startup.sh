@@ -139,6 +139,18 @@ nohup ./tmux-injector.sh > /app/tmux-injector.log 2>&1 &
 INJECTOR_PID=$!
 echo "Tmux injector started with PID: $INJECTOR_PID"
 
-# Start the server
-echo "Starting Uncle Frank's Claude Executor..."
-node server-queue.js
+# Copy PM2 ecosystem config
+if [ -f "ecosystem.config.js" ]; then
+    cp ecosystem.config.js /app/
+fi
+
+# Start the server with PM2 for better process management
+echo "Starting Uncle Frank's Claude Executor with PM2..."
+if command -v pm2 &> /dev/null; then
+    # Use PM2 if available
+    pm2 start ecosystem.config.js --no-daemon
+else
+    # Fallback to direct node execution
+    echo "PM2 not found, starting with node directly..."
+    node server-queue.js
+fi

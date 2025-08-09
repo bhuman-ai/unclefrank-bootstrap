@@ -4682,11 +4682,24 @@ Claude Session ID: ${task.threadId}
                                                             ).join('\n\n');
                                                             
                                                             const fullTask = `# CHECKPOINT EXECUTION REQUEST
-                                                            
-Execute each checkpoint in order, starting with Checkpoint 1.
-Create all files in the working directory: /app/sessions/${workspaceTask.sessionId}/repo
-After each checkpoint, run tests to verify it works.
-Report results for each checkpoint.
+
+IMPORTANT INSTRUCTIONS:
+1. Execute each checkpoint in order, starting with Checkpoint 1
+2. Create all files in the working directory: /app/sessions/${workspaceTask.sessionId}/repo
+3. After each checkpoint, run tests to verify it works
+4. Report results for each checkpoint
+
+HANDLING SERVER RESTARTS:
+- If you need to restart a server, use: pkill -f "node server" && node server.js &
+- Or use pm2 if available: pm2 restart server || pm2 start server.js --name server
+- After restarting, wait 2 seconds then continue with the next checkpoint
+- If a process needs to be killed, use: pkill -f processname || true
+- Continue working even if process management commands fail
+
+ERROR HANDLING:
+- If ps/kill commands fail, continue anyway - the container may not have those tools
+- Focus on creating the files and code, not on process management
+- Test what you can, document what you cannot test
 
 ${instructions}`;
                                                             

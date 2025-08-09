@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     python3 \
     openssh-client \
+    procps \
+    lsof \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI
@@ -20,10 +22,11 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
 
 WORKDIR /app
 
-# Install Claude Code CLI globally and ensure it's in PATH
-RUN npm install -g @anthropic-ai/claude-code && \
+# Install Claude Code CLI and PM2 globally
+RUN npm install -g @anthropic-ai/claude-code pm2 && \
     echo "Claude Code installed at: $(which claude)" && \
-    claude --version || echo "Claude version check failed"
+    claude --version || echo "Claude version check failed" && \
+    echo "PM2 installed at: $(which pm2)"
 
 # Note: claunch is for local development, not server deployment
 # Using direct Claude CLI instead for server environment
