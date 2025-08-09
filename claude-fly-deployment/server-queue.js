@@ -84,10 +84,25 @@ async function captureClaudeOutput() {
 
 // Check if Claude is still processing
 async function isClaudeProcessing(output) {
-    // Simple check: if the output ends with prompt-related text, Claude is ready
-    const lastLines = output.trim().split('\n').slice(-3).join('\n');
+    // Check for Claude's processing indicators
+    const lastLines = output.trim().split('\n').slice(-5).join('\n');
     
-    // Check if we see "bypass permissions" or the prompt arrow at the end
+    // Claude is processing if we see any of these:
+    // - "✻ Cerebrating..." 
+    // - "✻ Hatching..."
+    // - "✻ Pondering..."
+    // - Any similar thinking indicator with token count
+    const isThinking = lastLines.includes('Cerebrating') || 
+                      lastLines.includes('Hatching') ||
+                      lastLines.includes('Pondering') ||
+                      lastLines.includes('tokens · esc to interrupt') ||
+                      lastLines.includes('✻');
+    
+    if (isThinking) {
+        return true; // Still processing
+    }
+    
+    // Check if we see the prompt box (Claude is ready)
     const isReady = lastLines.includes('bypass permissions') || 
                     lastLines.includes('shift+tab to cycle') ||
                     (lastLines.includes('>') && lastLines.includes('│'));
@@ -114,7 +129,7 @@ async function processClaudeExecution(session, message) {
         
         // Poll for completion
         let attempts = 0;
-        const maxAttempts = 60; // 5 minutes max
+        const maxAttempts = 120; // 10 minutes max (Claude can take time for complex tasks)
         let lastOutput = '';
         let stableCount = 0;
         
