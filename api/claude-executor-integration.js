@@ -286,14 +286,26 @@ DO NOT START EXECUTING. Just provide the checkpoint breakdown.`
         
         console.log(`[Claude Integration] Phase 2: Executing ${sessionData.checkpoints.length} checkpoints...`);
         
-        // Send execution command to Claude
+        // Build message with actual checkpoint details
+        let checkpointDetails = sessionData.checkpoints.map((cp, i) => 
+          `### Checkpoint ${i + 1}: ${cp.name}
+- Objective: ${cp.objective}
+- Deliverables: ${cp.deliverables}
+- Pass Criteria: ${cp.passCriteria}`
+        ).join('\n\n');
+        
+        // Send execution command to Claude WITH the checkpoint details
         const executeResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${threadId}/execute`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: `# EXECUTE CHECKPOINTS
 
-Now please execute the checkpoints you just created, starting with Checkpoint 1.
+Here are the checkpoints to execute:
+
+${checkpointDetails}
+
+Now please execute these checkpoints in order, starting with Checkpoint 1.
 
 Remember:
 - Execute each checkpoint in order
