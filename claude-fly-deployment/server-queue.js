@@ -74,7 +74,8 @@ async function queueCommand(sessionId, command) {
 // Capture Claude's output
 async function captureClaudeOutput() {
     try {
-        const { stdout } = await execAsync(`/usr/bin/tmux capture-pane -t ${CLAUDE_SESSION} -p -S -200`);
+        // Capture more lines to ensure we get full responses (-S -500 = last 500 lines)
+        const { stdout } = await execAsync(`/usr/bin/tmux capture-pane -t ${CLAUDE_SESSION} -p -S -500`);
         return stdout;
     } catch (error) {
         console.error('Failed to capture output:', error);
@@ -176,52 +177,57 @@ async function processClaudeExecution(session, message) {
                 if (stableCount >= 2) {
                         clearInterval(checkInterval);
                         
-                        // Extract response - find everything between the user message and the prompt box
-                        const messageIndex = currentOutput.indexOf(message.substring(0, 100)); // Find by first 100 chars
+                        // Extract response - Claude's response is everything between the end of thinking and prompt box
                         let response = '';
                         
+                        // Method 1: Find by message text (for shorter messages)
+                        const messageStart = message.substring(0, 50); // First 50 chars
+                        const messageIndex = currentOutput.indexOf(messageStart);
+                        
                         if (messageIndex !== -1) {
+                            // Found the message, get everything after it until prompt box
                             const afterMessage = currentOutput.substring(messageIndex + message.length);
-                            // Look for text between the message and the prompt box
-                            // Claude's response starts after the message and ends before ╭─ prompt box
                             const promptBoxIndex = afterMessage.indexOf('╭─');
                             
                             if (promptBoxIndex > 0) {
                                 response = afterMessage.substring(0, promptBoxIndex).trim();
-                                // Clean up any leading bullet points or whitespace
-                                response = response.replace(/^[●\s]+/, '').trim();
                             } else {
-                                // No prompt box found, take everything after the message
                                 response = afterMessage.trim();
                             }
                         } else {
-                            // Message not found, try to extract last response before prompt
+                            // Method 2: Extract everything between the last bullet point and prompt box
+                            // This works better for long messages that might be truncated
                             const promptBoxIndex = currentOutput.lastIndexOf('╭─');
+                            
                             if (promptBoxIndex > 0) {
-                                // Get content before the prompt box
+                                // Find Claude's response start (usually marked with ●)
                                 const beforePrompt = currentOutput.substring(0, promptBoxIndex);
-                                // Find the last substantial block of text
-                                const lines = beforePrompt.split('\n');
-                                let responseLines = [];
-                                // Work backwards to find response
-                                for (let i = lines.length - 1; i >= 0; i--) {
-                                    const line = lines[i].trim();
-                                    if (line && !line.includes('bypass permissions')) {
-                                        responseLines.unshift(lines[i]);
-                                    } else if (responseLines.length > 0) {
-                                        // Found start of response
-                                        break;
+                                const bulletIndex = beforePrompt.lastIndexOf('●');
+                                
+                                if (bulletIndex !== -1) {
+                                    // Get everything after the bullet until prompt
+                                    response = beforePrompt.substring(bulletIndex + 1).trim();
+                                } else {
+                                    // No bullet found, try to get substantial text before prompt
+                                    // Split by double newlines to find response blocks
+                                    const blocks = beforePrompt.split(/\n\n+/);
+                                    // Take last few blocks that aren't empty
+                                    const significantBlocks = blocks.filter(b => b.trim().length > 10);
+                                    if (significantBlocks.length > 0) {
+                                        // Take the last 10 blocks or all if less
+                                        const blocksToTake = Math.min(10, significantBlocks.length);
+                                        response = significantBlocks.slice(-blocksToTake).join('\n\n');
                                     }
                                 }
-                                response = responseLines.join('\n').trim();
                             }
                         }
                         
-                        // Clean response
+                        // Clean up the response
                         response = response
-                            .replace(/^[●\s]+/, '')
-                            .replace(/\s*>?\s*$/, '')
-                            .replace(/bypass permissions.*$/m, '')
+                            .replace(/^[●\s]+/, '') // Remove leading bullet
+                            .replace(/\s*>?\s*$/, '') // Remove trailing prompt chars
+                            .replace(/bypass permissions.*$/m, '') // Remove UI elements
+                            .replace(/shift\+tab to cycle.*$/m, '') // Remove UI hints
                             .trim();
                         
                         // Store response
