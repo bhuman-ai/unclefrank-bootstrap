@@ -440,15 +440,24 @@
                         document.getElementById('documentContent').textContent = data.content || 'No Project.md content available';
                     }
                 } else {
-                    // Fallback to static file
-                    const staticResponse = await fetch('/docs%20to%20work%20towards/project.md');
+                    // Fallback to static file in public folder
+                    const staticResponse = await fetch('/project.md');
                     if (staticResponse.ok) {
                         const text = await staticResponse.text();
                         if (currentTab === 'production') {
                             document.getElementById('documentContent').textContent = text;
                         }
                     } else {
-                        throw new Error('Could not load Project.md from any source');
+                        // Try the docs folder as last resort
+                        const docsResponse = await fetch('/docs%20to%20work%20towards/project.md');
+                        if (docsResponse.ok) {
+                            const text = await docsResponse.text();
+                            if (currentTab === 'production') {
+                                document.getElementById('documentContent').textContent = text;
+                            }
+                        } else {
+                            throw new Error('Could not load Project.md from any source');
+                        }
                     }
                 }
             } catch (error) {

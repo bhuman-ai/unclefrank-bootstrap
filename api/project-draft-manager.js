@@ -47,6 +47,8 @@ module.exports = async function handler(req, res) {
                 return await validateDraft(req, res);
             case 'get':
                 return await getDraft(req, res);
+            case 'get-production':
+                return await getProductionProjectMd(req, res);
             case 'list':
                 return await listDrafts(req, res);
             case 'breakdown':
@@ -294,6 +296,73 @@ async function breakdownToTasks(req, res) {
         })),
         message: `Draft broken down into ${tasks.length} tasks`
     });
+}
+
+// Get production Project.md
+async function getProductionProjectMd(req, res) {
+    // Default Project.md content if file doesn't exist
+    const defaultContent = `# Project.md - Uncle Frank's Doc-Driven Development Platform
+
+## Overview
+This is the production Project.md that represents the current state of the system.
+
+## Current Status
+- System is deployed on Vercel
+- Doc-driven development workflow implemented
+- Frank manages the Draft → Validation → Task → Checkpoint → Review → Merge flow
+
+## Features
+- Project.md draft management with validation
+- Task breakdown and execution
+- GitHub integration for tracking
+- Claude integration for intelligent assistance
+
+## Known Issues
+- File persistence needs cloud storage implementation
+- State management needs database
+- Checkpoints are not fully implemented
+
+## Next Steps
+1. Add proper cloud storage (S3 or Vercel Blob)
+2. Implement state persistence
+3. Complete checkpoint system
+4. Add proper error recovery
+
+---
+*Use Frank to create drafts and modify this document through the proper workflow.*`;
+
+    try {
+        // Try to read from configured path
+        let content = defaultContent;
+        
+        // In production, this would read from cloud storage
+        // For now, return default content or environment variable
+        if (process.env.PROJECT_MD_CONTENT) {
+            content = process.env.PROJECT_MD_CONTENT;
+        } else {
+            // Try to read from temp if it exists
+            try {
+                content = await fs.readFile(PROJECT_MD_PATH, 'utf8');
+            } catch (e) {
+                // Use default content
+                console.log('Using default Project.md content');
+            }
+        }
+        
+        return res.status(200).json({
+            success: true,
+            content: content,
+            source: process.env.PROJECT_MD_CONTENT ? 'environment' : 'default'
+        });
+    } catch (error) {
+        console.error('Error loading Project.md:', error);
+        return res.status(200).json({
+            success: true,
+            content: defaultContent,
+            source: 'fallback',
+            error: error.message
+        });
+    }
 }
 
 // Get draft details
