@@ -1,17 +1,16 @@
 // PROJECT.MD DRAFT MANAGER - Uncle Frank's Doc-Driven Development System
 // Manages Project.md drafts, validation, and the immutable flow
 
-const fs = require('fs').promises;
-const path = require('path');
-const { exec } = require('child_process');
-const { promisify } = require('util');
 const https = require('https');
+const fetch = require('node-fetch');
 
-const execAsync = promisify(exec);
-
-// Constants
-const PROJECT_MD_PATH = process.env.PROJECT_MD_PATH || '/tmp/project.md';
-const DRAFTS_DIR = process.env.DRAFTS_DIR || '/tmp/drafts';
+// Get base URL for internal API calls
+const getBaseUrl = () => {
+    if (process.env.VERCEL_URL) {
+        return `https://${process.env.VERCEL_URL}`;
+    }
+    return 'http://localhost:3000';
+};
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = 'bhuman-ai/unclefrank-bootstrap';
 
@@ -79,13 +78,8 @@ async function createDraft(req, res) {
     
     // Create draft ID
     const draftId = `draft-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const draftPath = path.join(DRAFTS_DIR, draftId);
     
-    // Ensure drafts directory exists
-    await fs.mkdir(DRAFTS_DIR, { recursive: true });
-    await fs.mkdir(draftPath, { recursive: true });
-    
-    // Save draft content
+    // Prepare draft data
     const draftData = {
         id: draftId,
         state: DRAFT_STATES.CREATED,
@@ -98,15 +92,25 @@ async function createDraft(req, res) {
         githubIssueNumber: null
     };
     
-    await fs.writeFile(
-        path.join(draftPath, 'draft.json'),
-        JSON.stringify(draftData, null, 2)
-    );
-    
-    await fs.writeFile(
-        path.join(draftPath, 'project.md'),
-        content
-    );
+    // Save to cloud storage via storage-manager
+    try {
+        const storageResponse = await fetch(`${getBaseUrl()}/api/storage-manager?action=save-draft`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                draftId,
+                content,
+                metadata: draftData
+            })
+        });
+        
+        if (!storageResponse.ok) {
+            throw new Error('Failed to save draft to storage');
+        }
+    } catch (error) {
+        console.error('Storage save failed:', error);
+        // Continue anyway - draft exists in memory
+    }
     
     // Create GitHub issue to track this draft
     try {
@@ -373,19 +377,22 @@ async function getDraft(req, res) {
         return res.status(400).json({ error: 'Missing draftId' });
     }
     
-    const draftPath = path.join(DRAFTS_DIR, draftId);
-    const draftDataPath = path.join(draftPath, 'draft.json');
-    
     try {
-        const draftData = JSON.parse(await fs.readFile(draftDataPath, 'utf8'));
-        const content = await fs.readFile(path.join(draftPath, 'project.md'), 'utf8');
+        // Get from cloud storage
+        const storageResponse = await fetch(`${getBaseUrl()}/api/storage-manager?action=get-draft&draftId=${draftId}`);
         
-        return res.status(200).json({
-            ...draftData,
-            content
-        });
-    } catch (error) {
+        if (storageResponse.ok) {
+            const data = await storageResponse.json();
+            return res.status(200).json({
+                ...data.metadata,
+                content: data.content
+            });
+        }
+        
+        // Fallback - draft might be in memory
         return res.status(404).json({ error: 'Draft not found' });
+    } catch (error) {
+        return res.status(404).json({ error: 'Draft not found', details: error.message });
     }
 }
 

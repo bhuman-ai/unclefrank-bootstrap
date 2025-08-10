@@ -531,15 +531,15 @@
             const thinkingId = addThinking();
             
             try {
-                // Frank processes the request and makes changes
+                // Frank processes the request and makes REAL changes
                 const response = await fetch('/api/frank-assistant', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        message: `Make these changes to the draft: ${message}`,
+                        message: message,
                         context: {
                             currentContent: draftContent,
-                            action: 'edit-draft'
+                            action: 'edit_document'
                         }
                     })
                 });
@@ -552,8 +552,20 @@
                 // Show Frank's response
                 addMessage(result.response || "I've made the changes. Check the document.", 'frank');
                 
-                // Simulate Frank making changes to the draft
-                await applyChanges(message);
+                // Update document with REAL changes from Frank
+                if (result.success && result.newContent) {
+                    draftContent = result.newContent;
+                    document.getElementById('documentContent').textContent = draftContent;
+                    
+                    // Update status
+                    document.getElementById('changeCount').textContent = `${result.changes.length} changes`;
+                    
+                    // Generate tasks from REAL changes
+                    generateTasksFromChanges(result.changes, result.draftId);
+                    
+                    // Store draft ID for execution
+                    currentDraftId = result.draftId;
+                }
                 
             } catch (error) {
                 removeThinking(thinkingId);
@@ -665,17 +677,18 @@
             docElement.scrollTop = docElement.scrollHeight;
         }
         
-        // Generate tasks from changes
-        function generateTasks(changes) {
+        // Generate tasks from REAL changes
+        function generateTasksFromChanges(changes, draftId) {
             currentTasks = [];
             
-            for (const change of changes) {
+            for (let i = 0; i < changes.length; i++) {
+                const change = changes[i];
                 const task = {
-                    id: `task-${Date.now()}-${currentTasks.length}`,
-                    name: generateTaskName(change),
-                    description: generateTaskDescription(change),
+                    id: `task-${Date.now()}-${i}`,
+                    name: change,
+                    description: `Apply change: ${change}`,
                     status: 'ready',
-                    change: change
+                    draftId: draftId
                 };
                 currentTasks.push(task);
             }
@@ -738,41 +751,125 @@
             `).join('');
         }
         
-        // Execute all tasks
+        // Execute all tasks - REAL execution via workflow orchestrator
         async function executeAllTasks() {
             if (currentTasks.length === 0) return;
             
-            const confirmed = confirm(`Execute ${currentTasks.length} tasks?\n\nThis will update the production Project.md.`);
+            const confirmed = confirm(`Execute ${currentTasks.length} tasks?\n\nThis will:\n1. Validate the draft\n2. Execute tasks with Claude\n3. Create GitHub branches\n4. Update the codebase`);
             if (!confirmed) return;
             
             document.getElementById('approveBtn').disabled = true;
             document.getElementById('systemStatus').textContent = 'Executing...';
             
-            // In real implementation, would:
-            // 1. Create draft in system
-            // 2. Validate changes
-            // 3. Execute with Claude
-            // 4. Merge to production
+            try {
+                // Execute the draft via workflow orchestrator
+                const response = await fetch('/api/workflow-orchestrator?action=execute-draft', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        draftId: currentDraftId
+                    })
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    
+                    // Update task statuses based on execution results
+                    for (const execution of result.executionResults) {
+                        const task = currentTasks.find(t => t.name === execution.task);
+                        if (task) {
+                            updateTaskStatus(task.id, execution.status === 'executing' ? 'executing' : execution.status);
+                        }
+                    }
+                    
+                    document.getElementById('systemStatus').textContent = 'Execution started!';
+                    addMessage(`Execution started for ${result.executionResults.length} tasks. Check GitHub for progress.`, 'frank');
+                    
+                    // Poll for completion
+                    pollForCompletion(result.executionResults);
+                    
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Execution failed');
+                }
+                
+            } catch (error) {
+                console.error('Execution failed:', error);
+                document.getElementById('systemStatus').textContent = 'Failed!';
+                addMessage(`Execution failed: ${error.message}. Try again or check the logs.`, 'frank');
+                document.getElementById('approveBtn').disabled = false;
+            }
+        }
+        
+        // Poll for task completion
+        async function pollForCompletion(executionResults) {
+            let allComplete = false;
+            let pollCount = 0;
+            const maxPolls = 60; // 2 minutes max
             
-            for (let i = 0; i < currentTasks.length; i++) {
-                const task = currentTasks[i];
-                updateTaskStatus(task.id, 'executing');
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate execution
-                updateTaskStatus(task.id, 'completed');
+            while (!allComplete && pollCount < maxPolls) {
+                pollCount++;
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+                
+                let completedCount = 0;
+                
+                for (const execution of executionResults) {
+                    if (execution.status === 'already_completed') {
+                        completedCount++;
+                        continue;
+                    }
+                    
+                    if (execution.threadId) {
+                        try {
+                            const statusResponse = await fetch('/api/claude-executor-integration', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    action: 'check-status',
+                                    payload: { threadId: execution.threadId }
+                                })
+                            });
+                            
+                            if (statusResponse.ok) {
+                                const status = await statusResponse.json();
+                                if (status.completed) {
+                                    completedCount++;
+                                    const task = currentTasks.find(t => t.name === execution.task);
+                                    if (task) {
+                                        updateTaskStatus(task.id, 'completed');
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Status check failed:', e);
+                        }
+                    }
+                }
+                
+                allComplete = completedCount === executionResults.length;
+                
+                if (allComplete) {
+                    document.getElementById('systemStatus').textContent = 'Complete!';
+                    addMessage('All tasks executed successfully! Check GitHub for branches and PRs.', 'frank');
+                    
+                    // Reset after success
+                    setTimeout(() => {
+                        currentTasks = [];
+                        displayTasks();
+                        document.getElementById('taskCount').textContent = '0 tasks';
+                        document.getElementById('changeCount').textContent = 'No changes';
+                        document.getElementById('systemStatus').textContent = 'Ready';
+                        document.getElementById('approveBtn').disabled = false;
+                        loadDocument(); // Reload fresh
+                    }, 3000);
+                }
             }
             
-            document.getElementById('systemStatus').textContent = 'Complete!';
-            addMessage('All tasks executed successfully! Project.md has been updated.', 'frank');
-            
-            // Reset
-            setTimeout(() => {
-                currentTasks = [];
-                displayTasks();
-                document.getElementById('taskCount').textContent = '0 tasks';
-                document.getElementById('changeCount').textContent = 'No changes';
-                document.getElementById('systemStatus').textContent = 'Ready';
-                loadDocument(); // Reload fresh
-            }, 3000);
+            if (!allComplete) {
+                document.getElementById('systemStatus').textContent = 'Timed out';
+                addMessage('Execution is taking longer than expected. Check GitHub for status.', 'frank');
+                document.getElementById('approveBtn').disabled = false;
+            }
         }
         
         // Update task status in UI

@@ -150,18 +150,75 @@ export default async function handler(req, res) {
         }
         
         // Create Claude session with GitHub repo and issue tracking
-        const sessionResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            repoUrl: `https://github.com/${GITHUB_REPO}`,
-            taskTitle: `Task: ${taskMessage.substring(0, 100)}`,
-            taskDescription: taskMessage
-          })
-        });
-
-        if (!sessionResponse.ok) {
-          throw new Error(`Claude Executor error: ${sessionResponse.status}`);
+        let sessionResponse;
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        // Try to create session with retry logic
+        while (retryCount < maxRetries) {
+          try {
+            sessionResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                repoUrl: `https://github.com/${GITHUB_REPO}`,
+                taskTitle: `Task: ${taskMessage.substring(0, 100)}`,
+                taskDescription: taskMessage
+              })
+            });
+            
+            if (sessionResponse.ok) {
+              break; // Success
+            }
+            
+            throw new Error(`Claude Executor error: ${sessionResponse.status}`);
+          } catch (error) {
+            retryCount++;
+            console.error(`[Claude Integration] Attempt ${retryCount} failed:`, error.message);
+            
+            if (retryCount >= maxRetries) {
+              // Use retry manager for advanced retry logic with exponential backoff
+              console.log('[Claude Integration] Using retry manager for failed task');
+              const retryResponse = await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/task-retry-manager`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'retry',
+                  taskId: `session-create-${Date.now()}`,
+                  taskFunction: 'claude-executor-session-create',
+                  payload: {
+                    repoUrl: `https://github.com/${GITHUB_REPO}`,
+                    taskTitle: `Task: ${taskMessage.substring(0, 100)}`,
+                    taskDescription: taskMessage
+                  },
+                  maxRetries: 5,
+                  retryDelay: 2000
+                })
+              });
+              
+              if (retryResponse.ok) {
+                const retryResult = await retryResponse.json();
+                if (retryResult.success && retryResult.result) {
+                  // Retry manager succeeded - use the result
+                  sessionResponse = { 
+                    ok: true, 
+                    json: async () => retryResult.result 
+                  };
+                  break; // Exit the retry loop
+                }
+              }
+              
+              throw new Error(`All retries exhausted. Claude Executor is unavailable.`);
+              }
+            }
+            
+            // Wait before retry with exponential backoff
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+          }
+        }
+        
+        if (!sessionResponse || !sessionResponse.ok) {
+          throw new Error(`Failed to create Claude session after ${maxRetries} attempts`);
         }
 
         const session = await sessionResponse.json();
@@ -169,15 +226,65 @@ export default async function handler(req, res) {
         console.log(`[Claude Integration] Branch: ${session.branch}`);
         console.log(`[Claude Integration] Repo: ${session.repoPath}`);
         
+        // Load essential context documents
+        let claudeMdContent = '';
+        let projectMdContent = '';
+        let contextDocs = '';
+        
+        try {
+          // ALWAYS include CLAUDE.md - the constitution
+          console.log('[Claude Integration] Loading CLAUDE.md for context...');
+          const claudeMdResponse = await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/storage-manager?action=get-doc&doc=claude`);
+          if (claudeMdResponse.ok) {
+            const claudeData = await claudeMdResponse.json();
+            claudeMdContent = claudeData.content || '';
+          }
+          
+          // Include current Project.md
+          const projectResponse = await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/storage-manager?action=get-project`);
+          if (projectResponse.ok) {
+            const projectData = await projectResponse.json();
+            projectMdContent = projectData.content || '';
+          }
+          
+          // Build context section
+          contextDocs = `
+# CRITICAL PROJECT CONTEXT
+
+## CLAUDE.md - Development Constitution (MUST FOLLOW)
+${claudeMdContent || '# Claude.md\n\nFollow Uncle Frank\'s no-BS approach. Draft → Validation → Task → Checkpoint → Review → Merge.'}
+
+## Current Project.md State
+${projectMdContent || '# Project.md\n\n[Current project state]'}
+
+## Your Personality
+You are part of Uncle Frank's team. Be direct, no-nonsense, focus on getting things done.
+No corporate BS, no over-complication. If something is unclear, ask bluntly.
+Think in micro-actions and realistic dependencies.
+
+---
+`;
+        } catch (error) {
+          console.error('[Claude Integration] Failed to load context docs:', error);
+          contextDocs = `
+# PROJECT CONTEXT
+Follow Uncle Frank's doc-driven development approach.
+Be direct, no-nonsense, get things done.
+---
+`;
+        }
+        
         // FRANK'S TWO-PHASE APPROACH
         // Phase 1: Get checkpoints from Claude WITHOUT executing
-        console.log('[Claude Integration] Phase 1: Getting checkpoints from Claude...');
+        console.log('[Claude Integration] Phase 1: Getting checkpoints from Claude WITH FULL CONTEXT...');
         
         const decomposeResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${session.sessionId}/execute`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: `# CHECKPOINT DECOMPOSITION REQUEST
+            message: `${contextDocs}
+
+# CHECKPOINT DECOMPOSITION REQUEST
 
 Working Directory: ${session.repoPath}
 Task: ${taskMessage}
@@ -210,7 +317,8 @@ IMPORTANT RULES:
 3. Use semicolons to separate multiple items within a line
 4. Do not use sub-bullets or nested lists
 5. Provide exactly 3-5 checkpoints
-6. Do not include any other text before or after the checkpoints`
+6. Do not include any other text before or after the checkpoints
+7. Follow the principles in CLAUDE.md above`
           })
         });
 
@@ -315,19 +423,41 @@ IMPORTANT RULES:
 - Pass Criteria: ${cp.passCriteria}`
         ).join('\n\n');
         
+        // Load context again for execution phase
+        let executionContext = '';
+        try {
+          const claudeMdResponse = await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/storage-manager?action=get-doc&doc=claude`);
+          if (claudeMdResponse.ok) {
+            const claudeData = await claudeMdResponse.json();
+            executionContext = `
+# REMEMBER THE RULES (CLAUDE.md)
+${claudeData.content || 'Follow Uncle Frank\'s approach. No BS.'}
+
+---
+`;
+          }
+        } catch (error) {
+          console.error('[Claude Integration] Failed to reload context:', error);
+        }
+        
         // Send execution command to Claude (in the SAME session, so Claude remembers the task!)
         const executeResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${threadId}/execute`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: `Now execute the checkpoints in ${sessionData.repoPath || '/app/sessions/' + threadId + '/repo'}:
+            message: `${executionContext}
+Now execute the checkpoints in ${sessionData.repoPath || '/app/sessions/' + threadId + '/repo'}:
 
 ${checkpointDetails}
 
-Execute each checkpoint in order, starting with Checkpoint 1.
-Create all files in the working directory: ${sessionData.repoPath || '/app/sessions/' + threadId + '/repo'}
-After each checkpoint, run tests to verify it works.
-Report results for each checkpoint.`
+## EXECUTION INSTRUCTIONS:
+1. Execute each checkpoint in order, starting with Checkpoint 1
+2. Create all files in the working directory: ${sessionData.repoPath || '/app/sessions/' + threadId + '/repo'}
+3. After each checkpoint, run tests to verify it works
+4. Report results for each checkpoint
+5. Follow Uncle Frank's approach - no BS, just get it done
+6. If something is unclear, state it bluntly and make a reasonable decision
+7. Focus on working code over documentation`
           })
         });
         

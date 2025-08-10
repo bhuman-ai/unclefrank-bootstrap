@@ -43,6 +43,10 @@ module.exports = async function handler(req, res) {
                 return await saveProjectMd(req, res);
             case 'get-project':
                 return await getProjectMd(req, res);
+            case 'get-doc':
+                return await getDocument(req, res);
+            case 'health':
+                return res.status(200).json({ status: 'healthy', storage: 'available' });
             default:
                 return res.status(400).json({ error: 'Invalid action' });
         }
@@ -301,6 +305,127 @@ This is the production Project.md. Edit to make changes.
         return res.status(200).json({
             success: true,
             content: defaultContent,
+            message: 'Using default content'
+        });
+    }
+}
+
+// Get specific document (CLAUDE.md, Interface.md, Technical.md)
+async function getDocument(req, res) {
+    const { doc } = req.query;
+    
+    // Define default content for each document
+    const documents = {
+        claude: {
+            key: 'docs/claude.md',
+            default: `# Claude.md — Development Constitution
+
+## Purpose
+This document defines the immutable principles, workflows, and governance rules for how development must operate across all projects.
+
+## Personality
+All system prompts, task breakdowns, and workflow decisions MUST be framed with the mindset of Uncle Frank, a no-nonsense, sharp-witted guy from Brooklyn who gets shit done.
+
+Uncle Frank:
+- Has zero patience for over-complication or corporate buzzwords
+- Cuts through vagueness with brutal clarity
+- Focuses on tangible actions and outcomes
+- Cannot be fooled — detects BS from a mile away
+- Pushes back if a request is vague, unrealistic, or half-baked
+- If there's ambiguity, Frank asks the right blunt questions until it's solved
+- Thinks in micro-actions and realistic dependencies
+
+## Core Principles
+- **Single Source of Truth**: Project.md always represents the current production state
+- **Immutable Flow**: All changes must follow the Draft → Validation → Task → Checkpoint → Review → Merge flow
+- **LLM First Ideation**: Ideation and task breakdown are driven by LLMs, with human oversight for approvals
+- **Micro-Execution Philosophy**: Tasks are broken down into granular Checkpoints with binary Pass/Fail tests
+- **No Bypassing**: No code, design, or process changes bypass this flow
+
+## Task Flow
+1. Project.md Drafting with LLM collaboration
+2. Validation for contradictions (UX, technical, logic)
+3. Breakdown into Tasks with Acceptance Criteria
+4. Tasks decomposed into Checkpoints with Pass/Fail criteria
+5. Execution of Checkpoints (with automated retries & escalations)
+6. Human review and approval
+7. Merge into Project.md Production state
+
+## Non-Negotiables
+- No task, checkpoint, or feature bypasses this system
+- Human confirmation is mandatory before any merge to Project.md
+- All validations and tests must pass before execution proceeds`
+        },
+        interface: {
+            key: 'docs/interface.md',
+            default: `# Interface.md — UI Specification
+
+## Overview
+Defines all user interfaces, screens, and interactions in the system.
+
+## Core Screens
+1. **Frank-Driven Workspace** - Primary interface for doc-driven development
+2. **Task Executor** - Direct task execution with Claude
+3. **Project Dashboard** - Overview of system status
+
+## Design Principles
+- Minimal, focused interfaces
+- Dark theme by default
+- Real-time feedback
+- No unnecessary complexity`
+        },
+        technical: {
+            key: 'docs/technical.md',
+            default: `# Technical.md — System Architecture
+
+## Overview
+Technical architecture and implementation details.
+
+## Infrastructure
+- **Frontend**: Vercel deployment
+- **Claude Executor**: Fly.io deployment
+- **Storage**: Vercel Blob Storage
+- **Version Control**: GitHub
+
+## APIs
+- /api/frank-assistant - Frank orchestrator
+- /api/claude-executor-integration - Claude task execution
+- /api/project-draft-manager - Draft lifecycle
+- /api/storage-manager - Cloud storage
+
+## Security
+- Token-based authentication
+- Environment-based configuration
+- Protected write operations`
+        }
+    };
+    
+    const docConfig = documents[doc];
+    
+    if (!docConfig) {
+        return res.status(400).json({ 
+            error: 'Invalid document',
+            availableDocs: Object.keys(documents)
+        });
+    }
+    
+    try {
+        // Try to get from storage
+        const docBlob = await get(docConfig.key);
+        const content = await docBlob.text();
+        
+        return res.status(200).json({
+            success: true,
+            content,
+            document: doc,
+            storage: process.env.BLOB_READ_WRITE_TOKEN ? 'vercel-blob' : 'fallback'
+        });
+    } catch (error) {
+        // Return default content
+        return res.status(200).json({
+            success: true,
+            content: docConfig.default,
+            document: doc,
             message: 'Using default content'
         });
     }

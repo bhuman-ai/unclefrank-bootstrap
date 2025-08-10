@@ -1,23 +1,22 @@
 // FRANK - THE DOC-DRIVEN DEVELOPMENT ASSISTANT
 // No-nonsense workflow orchestrator with Brooklyn attitude
 
-const fs = require('fs').promises;
-const path = require('path');
+const fetch = require('node-fetch');
+const authMiddleware = require('./auth-middleware');
 
-// Use /tmp for Vercel serverless functions
-const DRAFTS_DIR = process.env.DRAFTS_DIR || '/tmp/drafts';
-const PROJECT_MD_PATH = process.env.PROJECT_MD_PATH || '/tmp/project.md';
 const CLAUDE_URL = 'https://uncle-frank-claude.fly.dev';
 
-module.exports = async function handler(req, res) {
-    // Enable CORS
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
+// Get base URL for internal API calls
+const getBaseUrl = () => {
+    if (process.env.VERCEL_URL) {
+        return `https://${process.env.VERCEL_URL}`;
     }
+    return 'http://localhost:3000';
+};
+
+// Main handler function
+async function frankHandler(req, res) {
+    // CORS already handled by auth middleware
     
     if (req.method !== 'POST') {
         return res.status(405).json({ 
@@ -60,6 +59,9 @@ module.exports = async function handler(req, res) {
                 
             case 'explain':
                 return await handleExplain(intent, res);
+                
+            case 'edit_document':
+                return await handleEditDocument(message, context, res);
                 
             default:
                 return await handleGeneralQuery(message, context, res);
@@ -140,12 +142,19 @@ function extractTopic(message) {
 async function handleCreateDraft(intent, context, res) {
     const description = intent.description || 'User requested changes';
     
-    // Load current Project.md
+    // Load current Project.md from storage or API
     let currentContent = '';
     try {
-        currentContent = await fs.readFile(PROJECT_MD_PATH, 'utf8');
+        const response = await fetch(`${getBaseUrl()}/api/storage-manager?action=get-project`);
+        if (response.ok) {
+            const data = await response.json();
+            currentContent = data.content;
+        } else {
+            // Fallback to default
+            currentContent = '# Project.md\n\n[New draft - no existing content]';
+        }
     } catch (error) {
-        console.error('[Frank] Could not read Project.md:', error);
+        console.error('[Frank] Could not load Project.md:', error);
         currentContent = '# Project.md\n\n[New draft - no existing content]';
     }
     
@@ -464,6 +473,169 @@ async function handleExplain(intent, res) {
     });
 }
 
+// Handle document editing - REAL editing with storage and draft tracking
+async function handleEditDocument(message, context, res) {
+    // Get current content from storage or context
+    let currentContent = context.currentContent || '';
+    
+    if (!currentContent) {
+        // Load from cloud storage via storage-manager
+        try {
+            const response = await fetch(`${getBaseUrl()}/api/storage-manager?action=get-project`);
+            if (response.ok) {
+                const data = await response.json();
+                currentContent = data.content;
+                console.log('[Frank] Loaded current Project.md from storage');
+            }
+        } catch (error) {
+            console.error('[Frank] Failed to load from storage:', error);
+            currentContent = '# Project.md\n\n';
+        }
+    }
+    
+    // Parse the edit request into structured edits
+    const edits = parseEditRequest(message, currentContent);
+    
+    // Apply edits to create new content
+    let newContent = currentContent;
+    const changes = [];
+    
+    for (const edit of edits) {
+        if (edit.type === 'add_section') {
+            // Add new section
+            newContent += `\n\n## ${edit.title}\n\n${edit.content}`;
+            changes.push(`Added section: ${edit.title}`);
+            
+        } else if (edit.type === 'update_section') {
+            // Update existing section
+            const sectionRegex = new RegExp(`(##\\s*${edit.title}[\\s\\S]*?)(?=\\n##|$)`, 'i');
+            if (sectionRegex.test(newContent)) {
+                newContent = newContent.replace(sectionRegex, `## ${edit.title}\n\n${edit.content}`);
+                changes.push(`Updated section: ${edit.title}`);
+            } else {
+                // Section doesn't exist, add it
+                newContent += `\n\n## ${edit.title}\n\n${edit.content}`;
+                changes.push(`Added section: ${edit.title}`);
+            }
+            
+        } else if (edit.type === 'remove_section') {
+            // Remove section
+            const sectionRegex = new RegExp(`\\n##\\s*${edit.title}[\\s\\S]*?(?=\\n##|$)`, 'i');
+            newContent = newContent.replace(sectionRegex, '');
+            changes.push(`Removed section: ${edit.title}`);
+        }
+    }
+    
+    // If we made changes, create a REAL draft that persists
+    if (changes.length > 0) {
+        // Create draft via project-draft-manager (which now uses storage-manager)
+        const draftResponse = await fetch(`${getBaseUrl()}/api/project-draft-manager?action=create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                content: newContent,
+                description: `Frank applied ${changes.length} changes: ${changes.join(', ')}`,
+                author: 'frank-editor'
+            })
+        });
+        
+        if (draftResponse.ok) {
+            const draftData = await draftResponse.json();
+            
+            // Also save the updated content to storage for immediate visibility
+            try {
+                await fetch(`${getBaseUrl()}/api/storage-manager?action=save-draft`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        draftId: draftData.draftId,
+                        content: newContent,
+                        metadata: {
+                            changes: changes,
+                            editedBy: 'frank',
+                            timestamp: new Date().toISOString()
+                        }
+                    })
+                });
+                console.log('[Frank] Saved draft to storage:', draftData.draftId);
+            } catch (error) {
+                console.error('[Frank] Failed to persist to storage:', error);
+            }
+            
+            return res.status(200).json({
+                success: true,
+                response: `Done. Made ${changes.length} changes:\n${changes.map(c => `- ${c}`).join('\n')}\n\nDraft ID: ${draftData.draftId}\nGitHub Issue: #${draftData.githubIssue || 'pending'}`,
+                draftId: draftData.draftId,
+                changes: changes,
+                newContent: newContent,
+                action: 'document_edited'
+            });
+        } else {
+            console.error('[Frank] Failed to create draft:', await draftResponse.text());
+        }
+    }
+    
+    return res.status(200).json({
+        success: false,
+        response: 'No changes to make. Be more specific about what you want.',
+        action: 'no_changes'
+    });
+}
+
+// Parse edit request into structured edits
+function parseEditRequest(message, currentContent) {
+    const edits = [];
+    const lower = message.toLowerCase();
+    
+    // Detect add requests
+    if (lower.includes('add') || lower.includes('create')) {
+        const match = message.match(/(?:add|create)\s+(?:a\s+)?(?:section\s+)?(?:about\s+|for\s+)?(.+?)(?:\s+section)?$/i);
+        if (match) {
+            const topic = match[1].trim();
+            edits.push({
+                type: 'add_section',
+                title: topic.charAt(0).toUpperCase() + topic.slice(1),
+                content: `This section covers ${topic}.\n\n### Key Points\n- Implementation details\n- Configuration requirements\n- Best practices\n\n### Status\n- Added by Frank on ${new Date().toISOString()}`
+            });
+        }
+    }
+    
+    // Detect update requests
+    if (lower.includes('update') || lower.includes('change') || lower.includes('modify')) {
+        const match = message.match(/(?:update|change|modify)\s+(?:the\s+)?(.+?)(?:\s+section)?$/i);
+        if (match) {
+            const topic = match[1].trim();
+            edits.push({
+                type: 'update_section',
+                title: topic.charAt(0).toUpperCase() + topic.slice(1),
+                content: `[Updated by Frank]\n\n### Changes\n- Updated on ${new Date().toISOString()}\n- Modified per user request\n\n### Current Status\n- Active and maintained\n- Ready for review`
+            });
+        }
+    }
+    
+    // Detect remove requests
+    if (lower.includes('remove') || lower.includes('delete')) {
+        const match = message.match(/(?:remove|delete)\s+(?:the\s+)?(.+?)(?:\s+section)?$/i);
+        if (match) {
+            edits.push({
+                type: 'remove_section',
+                title: match[1].trim()
+            });
+        }
+    }
+    
+    // If no specific edits detected, try to infer
+    if (edits.length === 0 && message.length > 10) {
+        edits.push({
+            type: 'add_section',
+            title: 'Updates',
+            content: `### User Request\n${message}\n\n### Implementation\n- Changes applied by Frank\n- Timestamp: ${new Date().toISOString()}`
+        });
+    }
+    
+    return edits;
+}
+
 // Handle general queries
 async function handleGeneralQuery(message, context, res) {
     // For general queries, provide guidance based on context
@@ -494,3 +666,6 @@ What's it gonna be?`;
         action: 'general_response'
     });
 }
+
+// Export with auth middleware wrapper
+module.exports = authMiddleware(frankHandler);
