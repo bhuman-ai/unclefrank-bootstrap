@@ -1417,16 +1417,31 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                         const claudeSessionMatch = issue.body?.match(/Claude Session: ([a-f0-9-]+)/);
                         const claudeSession = claudeSessionMatch ? claudeSessionMatch[1] : null;
                         
+                        // Determine status based on labels and state
+                        let status = 'In Progress';
+                        const labels = issue.labels?.map(l => l.name) || [];
+                        
+                        if (issue.state === 'closed') {
+                            status = 'Completed';
+                        } else if (labels.includes('ready-for-review')) {
+                            status = 'Awaiting Review';
+                        } else if (labels.includes('approved')) {
+                            status = 'Human Approved';
+                        } else if (labels.includes('changes-requested')) {
+                            status = 'Changes Requested';
+                        }
+                        
                         const task = {
                             id: `issue-${issue.number}`,
                             name: issue.title.replace('Task: ', ''),
                             objective: issue.body?.split('\n')[2] || '', // Extract from body
-                            status: issue.state === 'closed' ? 'Completed' : 'In Progress',
+                            status: status,
                             issueNumber: issue.number,
                             issueUrl: issue.html_url,
                             threadId: claudeSession,
                             sessionId: claudeSession, // Add sessionId too
-                            created: issue.created_at
+                            created: issue.created_at,
+                            labels: labels
                         };
                         
                         tasksByIssue.set(issue.number, task);
