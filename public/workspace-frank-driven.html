@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frank-Driven Workspace - The Right Way</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 12px 20px;
+            border-bottom: 2px solid #7c3aed;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .header h1 {
+            font-size: 20px;
+            color: #fff;
+        }
+        
+        .status-bar {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .status-indicator {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            background: rgba(124, 58, 237, 0.2);
+            border: 1px solid #7c3aed;
+        }
+        
+        .main-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        /* Frank Chat - Primary Interface (1/3) */
+        .frank-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #111;
+            border-right: 1px solid #333;
+            min-width: 400px;
+        }
+        
+        .frank-header {
+            padding: 15px;
+            background: #1a1a2e;
+            border-bottom: 1px solid #333;
+        }
+        
+        .frank-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+        
+        .frank-subtitle {
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .frank-chat {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .message {
+            max-width: 90%;
+        }
+        
+        .message.frank {
+            align-self: flex-start;
+        }
+        
+        .message.user {
+            align-self: flex-end;
+        }
+        
+        .message-bubble {
+            padding: 10px 15px;
+            border-radius: 15px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .message.frank .message-bubble {
+            background: rgba(124, 58, 237, 0.1);
+            border: 1px solid #7c3aed;
+            color: #e0e0e0;
+        }
+        
+        .message.user .message-bubble {
+            background: #7c3aed;
+            color: white;
+        }
+        
+        .frank-input-container {
+            padding: 15px;
+            background: #1a1a2e;
+            border-top: 1px solid #333;
+        }
+        
+        .frank-input {
+            width: 100%;
+            background: #0a0a0a;
+            border: 1px solid #333;
+            color: #e0e0e0;
+            padding: 12px;
+            border-radius: 8px;
+            resize: none;
+            font-family: inherit;
+            font-size: 14px;
+            min-height: 60px;
+        }
+        
+        .frank-input:focus {
+            outline: none;
+            border-color: #7c3aed;
+        }
+        
+        .send-btn {
+            margin-top: 10px;
+            width: 100%;
+            background: #7c3aed;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .send-btn:hover {
+            background: #6b2ed3;
+        }
+        
+        .send-btn:disabled {
+            background: #4a4a4a;
+            cursor: not-allowed;
+        }
+        
+        /* Document View - Read Only (1/3) */
+        .document-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #0a0a0a;
+            border-right: 1px solid #333;
+        }
+        
+        .doc-header {
+            padding: 15px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #888;
+        }
+        
+        .doc-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #e0e0e0;
+            white-space: pre-wrap;
+        }
+        
+        /* Highlight changes Frank makes */
+        .change-highlight {
+            animation: highlight 2s ease-in-out;
+            background: rgba(124, 58, 237, 0.2);
+            border-left: 3px solid #7c3aed;
+            padding-left: 10px;
+            margin: 5px 0;
+        }
+        
+        @keyframes highlight {
+            0% { background: rgba(124, 58, 237, 0.5); }
+            100% { background: rgba(124, 58, 237, 0.2); }
+        }
+        
+        /* Execution Plan (1/3) */
+        .execution-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #111;
+        }
+        
+        .execution-header {
+            padding: 15px;
+            background: #1a1a2e;
+            border-bottom: 1px solid #333;
+        }
+        
+        .execution-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+        
+        .execution-subtitle {
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .task-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        
+        .task-item {
+            background: rgba(26, 26, 46, 0.4);
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            transition: all 0.3s;
+        }
+        
+        .task-item.pending {
+            opacity: 0.6;
+        }
+        
+        .task-item.ready {
+            border-color: #7c3aed;
+            background: rgba(124, 58, 237, 0.1);
+        }
+        
+        .task-item.executing {
+            border-color: #fbbf24;
+            background: rgba(251, 191, 36, 0.1);
+        }
+        
+        .task-item.completed {
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+        }
+        
+        .task-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        
+        .task-status.pending { background: rgba(156, 163, 175, 0.2); color: #9ca3af; }
+        .task-status.ready { background: rgba(124, 58, 237, 0.2); color: #a78bfa; }
+        .task-status.executing { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+        .task-status.completed { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+        
+        .task-name {
+            font-size: 14px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+        
+        .task-description {
+            font-size: 12px;
+            color: #a0a0a0;
+        }
+        
+        .approval-section {
+            padding: 15px;
+            background: #1a1a2e;
+            border-top: 1px solid #333;
+        }
+        
+        .approve-btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #7c3aed, #a855f7);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .approve-btn:hover:not(:disabled) {
+            transform: scale(1.02);
+            box-shadow: 0 5px 20px rgba(124, 58, 237, 0.4);
+        }
+        
+        .approve-btn:disabled {
+            background: #333;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        
+        /* Quick commands */
+        .quick-commands {
+            padding: 10px;
+            background: rgba(26, 26, 46, 0.4);
+            border-top: 1px solid #333;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .quick-cmd {
+            padding: 5px 10px;
+            background: rgba(124, 58, 237, 0.1);
+            border: 1px solid #7c3aed;
+            border-radius: 15px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .quick-cmd:hover {
+            background: rgba(124, 58, 237, 0.3);
+        }
+        
+        /* Loading state */
+        .thinking {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #888;
+            font-style: italic;
+        }
+        
+        .thinking-dots {
+            display: flex;
+            gap: 3px;
+        }
+        
+        .thinking-dots span {
+            width: 6px;
+            height: 6px;
+            background: #7c3aed;
+            border-radius: 50%;
+            animation: thinking 1.4s ease-in-out infinite;
+        }
+        
+        .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+        
+        @keyframes thinking {
+            0%, 60%, 100% { transform: scale(1); opacity: 1; }
+            30% { transform: scale(1.5); opacity: 0.5; }
+        }
+        
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎯 Frank-Driven Workspace</h1>
+        <div class="status-bar">
+            <div class="status-indicator" id="changeCount">No changes</div>
+            <div class="status-indicator" id="taskCount">0 tasks</div>
+            <div class="status-indicator" id="systemStatus">Ready</div>
+        </div>
+    </div>
+    
+    <div class="main-container">
+        <!-- Frank Chat - Primary Interface -->
+        <div class="frank-panel">
+            <div class="frank-header">
+                <div class="frank-title">🎯 Talk to Frank</div>
+                <div class="frank-subtitle">Tell me what to change. I'll handle the rest.</div>
+            </div>
+            
+            <div class="quick-commands">
+                <div class="quick-cmd" onclick="quickCommand('Add a new feature for user authentication')">Add Authentication</div>
+                <div class="quick-cmd" onclick="quickCommand('Update the API endpoints section')">Update APIs</div>
+                <div class="quick-cmd" onclick="quickCommand('Remove deprecated features')">Remove Deprecated</div>
+                <div class="quick-cmd" onclick="quickCommand('Add error handling section')">Add Error Handling</div>
+                <div class="quick-cmd" onclick="quickCommand('Update deployment instructions')">Update Deployment</div>
+            </div>
+            
+            <div class="frank-chat" id="frankChat">
+                <div class="message frank">
+                    <div class="message-bubble">
+                        Yo, I'm Frank. I manage this document.
+                        
+                        <strong>Here's how this works:</strong>
+                        1. You tell me what changes you want
+                        2. I edit the draft for you
+                        3. System generates tasks automatically
+                        4. You approve, system executes
+                        
+                        <strong>You don't touch the editor.</strong> Just tell me what you need.
+                        
+                        Try: "Add a section about monitoring" or "Update the deployment process"
+                    </div>
+                </div>
+            </div>
+            
+            <div class="frank-input-container">
+                <textarea class="frank-input" id="frankInput" placeholder="Tell Frank what to change..." rows="3"></textarea>
+                <button class="send-btn" id="sendBtn" onclick="sendToFrank()">Send to Frank</button>
+            </div>
+        </div>
+        
+        <!-- Document View - Read Only -->
+        <div class="document-panel">
+            <div class="doc-header">
+                📄 Draft Document (Frank Edits This)
+            </div>
+            <div class="doc-content" id="documentContent">
+                Loading document...
+            </div>
+        </div>
+        
+        <!-- Execution Plan -->
+        <div class="execution-panel">
+            <div class="execution-header">
+                <div class="execution-title">⚡ Execution Plan</div>
+                <div class="execution-subtitle" id="executionStatus">Tasks appear after Frank makes changes</div>
+            </div>
+            
+            <div class="task-list" id="taskList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📋</div>
+                    <div>No tasks yet</div>
+                    <div style="margin-top: 10px; font-size: 12px;">
+                        Tell Frank what to change<br>
+                        Tasks will appear here automatically
+                    </div>
+                </div>
+            </div>
+            
+            <div class="approval-section">
+                <button class="approve-btn" id="approveBtn" onclick="executeAllTasks()" disabled>
+                    ⚡ Execute All Tasks
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let draftContent = '';
+        let productionContent = '';
+        let currentTasks = [];
+        let currentDraftId = null;
+        let isProcessing = false;
+        
+        // Load initial document
+        async function loadDocument() {
+            try {
+                // Load production Project.md
+                const response = await fetch('/api/project-draft-manager?action=get-production');
+                if (response.ok) {
+                    const data = await response.json();
+                    productionContent = data.content || '';
+                    draftContent = productionContent;
+                } else {
+                    // Fallback to static
+                    const staticResponse = await fetch('/project.md');
+                    if (staticResponse.ok) {
+                        productionContent = await staticResponse.text();
+                        draftContent = productionContent;
+                    }
+                }
+                
+                document.getElementById('documentContent').textContent = draftContent;
+            } catch (error) {
+                console.error('Failed to load document:', error);
+                document.getElementById('documentContent').textContent = '# Project.md\n\nFailed to load. Tell Frank what you want to create.';
+            }
+        }
+        
+        // Send message to Frank
+        async function sendToFrank() {
+            const input = document.getElementById('frankInput');
+            const message = input.value.trim();
+            
+            if (!message || isProcessing) return;
+            
+            isProcessing = true;
+            document.getElementById('sendBtn').disabled = true;
+            document.getElementById('systemStatus').textContent = 'Processing...';
+            
+            // Add user message
+            addMessage(message, 'user');
+            input.value = '';
+            
+            // Show Frank thinking
+            const thinkingId = addThinking();
+            
+            try {
+                // Frank processes the request and makes changes
+                const response = await fetch('/api/frank-assistant', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: `Make these changes to the draft: ${message}`,
+                        context: {
+                            currentContent: draftContent,
+                            action: 'edit-draft'
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                
+                // Remove thinking indicator
+                removeThinking(thinkingId);
+                
+                // Show Frank's response
+                addMessage(result.response || "I've made the changes. Check the document.", 'frank');
+                
+                // Simulate Frank making changes to the draft
+                await applyChanges(message);
+                
+            } catch (error) {
+                removeThinking(thinkingId);
+                addMessage(`Error: ${error.message}. Let me try a different approach.`, 'frank');
+            } finally {
+                isProcessing = false;
+                document.getElementById('sendBtn').disabled = false;
+                document.getElementById('systemStatus').textContent = 'Ready';
+            }
+        }
+        
+        // Apply changes to the draft (Frank edits the document)
+        async function applyChanges(userRequest) {
+            // Determine what kind of change to make based on request
+            const changes = interpretRequest(userRequest);
+            
+            // Apply changes to draft content
+            let newContent = draftContent;
+            let changeCount = 0;
+            
+            for (const change of changes) {
+                if (change.type === 'add') {
+                    newContent += '\n\n' + change.content;
+                    changeCount++;
+                } else if (change.type === 'update') {
+                    // Find and replace section
+                    const sectionRegex = new RegExp(`(##\\s*${change.section}[\\s\\S]*?)(?=\\n##|$)`, 'i');
+                    if (sectionRegex.test(newContent)) {
+                        newContent = newContent.replace(sectionRegex, change.content);
+                        changeCount++;
+                    } else {
+                        // Add new section
+                        newContent += '\n\n' + change.content;
+                        changeCount++;
+                    }
+                } else if (change.type === 'remove') {
+                    const sectionRegex = new RegExp(`\\n##\\s*${change.section}[\\s\\S]*?(?=\\n##|$)`, 'i');
+                    newContent = newContent.replace(sectionRegex, '');
+                    changeCount++;
+                }
+            }
+            
+            // Update the document display with highlighting
+            draftContent = newContent;
+            displayDocumentWithHighlights(newContent, changes);
+            
+            // Update status
+            document.getElementById('changeCount').textContent = `${changeCount} changes`;
+            
+            // Generate tasks from changes
+            generateTasks(changes);
+        }
+        
+        // Interpret user request into changes
+        function interpretRequest(request) {
+            const changes = [];
+            const lower = request.toLowerCase();
+            
+            if (lower.includes('add') || lower.includes('create')) {
+                // Extract what to add
+                const match = request.match(/add\s+(?:a\s+)?(?:new\s+)?(?:section\s+)?(?:about\s+|for\s+)?(.+)/i);
+                if (match) {
+                    const topic = match[1].trim();
+                    changes.push({
+                        type: 'add',
+                        section: topic,
+                        content: `## ${capitalizeFirst(topic)}\n\nThis section covers ${topic}.\n\n### Overview\n[Frank added this section based on your request]\n\n### Details\n- Implementation details here\n- Configuration requirements\n- Best practices`
+                    });
+                }
+            } else if (lower.includes('update') || lower.includes('change') || lower.includes('modify')) {
+                const match = request.match(/(?:update|change|modify)\s+(?:the\s+)?(.+?)(?:\s+section)?/i);
+                if (match) {
+                    const topic = match[1].trim();
+                    changes.push({
+                        type: 'update',
+                        section: topic,
+                        content: `## ${capitalizeFirst(topic)} [Updated]\n\nThis section has been updated by Frank.\n\n### Recent Changes\n- Updated ${new Date().toISOString()}\n- Modified based on user request\n- Enhanced with new information\n\n### Details\n[Updated content goes here]`
+                    });
+                }
+            } else if (lower.includes('remove') || lower.includes('delete')) {
+                const match = request.match(/(?:remove|delete)\s+(?:the\s+)?(.+?)(?:\s+section)?/i);
+                if (match) {
+                    changes.push({
+                        type: 'remove',
+                        section: match[1].trim()
+                    });
+                }
+            } else {
+                // Default: add a general update
+                changes.push({
+                    type: 'add',
+                    section: 'Updates',
+                    content: `## Recent Updates\n\n### ${new Date().toLocaleDateString()}\n- ${request}\n- Changes implemented by Frank\n- Ready for review and execution`
+                });
+            }
+            
+            return changes;
+        }
+        
+        // Display document with highlighted changes
+        function displayDocumentWithHighlights(content, changes) {
+            const docElement = document.getElementById('documentContent');
+            
+            // For now, just update the text
+            // In production, would highlight specific changed sections
+            docElement.textContent = content;
+            
+            // Scroll to show changes
+            docElement.scrollTop = docElement.scrollHeight;
+        }
+        
+        // Generate tasks from changes
+        function generateTasks(changes) {
+            currentTasks = [];
+            
+            for (const change of changes) {
+                const task = {
+                    id: `task-${Date.now()}-${currentTasks.length}`,
+                    name: generateTaskName(change),
+                    description: generateTaskDescription(change),
+                    status: 'ready',
+                    change: change
+                };
+                currentTasks.push(task);
+            }
+            
+            // Update UI
+            displayTasks();
+            document.getElementById('taskCount').textContent = `${currentTasks.length} tasks`;
+            document.getElementById('approveBtn').disabled = currentTasks.length === 0;
+            document.getElementById('executionStatus').textContent = `${currentTasks.length} tasks ready for execution`;
+        }
+        
+        // Generate task name from change
+        function generateTaskName(change) {
+            if (change.type === 'add') {
+                return `Add ${change.section} section`;
+            } else if (change.type === 'update') {
+                return `Update ${change.section}`;
+            } else if (change.type === 'remove') {
+                return `Remove ${change.section}`;
+            }
+            return 'Modify document';
+        }
+        
+        // Generate task description
+        function generateTaskDescription(change) {
+            if (change.type === 'add') {
+                return `Create new section for ${change.section}`;
+            } else if (change.type === 'update') {
+                return `Modify existing ${change.section} content`;
+            } else if (change.type === 'remove') {
+                return `Delete ${change.section} from document`;
+            }
+            return 'Apply document changes';
+        }
+        
+        // Display tasks in UI
+        function displayTasks() {
+            const taskList = document.getElementById('taskList');
+            
+            if (currentTasks.length === 0) {
+                taskList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <div>No tasks yet</div>
+                        <div style="margin-top: 10px; font-size: 12px;">
+                            Tell Frank what to change<br>
+                            Tasks will appear here automatically
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            taskList.innerHTML = currentTasks.map(task => `
+                <div class="task-item ${task.status}" data-task-id="${task.id}">
+                    <span class="task-status ${task.status}">${task.status}</span>
+                    <div class="task-name">${task.name}</div>
+                    <div class="task-description">${task.description}</div>
+                </div>
+            `).join('');
+        }
+        
+        // Execute all tasks
+        async function executeAllTasks() {
+            if (currentTasks.length === 0) return;
+            
+            const confirmed = confirm(`Execute ${currentTasks.length} tasks?\n\nThis will update the production Project.md.`);
+            if (!confirmed) return;
+            
+            document.getElementById('approveBtn').disabled = true;
+            document.getElementById('systemStatus').textContent = 'Executing...';
+            
+            // In real implementation, would:
+            // 1. Create draft in system
+            // 2. Validate changes
+            // 3. Execute with Claude
+            // 4. Merge to production
+            
+            for (let i = 0; i < currentTasks.length; i++) {
+                const task = currentTasks[i];
+                updateTaskStatus(task.id, 'executing');
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate execution
+                updateTaskStatus(task.id, 'completed');
+            }
+            
+            document.getElementById('systemStatus').textContent = 'Complete!';
+            addMessage('All tasks executed successfully! Project.md has been updated.', 'frank');
+            
+            // Reset
+            setTimeout(() => {
+                currentTasks = [];
+                displayTasks();
+                document.getElementById('taskCount').textContent = '0 tasks';
+                document.getElementById('changeCount').textContent = 'No changes';
+                document.getElementById('systemStatus').textContent = 'Ready';
+                loadDocument(); // Reload fresh
+            }, 3000);
+        }
+        
+        // Update task status in UI
+        function updateTaskStatus(taskId, status) {
+            const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+            if (taskElement) {
+                taskElement.className = `task-item ${status}`;
+                taskElement.querySelector('.task-status').className = `task-status ${status}`;
+                taskElement.querySelector('.task-status').textContent = status;
+            }
+        }
+        
+        // Add message to chat
+        function addMessage(text, sender) {
+            const chat = document.getElementById('frankChat');
+            const message = document.createElement('div');
+            message.className = `message ${sender}`;
+            message.innerHTML = `<div class="message-bubble">${text}</div>`;
+            chat.appendChild(message);
+            chat.scrollTop = chat.scrollHeight;
+        }
+        
+        // Add thinking indicator
+        function addThinking() {
+            const chat = document.getElementById('frankChat');
+            const thinking = document.createElement('div');
+            thinking.className = 'message frank';
+            thinking.id = `thinking-${Date.now()}`;
+            thinking.innerHTML = `
+                <div class="thinking">
+                    <span>Frank is thinking</span>
+                    <div class="thinking-dots">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>
+            `;
+            chat.appendChild(thinking);
+            chat.scrollTop = chat.scrollHeight;
+            return thinking.id;
+        }
+        
+        // Remove thinking indicator
+        function removeThinking(thinkingId) {
+            const element = document.getElementById(thinkingId);
+            if (element) element.remove();
+        }
+        
+        // Quick command helper
+        function quickCommand(command) {
+            document.getElementById('frankInput').value = command;
+            sendToFrank();
+        }
+        
+        // Capitalize first letter
+        function capitalizeFirst(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+        
+        // Enter key to send
+        document.getElementById('frankInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendToFrank();
+            }
+        });
+        
+        // Initialize on load
+        loadDocument();
+    </script>
+</body>
+</html>
