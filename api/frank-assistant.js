@@ -1,14 +1,15 @@
 // FRANK - THE DOC-DRIVEN DEVELOPMENT ASSISTANT
 // No-nonsense workflow orchestrator with Brooklyn attitude
 
-import fs from 'fs/promises';
-import path from 'path';
+const fs = require('fs').promises;
+const path = require('path');
 
-const DRAFTS_DIR = '/Users/don/UncleFrank/unclefrank-bootstrap/data/drafts';
-const PROJECT_MD_PATH = '/Users/don/UncleFrank/unclefrank-bootstrap/docs to work towards/project.md';
+// Use /tmp for Vercel serverless functions
+const DRAFTS_DIR = process.env.DRAFTS_DIR || '/tmp/drafts';
+const PROJECT_MD_PATH = process.env.PROJECT_MD_PATH || '/tmp/project.md';
 const CLAUDE_URL = 'https://uncle-frank-claude.fly.dev';
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
     // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');

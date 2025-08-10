@@ -1,17 +1,17 @@
 // PROJECT.MD DRAFT MANAGER - Uncle Frank's Doc-Driven Development System
 // Manages Project.md drafts, validation, and the immutable flow
 
-import fs from 'fs/promises';
-import path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import https from 'https';
+const fs = require('fs').promises;
+const path = require('path');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const https = require('https');
 
 const execAsync = promisify(exec);
 
 // Constants
-const PROJECT_MD_PATH = '/Users/don/UncleFrank/unclefrank-bootstrap/docs to work towards/project.md';
-const DRAFTS_DIR = '/Users/don/UncleFrank/unclefrank-bootstrap/data/drafts';
+const PROJECT_MD_PATH = process.env.PROJECT_MD_PATH || '/tmp/project.md';
+const DRAFTS_DIR = process.env.DRAFTS_DIR || '/tmp/drafts';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = 'bhuman-ai/unclefrank-bootstrap';
 
@@ -27,7 +27,7 @@ const DRAFT_STATES = {
     FAILED: 'failed'
 };
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
     // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -151,8 +151,9 @@ async function validateDraft(req, res) {
     let interfaceContent = '';
     let technicalContent = '';
     try {
-        interfaceContent = await fs.readFile('/Users/don/UncleFrank/unclefrank-bootstrap/docs to work towards/interface.md', 'utf8');
-        technicalContent = await fs.readFile('/Users/don/UncleFrank/unclefrank-bootstrap/docs to work towards/technical.md', 'utf8');
+        // For now, use placeholder content since we can't access local files on Vercel
+        interfaceContent = process.env.INTERFACE_MD || 'Interface specification not available';
+        technicalContent = process.env.TECHNICAL_MD || 'Technical specification not available';
     } catch (error) {
         console.error('Failed to load reference docs:', error);
     }

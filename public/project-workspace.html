@@ -431,15 +431,41 @@
         // Load Project.md on startup
         async function loadProjectMd() {
             try {
-                // Load from the docs to work towards folder
-                const response = await fetch('/docs%20to%20work%20towards/project.md');
-                const text = await response.text();
+                // Try to load from the API first
+                const response = await fetch('/api/project-draft-manager?action=get-production');
                 
-                if (currentTab === 'production') {
-                    document.getElementById('documentContent').textContent = text;
+                if (response.ok) {
+                    const data = await response.json();
+                    if (currentTab === 'production') {
+                        document.getElementById('documentContent').textContent = data.content || 'No Project.md content available';
+                    }
+                } else {
+                    // Fallback to static file
+                    const staticResponse = await fetch('/docs%20to%20work%20towards/project.md');
+                    if (staticResponse.ok) {
+                        const text = await staticResponse.text();
+                        if (currentTab === 'production') {
+                            document.getElementById('documentContent').textContent = text;
+                        }
+                    } else {
+                        throw new Error('Could not load Project.md from any source');
+                    }
                 }
             } catch (error) {
-                document.getElementById('documentContent').textContent = 'Failed to load Project.md: ' + error.message;
+                // Show helpful error message
+                document.getElementById('documentContent').textContent = `# Project.md Not Available
+
+The Project.md file could not be loaded. This is likely because:
+
+1. The API is not configured with proper environment variables
+2. The static file is not accessible on Vercel
+
+To fix this:
+1. Add GITHUB_TOKEN to Vercel environment variables
+2. Configure PROJECT_MD_PATH properly
+3. Or use the draft system to create new content
+
+Error: ${error.message}`;
             }
         }
         
