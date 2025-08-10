@@ -886,7 +886,7 @@
         };
 
         // Kanban Board Component
-        const KanbanBoard = ({ tasks, onUpdateTaskStatus, onViewChanges, onRunTests, onApprove, onRequestChanges, onTaskClick }) => {
+        const KanbanBoard = ({ tasks, onUpdateTaskStatus, onViewChanges, onRunTests, onApprove, onRequestChanges, onTaskClick, onRefreshTasks }) => {
             const [viewMode, setViewMode] = useState('kanban'); // 'kanban' or 'table'
             const [isRefreshing, setIsRefreshing] = useState(false);
             
@@ -940,32 +940,46 @@
                 return task;
             };
             
-            // Refresh task statuses
+            // Refresh task statuses from Claude and update GitHub
             const refreshTaskStatuses = async () => {
                 setIsRefreshing(true);
                 addLog('Refreshing task statuses from Claude...', 'info');
                 
                 const updatedTasks = await Promise.all(tasks.map(checkTaskStatus));
                 
-                // Update state with new statuses
-                setState(prev => ({
-                    ...prev,
-                    reviewTasks: updatedTasks
-                }));
+                // Pass updated tasks back to parent
+                if (onRefreshTasks) {
+                    onRefreshTasks(updatedTasks);
+                }
                 
-                // Count status changes
-                let changedCount = 0;
-                updatedTasks.forEach((task, index) => {
-                    if (task.status !== tasks[index].status) {
-                        changedCount++;
-                        addLog(`Task "${task.name}" status: ${tasks[index].status} → ${task.status}`, 'success');
+                // Update GitHub issues for tasks that changed to Awaiting Review
+                for (let i = 0; i < updatedTasks.length; i++) {
+                    const newTask = updatedTasks[i];
+                    const oldTask = tasks[i];
+                    
+                    if (newTask.status !== oldTask.status) {
+                        addLog(`Task "${newTask.name}" status: ${oldTask.status} → ${newTask.status}`, 'success');
+                        
+                        // If task is now ready for review and has an issue number, update GitHub
+                        if (newTask.status === 'Awaiting Review' && newTask.issueNumber) {
+                            try {
+                                await fetch('/api/github', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        action: 'update-issue-status',
+                                        issueNumber: newTask.issueNumber,
+                                        status: 'ready_for_review',
+                                        sessionId: newTask.sessionId || newTask.threadId,
+                                        testingInstructions: newTask.testingInstructions
+                                    })
+                                });
+                                addLog(`✅ Updated GitHub issue #${newTask.issueNumber} to ready for review`, 'success');
+                            } catch (error) {
+                                console.error('Failed to update GitHub issue:', error);
+                            }
+                        }
                     }
-                });
-                
-                if (changedCount > 0) {
-                    addLog(`Updated ${changedCount} task statuses`, 'success');
-                } else {
-                    addLog('All task statuses are up to date', 'info');
                 }
                 
                 setIsRefreshing(false);
@@ -1079,7 +1093,7 @@
                                 disabled={isRefreshing}
                                 className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition disabled:opacity-50"
                             >
-                                {isRefreshing ? 'Refreshing...' : 'Refresh from GitHub'}
+                                {isRefreshing ? 'Refreshing...' : 'Refresh Status'}
                             </button>
                             <button
                                 onClick={() => setViewMode(viewMode === 'kanban' ? 'table' : 'kanban')}
@@ -1411,6 +1425,7 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                             issueNumber: issue.number,
                             issueUrl: issue.html_url,
                             threadId: claudeSession,
+                            sessionId: claudeSession, // Add sessionId too
                             created: issue.created_at
                         };
                         
@@ -1529,11 +1544,44 @@ The system can execute tasks in Claude, which creates GitHub branches, but there
                     
                     addLog(`Loaded ${allTasks.length} tasks (${tasksByIssue.size} issues, ${updatedTasks.length} branches, ${localTasks.length} local)`, 'success');
                     
+                    // Check Claude session status for each task
+                    const tasksWithStatus = await Promise.all(allTasks.map(async (task) => {
+                        if (task.sessionId || task.threadId) {
+                            const sessionId = task.sessionId || task.threadId;
+                            try {
+                                const response = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${sessionId}/status`);
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    if (data.status === 'ready_for_review' || data.humanReviewRequired) {
+                                        return {
+                                            ...task,
+                                            status: 'Awaiting Review',
+                                            humanReviewRequired: true,
+                                            testingInstructions: data.testingInstructions
+                                        };
+                                    }
+                                }
+                            } catch (e) {
+                                console.log('Failed to check session status:', e);
+                            }
+                        }
+                        return task;
+                    }));
+                    
+                    // Update state with loaded tasks
+                    setState(prev => ({
+                        ...prev,
+                        reviewTasks: tasksWithStatus
+                    }));
+                    
                 } catch (error) {
                     addLog(`Failed to load tasks from GitHub: ${error.message}`, 'error');
                     // FRANK'S RULE: NO FALLBACKS - FAIL FAST AND HONEST
                     addLog('System requires GitHub integration to function. Fix the connection.', 'error');
-                    setTasks([]);
+                    setState(prev => ({
+                        ...prev,
+                        reviewTasks: []
+                    }));
                 }
                 
                 setLoadingTasks(false);
@@ -4391,6 +4439,12 @@ Claude Session ID: ${task.threadId}
                                 onApprove={handleApprove}
                                 onRequestChanges={handleRequestChanges}
                                 onTaskClick={openTaskWorkspace}
+                                onRefreshTasks={(updatedTasks) => {
+                                    setState(prev => ({
+                                        ...prev,
+                                        reviewTasks: updatedTasks
+                                    }));
+                                }}
                             />
                         )}
                     </div>

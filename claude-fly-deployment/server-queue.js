@@ -598,14 +598,46 @@ app.get('/api/sessions/:sessionId/status', (req, res) => {
     
     const lastMessage = session.messages[session.messages.length - 1];
     
+    // Check if last message contains completion marker
+    let humanReviewRequired = session.humanReviewRequired || false;
+    let testingInstructions = session.testingInstructions || null;
+    
+    if (session.status === 'completed' && lastMessage && lastMessage.role === 'assistant') {
+        const content = lastMessage.content || '';
+        if (content.includes('All Checkpoints Complete') || 
+            content.includes('TASK COMPLETE') || 
+            content.includes('Successfully built') ||
+            content.includes('✅ Checkpoint 5:')) {
+            humanReviewRequired = true;
+            session.humanReviewRequired = true;
+            session.status = 'ready_for_review';
+            
+            // Extract testing instructions from content if not already set
+            if (!testingInstructions) {
+                const instructions = [
+                    '1. Review all checkpoints were completed successfully',
+                    '2. Test the implementation matches requirements',
+                    '3. Verify all pass criteria are met',
+                    '4. Check for any errors or issues',
+                    '5. Run integration tests if available'
+                ];
+                testingInstructions = instructions.join('\n');
+                session.testingInstructions = testingInstructions;
+            }
+            
+            // Save the updated session
+            saveSessions();
+        }
+    }
+    
     res.json({
         sessionId: session.id,
         status: session.status,
         messageCount: session.messages.length,
-        lastResponse: session.status === 'completed' ? lastMessage : null,
+        lastResponse: session.status === 'completed' || session.status === 'ready_for_review' ? lastMessage : null,
         error: session.error || null,
-        humanReviewRequired: session.humanReviewRequired || false,
-        testingInstructions: session.testingInstructions || null
+        humanReviewRequired: humanReviewRequired,
+        testingInstructions: testingInstructions
     });
 });
 
