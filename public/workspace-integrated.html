@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Workspace - Integrated Task Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 12px 20px;
+            border-bottom: 2px solid #7c3aed;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .header h1 {
+            font-size: 20px;
+            color: #fff;
+        }
+        
+        .status-bar {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .status-indicator {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            background: rgba(124, 58, 237, 0.2);
+            border: 1px solid #7c3aed;
+        }
+        
+        .main-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        /* Document Editor - 2/3 width */
+        .editor-panel {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #333;
+        }
+        
+        .editor-tabs {
+            display: flex;
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
+        }
+        
+        .editor-tab {
+            padding: 10px 20px;
+            background: transparent;
+            color: #888;
+            border: none;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+        }
+        
+        .editor-tab.active {
+            color: #fff;
+            background: #0a0a0a;
+            border-bottom-color: #7c3aed;
+        }
+        
+        .editor-content {
+            flex: 1;
+            display: flex;
+            position: relative;
+        }
+        
+        /* Split editor view */
+        .split-editor {
+            display: flex;
+            width: 100%;
+        }
+        
+        .editor-side {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .editor-header {
+            padding: 10px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #888;
+        }
+        
+        .editor-textarea {
+            flex: 1;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            border: none;
+            padding: 15px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            resize: none;
+            overflow-y: auto;
+        }
+        
+        .editor-divider {
+            width: 1px;
+            background: #333;
+        }
+        
+        /* Diff highlights */
+        .diff-added {
+            background: rgba(16, 185, 129, 0.1);
+            border-left: 3px solid #10b981;
+        }
+        
+        .diff-removed {
+            background: rgba(239, 68, 68, 0.1);
+            border-left: 3px solid #ef4444;
+        }
+        
+        .diff-modified {
+            background: rgba(251, 191, 36, 0.1);
+            border-left: 3px solid #fbbf24;
+        }
+        
+        /* Task Panel - 1/3 width */
+        .task-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #111;
+        }
+        
+        .task-header {
+            padding: 15px;
+            background: #1a1a2e;
+            border-bottom: 1px solid #333;
+        }
+        
+        .task-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+        
+        .task-subtitle {
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .task-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        
+        .task-item {
+            background: rgba(26, 26, 46, 0.4);
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            transition: all 0.3s;
+        }
+        
+        .task-item:hover {
+            border-color: #7c3aed;
+            background: rgba(124, 58, 237, 0.1);
+        }
+        
+        .task-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        
+        .task-status.pending {
+            background: rgba(156, 163, 175, 0.2);
+            color: #9ca3af;
+        }
+        
+        .task-status.ready {
+            background: rgba(124, 58, 237, 0.2);
+            color: #a78bfa;
+        }
+        
+        .task-status.executing {
+            background: rgba(251, 191, 36, 0.2);
+            color: #fbbf24;
+        }
+        
+        .task-status.completed {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+        
+        .task-name {
+            font-size: 14px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+        
+        .task-description {
+            font-size: 12px;
+            color: #a0a0a0;
+            margin-bottom: 8px;
+        }
+        
+        .task-changes {
+            font-size: 11px;
+            color: #888;
+            background: #0a0a0a;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 8px;
+        }
+        
+        .task-change-item {
+            margin: 2px 0;
+        }
+        
+        .change-add { color: #10b981; }
+        .change-remove { color: #ef4444; }
+        .change-modify { color: #fbbf24; }
+        
+        /* Action bar */
+        .action-bar {
+            padding: 15px;
+            background: #1a1a2e;
+            border-top: 1px solid #333;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #7c3aed;
+            color: white;
+            flex: 1;
+        }
+        
+        .btn-primary:hover {
+            background: #6b2ed3;
+        }
+        
+        .btn-primary:disabled {
+            background: #4a4a4a;
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background: transparent;
+            color: #a0a0a0;
+            border: 1px solid #333;
+        }
+        
+        .btn-secondary:hover {
+            border-color: #7c3aed;
+            color: #fff;
+        }
+        
+        /* Progress overlay */
+        .progress-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .progress-overlay.active {
+            display: flex;
+        }
+        
+        .progress-content {
+            background: #1a1a2e;
+            border: 1px solid #7c3aed;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 500px;
+            text-align: center;
+        }
+        
+        .progress-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        
+        .progress-status {
+            margin-bottom: 20px;
+        }
+        
+        .progress-bar {
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #7c3aed, #a855f7);
+            transition: width 0.3s;
+        }
+        
+        .progress-text {
+            font-size: 14px;
+            color: #a0a0a0;
+        }
+        
+        /* Frank helper */
+        .frank-helper {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #1a1a2e;
+            border: 1px solid #7c3aed;
+            border-radius: 12px;
+            padding: 15px;
+            max-width: 300px;
+            display: none;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+        
+        .frank-helper.active {
+            display: block;
+        }
+        
+        .frank-message {
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        /* Loading spinner */
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #333;
+            border-top-color: #7c3aed;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📝 Project Workspace - Integrated</h1>
+        <div class="status-bar">
+            <div class="status-indicator" id="changeStatus">No changes</div>
+            <div class="status-indicator" id="taskStatus">0 tasks</div>
+            <div class="status-indicator" id="systemStatus">Ready</div>
+        </div>
+    </div>
+    
+    <div class="main-container">
+        <!-- Document Editor -->
+        <div class="editor-panel">
+            <div class="editor-tabs">
+                <button class="editor-tab active" onclick="switchView('edit')">Edit Mode</button>
+                <button class="editor-tab" onclick="switchView('diff')">Review Changes</button>
+            </div>
+            
+            <div class="editor-content">
+                <div class="split-editor" id="editView">
+                    <!-- Production side -->
+                    <div class="editor-side">
+                        <div class="editor-header">📄 Production (Current)</div>
+                        <textarea class="editor-textarea" id="productionEditor" readonly></textarea>
+                    </div>
+                    
+                    <div class="editor-divider"></div>
+                    
+                    <!-- Draft side -->
+                    <div class="editor-side">
+                        <div class="editor-header">✏️ Draft (Your Changes)</div>
+                        <textarea class="editor-textarea" id="draftEditor" placeholder="Start editing here..."></textarea>
+                    </div>
+                </div>
+                
+                <div class="split-editor" id="diffView" style="display: none;">
+                    <!-- Diff visualization will be injected here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Task Panel -->
+        <div class="task-panel">
+            <div class="task-header">
+                <div class="task-title">🎯 Execution Plan</div>
+                <div class="task-subtitle" id="taskSummary">Changes will appear here automatically</div>
+            </div>
+            
+            <div class="task-list" id="taskList">
+                <div style="text-align: center; padding: 40px; color: #666;">
+                    <div>No changes detected</div>
+                    <div style="margin-top: 10px; font-size: 12px;">Edit the draft to see tasks</div>
+                </div>
+            </div>
+            
+            <div class="action-bar">
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" onclick="analyzeDiff()">
+                        🔍 Analyze
+                    </button>
+                    <button class="btn btn-primary" id="executeBtn" onclick="executeAllTasks()" disabled>
+                        ⚡ Execute All Tasks
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Progress Overlay -->
+    <div class="progress-overlay" id="progressOverlay">
+        <div class="progress-content">
+            <div class="progress-title">🚀 Executing Tasks</div>
+            <div class="progress-status">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                </div>
+                <div class="progress-text" id="progressText">Initializing...</div>
+            </div>
+            <div style="margin-top: 20px;">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Frank Helper -->
+    <div class="frank-helper" id="frankHelper">
+        <div class="frank-message" id="frankMessage"></div>
+    </div>
+    
+    <script>
+        let productionContent = '';
+        let draftContent = '';
+        let detectedChanges = [];
+        let generatedTasks = [];
+        let currentView = 'edit';
+        let executionInProgress = false;
+        
+        // Load production Project.md
+        async function loadProduction() {
+            try {
+                // Try API first
+                const response = await fetch('/api/project-draft-manager?action=get-production');
+                if (response.ok) {
+                    const data = await response.json();
+                    productionContent = data.content || '';
+                } else {
+                    // Fallback to static file
+                    const staticResponse = await fetch('/project.md');
+                    if (staticResponse.ok) {
+                        productionContent = await staticResponse.text();
+                    }
+                }
+                
+                document.getElementById('productionEditor').value = productionContent;
+                
+                // Initialize draft with production content
+                if (!draftContent) {
+                    draftContent = productionContent;
+                    document.getElementById('draftEditor').value = draftContent;
+                }
+            } catch (error) {
+                console.error('Failed to load production:', error);
+                showFrank('Could not load Project.md. Check your setup.');
+            }
+        }
+        
+        // Auto-detect changes as user types
+        let changeTimeout;
+        document.getElementById('draftEditor').addEventListener('input', (e) => {
+            draftContent = e.target.value;
+            
+            // Debounce change detection
+            clearTimeout(changeTimeout);
+            changeTimeout = setTimeout(() => {
+                detectChanges();
+            }, 1000); // Wait 1 second after typing stops
+        });
+        
+        // Detect changes between production and draft
+        function detectChanges() {
+            const prodLines = productionContent.split('\n');
+            const draftLines = draftContent.split('\n');
+            
+            detectedChanges = [];
+            let changeCount = 0;
+            
+            // Simple diff algorithm (would use proper diff library in production)
+            const maxLines = Math.max(prodLines.length, draftLines.length);
+            
+            for (let i = 0; i < maxLines; i++) {
+                const prodLine = prodLines[i] || '';
+                const draftLine = draftLines[i] || '';
+                
+                if (prodLine !== draftLine) {
+                    changeCount++;
+                    
+                    if (!prodLine && draftLine) {
+                        detectedChanges.push({
+                            type: 'add',
+                            line: i + 1,
+                            content: draftLine
+                        });
+                    } else if (prodLine && !draftLine) {
+                        detectedChanges.push({
+                            type: 'remove',
+                            line: i + 1,
+                            content: prodLine
+                        });
+                    } else {
+                        detectedChanges.push({
+                            type: 'modify',
+                            line: i + 1,
+                            from: prodLine,
+                            to: draftLine
+                        });
+                    }
+                }
+            }
+            
+            // Update status
+            if (changeCount > 0) {
+                document.getElementById('changeStatus').textContent = `${changeCount} changes`;
+                document.getElementById('changeStatus').style.background = 'rgba(251, 191, 36, 0.2)';
+                
+                // Auto-generate tasks from changes
+                generateTasksFromChanges();
+            } else {
+                document.getElementById('changeStatus').textContent = 'No changes';
+                document.getElementById('changeStatus').style.background = 'rgba(124, 58, 237, 0.2)';
+                generatedTasks = [];
+                updateTaskList();
+            }
+        }
+        
+        // Generate tasks from detected changes
+        function generateTasksFromChanges() {
+            generatedTasks = [];
+            
+            // Group changes into logical tasks
+            const sections = groupChangesBySection();
+            
+            for (const section of sections) {
+                const task = {
+                    id: `task-${Date.now()}-${generatedTasks.length}`,
+                    name: generateTaskName(section),
+                    description: generateTaskDescription(section),
+                    changes: section.changes,
+                    status: 'ready',
+                    estimatedTime: estimateTaskTime(section)
+                };
+                
+                generatedTasks.push(task);
+            }
+            
+            // Update UI
+            document.getElementById('taskStatus').textContent = `${generatedTasks.length} tasks`;
+            document.getElementById('executeBtn').disabled = generatedTasks.length === 0;
+            
+            updateTaskList();
+        }
+        
+        // Group changes by section (headers in markdown)
+        function groupChangesBySection() {
+            const sections = [];
+            let currentSection = {
+                name: 'General Changes',
+                changes: []
+            };
+            
+            for (const change of detectedChanges) {
+                // Check if this is a header change
+                if (change.content && change.content.startsWith('#')) {
+                    // Start new section
+                    if (currentSection.changes.length > 0) {
+                        sections.push(currentSection);
+                    }
+                    currentSection = {
+                        name: change.content.replace(/^#+\s*/, ''),
+                        changes: [change]
+                    };
+                } else {
+                    currentSection.changes.push(change);
+                }
+            }
+            
+            if (currentSection.changes.length > 0) {
+                sections.push(currentSection);
+            }
+            
+            return sections;
+        }
+        
+        // Generate task name from section
+        function generateTaskName(section) {
+            const changeTypes = section.changes.map(c => c.type);
+            const hasAdd = changeTypes.includes('add');
+            const hasRemove = changeTypes.includes('remove');
+            const hasModify = changeTypes.includes('modify');
+            
+            if (hasAdd && !hasRemove && !hasModify) {
+                return `Add ${section.name}`;
+            } else if (hasRemove && !hasAdd && !hasModify) {
+                return `Remove ${section.name}`;
+            } else if (hasModify && !hasAdd && !hasRemove) {
+                return `Update ${section.name}`;
+            } else {
+                return `Refactor ${section.name}`;
+            }
+        }
+        
+        // Generate task description
+        function generateTaskDescription(section) {
+            const summary = [];
+            const adds = section.changes.filter(c => c.type === 'add').length;
+            const removes = section.changes.filter(c => c.type === 'remove').length;
+            const modifies = section.changes.filter(c => c.type === 'modify').length;
+            
+            if (adds > 0) summary.push(`${adds} additions`);
+            if (removes > 0) summary.push(`${removes} deletions`);
+            if (modifies > 0) summary.push(`${modifies} modifications`);
+            
+            return summary.join(', ');
+        }
+        
+        // Estimate task time
+        function estimateTaskTime(section) {
+            const changeCount = section.changes.length;
+            if (changeCount <= 5) return '5 min';
+            if (changeCount <= 10) return '10 min';
+            if (changeCount <= 20) return '15 min';
+            return '20+ min';
+        }
+        
+        // Update task list UI
+        function updateTaskList() {
+            const taskList = document.getElementById('taskList');
+            
+            if (generatedTasks.length === 0) {
+                taskList.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #666;">
+                        <div>No changes detected</div>
+                        <div style="margin-top: 10px; font-size: 12px;">Edit the draft to see tasks</div>
+                    </div>
+                `;
+                document.getElementById('taskSummary').textContent = 'Changes will appear here automatically';
+                return;
+            }
+            
+            document.getElementById('taskSummary').textContent = `${generatedTasks.length} tasks ready for execution`;
+            
+            taskList.innerHTML = generatedTasks.map(task => `
+                <div class="task-item" data-task-id="${task.id}">
+                    <span class="task-status ${task.status}">${task.status}</span>
+                    <div class="task-name">${task.name}</div>
+                    <div class="task-description">${task.description}</div>
+                    <div class="task-changes">
+                        ${task.changes.slice(0, 3).map(change => `
+                            <div class="task-change-item">
+                                <span class="change-${change.type}">
+                                    ${change.type === 'add' ? '+' : change.type === 'remove' ? '-' : '~'}
+                                </span>
+                                Line ${change.line}: ${truncate(change.content || change.to, 50)}
+                            </div>
+                        `).join('')}
+                        ${task.changes.length > 3 ? `<div style="color: #666;">...and ${task.changes.length - 3} more changes</div>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Execute all tasks
+        async function executeAllTasks() {
+            if (executionInProgress || generatedTasks.length === 0) return;
+            
+            // Confirm with user
+            const confirmed = confirm(`Execute ${generatedTasks.length} tasks?\n\nThis will:\n1. Create a draft in the system\n2. Validate changes\n3. Execute each task with Claude\n4. Update Project.md when complete`);
+            
+            if (!confirmed) return;
+            
+            executionInProgress = true;
+            showProgress();
+            
+            try {
+                // Step 1: Create draft
+                updateProgress(10, 'Creating draft...');
+                const draft = await createDraft();
+                
+                // Step 2: Validate
+                updateProgress(20, 'Validating changes...');
+                await validateDraft(draft.draftId);
+                
+                // Step 3: Execute tasks
+                let progress = 30;
+                const progressPerTask = 60 / generatedTasks.length;
+                
+                for (let i = 0; i < generatedTasks.length; i++) {
+                    const task = generatedTasks[i];
+                    updateProgress(progress, `Executing: ${task.name}`);
+                    
+                    // Update task status in UI
+                    updateTaskStatus(task.id, 'executing');
+                    
+                    // Execute with Claude
+                    await executeTask(task, draft.draftId);
+                    
+                    // Mark complete
+                    updateTaskStatus(task.id, 'completed');
+                    progress += progressPerTask;
+                }
+                
+                // Step 4: Merge to production
+                updateProgress(90, 'Merging to production...');
+                await mergeDraft(draft.draftId);
+                
+                // Step 5: Complete
+                updateProgress(100, 'Complete!');
+                
+                setTimeout(() => {
+                    hideProgress();
+                    showFrank('All tasks executed successfully! Project.md has been updated.');
+                    
+                    // Reload production content
+                    loadProduction();
+                    
+                    // Clear changes
+                    detectedChanges = [];
+                    generatedTasks = [];
+                    updateTaskList();
+                }, 2000);
+                
+            } catch (error) {
+                hideProgress();
+                showFrank(`Execution failed: ${error.message}`);
+            } finally {
+                executionInProgress = false;
+            }
+        }
+        
+        // Create draft via API
+        async function createDraft() {
+            const response = await fetch('/api/project-draft-manager?action=create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: draftContent,
+                    description: `Automated changes: ${generatedTasks.map(t => t.name).join(', ')}`,
+                    author: 'integrated-workspace'
+                })
+            });
+            
+            if (!response.ok) throw new Error('Failed to create draft');
+            return response.json();
+        }
+        
+        // Validate draft
+        async function validateDraft(draftId) {
+            const response = await fetch('/api/project-draft-manager?action=validate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ draftId })
+            });
+            
+            const result = await response.json();
+            if (!result.allPassed) {
+                throw new Error('Validation failed: ' + result.validations.filter(v => !v.passed).map(v => v.message).join(', '));
+            }
+        }
+        
+        // Execute individual task
+        async function executeTask(task, draftId) {
+            // In real implementation, this would call Claude executor
+            // For now, simulate execution
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Would actually call:
+            // const response = await fetch('/api/claude-executor-integration', {
+            //     method: 'POST',
+            //     headers: { 'Content-Type': 'application/json' },
+            //     body: JSON.stringify({
+            //         action: 'create-task',
+            //         payload: {
+            //             message: `Execute task: ${task.name}\n${task.description}`,
+            //             draftId: draftId
+            //         }
+            //     })
+            // });
+        }
+        
+        // Merge draft to production
+        async function mergeDraft(draftId) {
+            const response = await fetch('/api/project-draft-manager?action=merge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ draftId })
+            });
+            
+            if (!response.ok) throw new Error('Failed to merge draft');
+        }
+        
+        // UI Helper Functions
+        function switchView(view) {
+            currentView = view;
+            document.querySelectorAll('.editor-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            if (view === 'edit') {
+                document.getElementById('editView').style.display = 'flex';
+                document.getElementById('diffView').style.display = 'none';
+            } else {
+                document.getElementById('editView').style.display = 'none';
+                document.getElementById('diffView').style.display = 'flex';
+                renderDiff();
+            }
+        }
+        
+        function renderDiff() {
+            // Would render a proper diff view
+            document.getElementById('diffView').innerHTML = `
+                <div style="padding: 20px; width: 100%;">
+                    <h3>Change Review</h3>
+                    <div style="margin-top: 20px;">
+                        ${detectedChanges.map(change => `
+                            <div class="diff-${change.type}" style="padding: 10px; margin: 5px 0;">
+                                Line ${change.line}: ${change.type}
+                                ${change.content || change.to || change.from}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        function updateTaskStatus(taskId, status) {
+            const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+            if (taskElement) {
+                const statusElement = taskElement.querySelector('.task-status');
+                statusElement.className = `task-status ${status}`;
+                statusElement.textContent = status;
+            }
+        }
+        
+        function showProgress() {
+            document.getElementById('progressOverlay').classList.add('active');
+        }
+        
+        function hideProgress() {
+            document.getElementById('progressOverlay').classList.remove('active');
+        }
+        
+        function updateProgress(percent, text) {
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressText').textContent = text;
+        }
+        
+        function showFrank(message) {
+            const helper = document.getElementById('frankHelper');
+            document.getElementById('frankMessage').textContent = message;
+            helper.classList.add('active');
+            
+            setTimeout(() => {
+                helper.classList.remove('active');
+            }, 5000);
+        }
+        
+        function analyzeDiff() {
+            detectChanges();
+            if (detectedChanges.length > 0) {
+                showFrank(`Found ${detectedChanges.length} changes. Generated ${generatedTasks.length} tasks. Click "Execute All Tasks" when ready.`);
+            } else {
+                showFrank('No changes detected. Edit the draft to create tasks.');
+            }
+        }
+        
+        function truncate(text, length) {
+            if (!text) return '';
+            if (text.length <= length) return text;
+            return text.substring(0, length) + '...';
+        }
+        
+        // Initialize on load
+        loadProduction();
+    </script>
+</body>
+</html>
