@@ -76,5 +76,11 @@ RUN chmod +x auto-improve-flyio.sh
 # Copy monitor server
 COPY monitor-server.js ./
 
+# Copy the WORKING auto-improve that uses queue
+COPY auto-improve-via-queue.js ./
+
+# Copy the INTELLIGENT auto-improve system
+COPY auto-improve-intelligent.js ./
+
 # Run startup script which handles persistent storage and starts server
 CMD ["/bin/bash", "-c", "./startup.sh"]

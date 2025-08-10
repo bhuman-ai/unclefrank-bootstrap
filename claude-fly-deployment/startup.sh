@@ -145,6 +145,19 @@ nohup node monitor-server.js > /app/monitor.log 2>&1 &
 MONITOR_PID=$!
 echo "Monitor server started with PID: $MONITOR_PID on port 8081"
 
+# Start the INTELLIGENT AUTO-IMPROVE SYSTEM
+echo "🧠 Starting INTELLIGENT AUTO-IMPROVE..."
+nohup node auto-improve-intelligent.js > /app/auto-improve.log 2>&1 &
+AUTO_PID=$!
+echo "✅ Intelligent auto-improve started with PID: $AUTO_PID"
+echo "Will:"
+echo "  1. Read 'docs to work towards' files"
+echo "  2. Analyze current implementation"
+echo "  3. Find gaps automatically"
+echo "  4. Generate tasks with checkpoints"
+echo "  5. Execute via Claude queue system"
+echo "  6. Push to GitHub → Vercel"
+
 # Copy PM2 ecosystem config
 if [ -f "ecosystem.config.js" ]; then
     cp ecosystem.config.js /app/
