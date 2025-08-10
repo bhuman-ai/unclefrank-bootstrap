@@ -1775,11 +1775,66 @@ ${state.projectContext ? `## Project Context\n${state.projectContext}` : ''}`;
                             const errorText = await response.text();
                             console.error('Claude creation failed:', errorText);
                             addLog('⚠️ Claude executor not available', 'warning');
+                            
+                            // Create basic checkpoints structure when server is down
+                            addLog('📝 Creating basic checkpoint structure...', 'info');
+                            checkpoints = [
+                                {
+                                    id: 1,
+                                    name: 'Initial Setup',
+                                    objective: 'Set up the basic structure and dependencies',
+                                    deliverables: 'Project structure; Required dependencies',
+                                    passCriteria: 'All files created; Dependencies installed'
+                                },
+                                {
+                                    id: 2,
+                                    name: 'Core Implementation',
+                                    objective: 'Implement the main functionality',
+                                    deliverables: 'Core logic; Main features',
+                                    passCriteria: 'Features working as expected'
+                                },
+                                {
+                                    id: 3,
+                                    name: 'Testing & Validation',
+                                    objective: 'Test and validate the implementation',
+                                    deliverables: 'Test files; Test results',
+                                    passCriteria: 'All tests pass'
+                                }
+                            ];
+                            sessionId = `manual-${Date.now()}`;
+                            addLog('✅ Created basic checkpoints for manual execution', 'success');
                         }
                     } catch (claudeError) {
                         console.error('Claude error:', claudeError);
                         addLog('⚠️ Could not connect to Claude executor', 'warning');
-                        addLog('📝 Task will be tracked in GitHub only', 'info');
+                        addLog('📝 Creating fallback checkpoints...', 'info');
+                        
+                        // Fallback checkpoints when server is completely unreachable
+                        checkpoints = [
+                            {
+                                id: 1,
+                                name: 'Initial Setup',
+                                objective: 'Set up the basic structure and dependencies',
+                                deliverables: 'Project structure; Required dependencies',
+                                passCriteria: 'All files created; Dependencies installed'
+                            },
+                            {
+                                id: 2,
+                                name: 'Core Implementation',
+                                objective: 'Implement the main functionality',
+                                deliverables: 'Core logic; Main features',
+                                passCriteria: 'Features working as expected'
+                            },
+                            {
+                                id: 3,
+                                name: 'Testing & Validation',
+                                objective: 'Test and validate the implementation',
+                                deliverables: 'Test files; Test results',
+                                passCriteria: 'All tests pass'
+                            }
+                        ];
+                        sessionId = `fallback-${Date.now()}`;
+                        addLog('✅ Created fallback checkpoints', 'success');
                     }
                     
                     // If no Claude session, create a placeholder ID
