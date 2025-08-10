@@ -268,8 +268,6 @@ async function processClaudeExecution(session, message) {
             if (currentOutput.includes('🎯 TASK COMPLETE - READY FOR HUMAN REVIEW')) {
                 console.log(`[Session ${session.id}] Task ready for human review`);
                 clearInterval(checkInterval);
-                session.status = 'ready_for_review';
-                session.humanReviewRequired = true;
                 
                 // Extract human testing instructions if present
                 const reviewMatch = currentOutput.match(/HUMAN TESTING INSTRUCTIONS:([\s\S]*?)========================================/);
@@ -277,6 +275,85 @@ async function processClaudeExecution(session, message) {
                     session.testingInstructions = reviewMatch[1].trim();
                 }
                 
+                // Extract GitHub issue number if present
+                const issueMatch = currentOutput.match(/GitHub Issue: #(\d+)/);
+                const issueNumber = issueMatch ? issueMatch[1] : null;
+                
+                try {
+                    // 1. Push code to GitHub
+                    console.log(`[Session ${session.id}] Pushing code to GitHub...`);
+                    const branchName = session.branch || `claude-session-${session.id}`;
+                    
+                    if (session.repoPath && await fs.access(session.repoPath).then(() => true).catch(() => false)) {
+                        await execAsync(`cd ${session.repoPath} && git add -A && git commit -m "Task completed by Claude session ${session.id}" || true`);
+                        await execAsync(`cd ${session.repoPath} && git push origin ${branchName}`);
+                        console.log(`[Session ${session.id}] Code pushed to branch ${branchName}`);
+                        
+                        // 2. Create PR
+                        const prResult = await execAsync(`gh pr create \
+                            --base master \
+                            --head ${branchName} \
+                            --title "Task: Session ${session.id}" \
+                            --body "## 🎯 Ready for Human Review\\n\\nSession: ${session.id}\\n${issueNumber ? 'Closes #' + issueNumber : ''}\\n\\n### Testing Instructions:\\n${session.testingInstructions || 'See task details'}\\n\\n🤖 Auto-generated PR" \
+                            --repo bhuman-ai/unclefrank-bootstrap`);
+                        
+                        const prUrlMatch = prResult.stdout.match(/https:\/\/github\.com\/[^\s]+/);
+                        const prUrl = prUrlMatch ? prUrlMatch[0] : null;
+                        session.prUrl = prUrl;
+                        
+                        console.log(`[Session ${session.id}] PR created: ${prUrl}`);
+                        
+                        // 3. Wait for Vercel preview URL (usually takes 30-60 seconds)
+                        if (prUrl) {
+                            const prNumber = prUrl.split('/').pop();
+                            console.log(`[Session ${session.id}] Waiting for Vercel preview...`);
+                            
+                            // Poll for Vercel comment (try for 2 minutes)
+                            let vercelUrl = null;
+                            for (let i = 0; i < 24; i++) {
+                                await new Promise(resolve => setTimeout(resolve, 5000));
+                                try {
+                                    const comments = await execAsync(`gh pr view ${prNumber} --repo bhuman-ai/unclefrank-bootstrap --json comments -q '.comments[].body' | grep -o 'https://[^[:space:]]*vercel.app[^[:space:]]*' | head -1`);
+                                    if (comments.stdout) {
+                                        vercelUrl = comments.stdout.trim();
+                                        break;
+                                    }
+                                } catch (e) {
+                                    // Keep trying
+                                }
+                            }
+                            
+                            if (vercelUrl) {
+                                session.vercelPreviewUrl = vercelUrl;
+                                console.log(`[Session ${session.id}] Vercel preview: ${vercelUrl}`);
+                            }
+                        }
+                        
+                        // 4. Update GitHub issue with all info
+                        if (issueNumber) {
+                            const updateBody = `
+## 🎯 READY FOR HUMAN REVIEW
+
+**Session:** ${session.id}
+**Branch:** ${branchName}
+**PR:** ${prUrl || 'Creating...'}
+**Vercel Preview:** ${session.vercelPreviewUrl || 'Pending...'}
+
+### Testing Instructions:
+${session.testingInstructions || 'See PR description'}
+`;
+                            
+                            await execAsync(`gh issue comment ${issueNumber} --repo bhuman-ai/unclefrank-bootstrap --body "${updateBody}"`);
+                            await execAsync(`gh issue edit ${issueNumber} --repo bhuman-ai/unclefrank-bootstrap --add-label "ready-for-review"`);
+                        }
+                    }
+                } catch (error) {
+                    console.error(`[Session ${session.id}] Failed to complete GitHub workflow:`, error);
+                }
+                
+                // 5. Only mark as ready after everything is done
+                session.status = 'ready_for_review';
+                session.humanReviewRequired = true;
                 await saveSessions();
                 return;
             }
