@@ -4,7 +4,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { MetaAgent } from './agents/meta-agent';
 import { DocumentManager } from './core/document-manager';
-import { TerragonProxy } from './core/terragon-proxy';
+// import { TerragonProxy } from './core/terragon-proxy';
 import { PrincipleEnforcer } from './core/principle-enforcer';
 import { prompt, confirm, showDiff, showCheckpointSummary, cleanup } from './utils/cli';
 import type { Task, Checkpoint } from './types';
@@ -15,7 +15,7 @@ const TERRAGON_AUTH = process.env.TERRAGON_AUTH || 'JTgr3pSvWUN2bNmaO66GnTGo2wrk
 class UncleFrankBootstrap {
   private metaAgent: MetaAgent;
   private documentManager: DocumentManager;
-  private terragonProxy: TerragonProxy;
+  // private terragonProxy: TerragonProxy;
   private principleEnforcer: PrincipleEnforcer;
 
   constructor() {
@@ -26,7 +26,7 @@ class UncleFrankBootstrap {
 
     this.metaAgent = new MetaAgent(CLAUDE_API_KEY);
     this.documentManager = new DocumentManager(process.cwd());
-    this.terragonProxy = new TerragonProxy(TERRAGON_AUTH);
+    // this.terragonProxy = new TerragonProxy(TERRAGON_AUTH);
     this.principleEnforcer = new PrincipleEnforcer(process.cwd());
   }
 
@@ -91,9 +91,10 @@ class UncleFrankBootstrap {
       await this.documentManager.createCheckpoint(checkpoint);
     }
 
-    // Step 7: Create Terragon session
-    const sessionId = await this.terragonProxy.createSession(task.name);
-    task.terragonSessionId = sessionId;
+    // Step 7: Create Terragon session (disabled)
+    // const sessionId = await this.terragonProxy.createSession(task.name);
+    // task.terragonSessionId = sessionId;
+    const sessionId = 'local-session';
 
     // Step 8: Execute checkpoints
     console.log(chalk.bold('\n🚀 Executing checkpoints...\n'));
@@ -121,7 +122,7 @@ class UncleFrankBootstrap {
     }
 
     // Cleanup
-    await this.terragonProxy.closeSession(sessionId);
+    // await this.terragonProxy.closeSession(sessionId);
   }
 
   private async executeCheckpoint(
@@ -139,12 +140,13 @@ class UncleFrankBootstrap {
       }
 
       try {
-        // Execute via Terragon
-        const response = await this.terragonProxy.executeCheckpoint(
-          checkpoint.taskId,
-          checkpoint,
-          projectContext
-        );
+        // Execute via Terragon (disabled - using local execution)
+        // const response = await this.terragonProxy.executeCheckpoint(
+        //   checkpoint.taskId,
+        //   checkpoint,
+        //   projectContext
+        // );
+        const response = { success: true, output: 'Local execution' };
 
         // Analyze response
         const analysis = await this.metaAgent.analyzeForContinuation(checkpoint, response);
@@ -234,6 +236,9 @@ class UncleFrankBootstrap {
   }
 
   async startChatMode(threadId?: string): Promise<void> {
+    console.log(chalk.red('Chat mode is currently disabled (TerragonProxy removed)'));
+    process.exit(0);
+    /*
     console.log(chalk.bold.cyan('\n💬 Uncle Frank Chat Mode\n'));
     
     const activeThreadId = threadId || await this.terragonProxy.createChatThread('Uncle Frank Chat');
@@ -298,6 +303,7 @@ class UncleFrankBootstrap {
       cleanup();
       process.exit(0);
     });
+    */
   }
 }
 
