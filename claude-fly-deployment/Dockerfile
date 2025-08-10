@@ -40,6 +40,7 @@ COPY server-queue.js ./
 COPY tmux-injector.sh ./
 COPY setup-claude-auth.sh ./
 COPY tmux.conf /etc/tmux.conf
+COPY ecosystem.config.js ./
 
 # Make scripts executable
 RUN chmod +x setup-claude-auth.sh tmux-injector.sh
