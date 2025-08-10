@@ -200,9 +200,10 @@ module.exports = async function handler(req, res) {
                             status: 'executing'
                         });
                         
-                        // Execute checkpoints if present
+                        // Execute checkpoints if present - with REAL checkpoint executor
                         if (execResult.checkpoints && execResult.checkpoints.length > 0) {
-                            await fetch(`${baseUrl}/api/claude-executor-integration`, {
+                            console.log(`[Orchestrator] Executing ${execResult.checkpoints.length} checkpoints with tests and retries`);
+                            const checkpointExecResponse = await fetch(`${baseUrl}/api/claude-executor-integration`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -210,6 +211,11 @@ module.exports = async function handler(req, res) {
                                     payload: { threadId: execResult.threadId }
                                 })
                             });
+                            
+                            if (checkpointExecResponse.ok) {
+                                const checkpointResult = await checkpointExecResponse.json();
+                                executionResults[executionResults.length - 1].checkpointResults = checkpointResult;
+                            }
                         }
                     } else {
                         executionResults.push({

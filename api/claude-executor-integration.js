@@ -393,7 +393,7 @@ IMPORTANT RULES:
       }
 
       case 'execute-checkpoints': {
-        // Phase 2: Execute the checkpoints that were already created
+        // Phase 2: Execute the checkpoints using the REAL checkpoint executor
         const { threadId } = payload;
         
         if (!threadId) {
@@ -405,7 +405,7 @@ IMPORTANT RULES:
           return res.status(404).json({ error: 'Session not found' });
         }
         
-        console.log(`[Claude Integration] Phase 2: Executing ${sessionData.checkpoints.length} checkpoints...`);
+        console.log(`[Claude Integration] Phase 2: Executing ${sessionData.checkpoints.length} checkpoints with REAL executor...`);
         
         // Filter out duplicate checkpoints and template placeholders
         const uniqueCheckpoints = sessionData.checkpoints
@@ -415,66 +415,89 @@ IMPORTANT RULES:
             !cp.deliverables.includes('[What files/code to create]')
           );
         
-        // Build message with actual checkpoint details
-        let checkpointDetails = uniqueCheckpoints.map((cp, i) => 
-          `### Checkpoint ${cp.id}: ${cp.name}
-- Objective: ${cp.objective}
-- Deliverables: ${cp.deliverables}
-- Pass Criteria: ${cp.passCriteria}`
-        ).join('\n\n');
-        
-        // Load context again for execution phase
-        let executionContext = '';
+        // Use the checkpoint executor for REAL execution with tests and retries
         try {
-          const claudeMdResponse = await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/storage-manager?action=get-doc&doc=claude`);
-          if (claudeMdResponse.ok) {
-            const claudeData = await claudeMdResponse.json();
-            executionContext = `
-# REMEMBER THE RULES (CLAUDE.md)
-${claudeData.content || 'Follow Uncle Frank\'s approach. No BS.'}
-
----
-`;
+          const checkpointResponse = await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/checkpoint-executor-v2?action=execute-all`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: threadId,
+              checkpoints: uniqueCheckpoints,
+              repoPath: sessionData.repoPath || '/app/sessions/' + threadId + '/repo'
+            })
+          });
+          
+          if (!checkpointResponse.ok) {
+            throw new Error('Checkpoint executor failed to start');
           }
+          
+          const checkpointResult = await checkpointResponse.json();
+          
+          // Update session with execution results
+          sessionData.status = checkpointResult.success ? 'completed' : 'failed';
+          sessionData.executionResults = checkpointResult;
+          sessionManager.set(threadId, sessionData);
+          
+          return res.status(200).json({
+            success: checkpointResult.success,
+            threadId,
+            status: sessionData.status,
+            passed: checkpointResult.passed,
+            failed: checkpointResult.failed,
+            blocked: checkpointResult.blocked,
+            message: checkpointResult.success ? 
+              `✅ All ${uniqueCheckpoints.length} checkpoints executed successfully` :
+              `⚠️ Execution completed with ${checkpointResult.failed} failures, ${checkpointResult.blocked} blocked`,
+            executionLog: checkpointResult.log
+          });
+          
         } catch (error) {
-          console.error('[Claude Integration] Failed to reload context:', error);
+          console.error('[Claude Integration] Checkpoint executor error:', error);
+          
+          // Fallback to old method if checkpoint executor fails
+          console.log('[Claude Integration] Falling back to simple execution...');
+          
+          // Load context again for execution phase
+          let executionContext = '';
+          try {
+            const claudeMdResponse = await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/storage-manager?action=get-doc&doc=claude`);
+            if (claudeMdResponse.ok) {
+              const claudeData = await claudeMdResponse.json();
+              executionContext = `# REMEMBER THE RULES (CLAUDE.md)\n${claudeData.content || 'Follow Uncle Frank\'s approach. No BS.'}\n\n---\n`;
+            }
+          } catch (error) {
+            console.error('[Claude Integration] Failed to reload context:', error);
+          }
+          
+          // Build checkpoint details
+          let checkpointDetails = uniqueCheckpoints.map((cp, i) => 
+            `### Checkpoint ${cp.id}: ${cp.name}\n- Objective: ${cp.objective}\n- Deliverables: ${cp.deliverables}\n- Pass Criteria: ${cp.passCriteria}`
+          ).join('\n\n');
+          
+          // Send simple execution command to Claude
+          const executeResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${threadId}/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: `${executionContext}Execute these checkpoints:\n\n${checkpointDetails}\n\nExecute in order. Report results.`
+            })
+          });
+          
+          if (!executeResponse.ok) {
+            throw new Error('Failed to start checkpoint execution');
+          }
+          
+          // Update session status
+          sessionData.status = 'executing';
+          sessionManager.set(threadId, sessionData);
+          
+          return res.status(200).json({
+            success: true,
+            threadId,
+            status: 'executing',
+            message: `Executing ${sessionData.checkpoints.length} checkpoints (fallback mode)`
+          });
         }
-        
-        // Send execution command to Claude (in the SAME session, so Claude remembers the task!)
-        const executeResponse = await fetch(`${CLAUDE_EXECUTOR_URL}/api/sessions/${threadId}/execute`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: `${executionContext}
-Now execute the checkpoints in ${sessionData.repoPath || '/app/sessions/' + threadId + '/repo'}:
-
-${checkpointDetails}
-
-## EXECUTION INSTRUCTIONS:
-1. Execute each checkpoint in order, starting with Checkpoint 1
-2. Create all files in the working directory: ${sessionData.repoPath || '/app/sessions/' + threadId + '/repo'}
-3. After each checkpoint, run tests to verify it works
-4. Report results for each checkpoint
-5. Follow Uncle Frank's approach - no BS, just get it done
-6. If something is unclear, state it bluntly and make a reasonable decision
-7. Focus on working code over documentation`
-          })
-        });
-        
-        if (!executeResponse.ok) {
-          throw new Error('Failed to start checkpoint execution');
-        }
-        
-        // Update session status
-        sessionData.status = 'executing';
-        sessionManager.set(threadId, sessionData);
-        
-        return res.status(200).json({
-          success: true,
-          threadId,
-          status: 'executing',
-          message: `Executing ${sessionData.checkpoints.length} checkpoints`
-        });
       }
 
       case 'send-message': {
