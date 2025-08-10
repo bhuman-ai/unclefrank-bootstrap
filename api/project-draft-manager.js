@@ -145,6 +145,17 @@ async function validateDraft(req, res) {
     
     // Load draft
     const draftData = JSON.parse(await fs.readFile(draftDataPath, 'utf8'));
+    const draftContent = await fs.readFile(path.join(draftPath, 'project.md'), 'utf8');
+    
+    // Load reference documents
+    let interfaceContent = '';
+    let technicalContent = '';
+    try {
+        interfaceContent = await fs.readFile('/Users/don/UncleFrank/unclefrank-bootstrap/docs to work towards/interface.md', 'utf8');
+        technicalContent = await fs.readFile('/Users/don/UncleFrank/unclefrank-bootstrap/docs to work towards/technical.md', 'utf8');
+    } catch (error) {
+        console.error('Failed to load reference docs:', error);
+    }
     
     // Update state
     draftData.state = DRAFT_STATES.VALIDATING;
@@ -154,34 +165,42 @@ async function validateDraft(req, res) {
     const validations = [];
     
     // 1. Check for UX consistency (Interface.md)
+    const uxValidation = validateUXConsistency(draftContent, interfaceContent);
     validations.push({
         type: 'ux_consistency',
-        passed: true, // TODO: Implement actual validation
-        message: 'UX flow references are consistent with Interface.md',
+        passed: uxValidation.passed,
+        message: uxValidation.message,
+        issues: uxValidation.issues,
         timestamp: new Date().toISOString()
     });
     
     // 2. Check for technical coherence (Technical.md)
+    const techValidation = validateTechnicalCoherence(draftContent, technicalContent);
     validations.push({
         type: 'technical_coherence',
-        passed: true, // TODO: Implement actual validation
-        message: 'API schemas and architecture align with Technical.md',
+        passed: techValidation.passed,
+        message: techValidation.message,
+        issues: techValidation.issues,
         timestamp: new Date().toISOString()
     });
     
     // 3. Check for logical consistency
+    const logicValidation = validateLogicalConsistency(draftContent);
     validations.push({
         type: 'logical_consistency',
-        passed: true, // TODO: Implement actual validation
-        message: 'No contradictions found in business logic',
+        passed: logicValidation.passed,
+        message: logicValidation.message,
+        issues: logicValidation.issues,
         timestamp: new Date().toISOString()
     });
     
     // 4. Check dependency impacts
+    const depValidation = validateDependencies(draftContent, technicalContent);
     validations.push({
         type: 'dependency_analysis',
-        passed: true, // TODO: Implement actual validation
-        message: 'No breaking changes detected in dependencies',
+        passed: depValidation.passed,
+        message: depValidation.message,
+        issues: depValidation.issues,
         timestamp: new Date().toISOString()
     });
     
@@ -227,6 +246,7 @@ async function breakdownToTasks(req, res) {
     
     // Load draft
     const draftData = JSON.parse(await fs.readFile(draftDataPath, 'utf8'));
+    const draftContent = await fs.readFile(path.join(draftPath, 'project.md'), 'utf8');
     
     // Check if validated
     if (draftData.state !== DRAFT_STATES.VALIDATED) {
@@ -238,35 +258,8 @@ async function breakdownToTasks(req, res) {
     // Update state
     draftData.state = DRAFT_STATES.TASK_BREAKDOWN;
     
-    // Generate tasks (this would normally use Claude API)
-    const tasks = [
-        {
-            id: `task-${Date.now()}-1`,
-            name: 'Implement core feature changes',
-            objective: 'Update core business logic as per draft',
-            acceptanceCriteria: [
-                'All new endpoints are functional',
-                'Database schema is updated',
-                'Tests pass with 100% coverage'
-            ],
-            checkpoints: [],
-            status: 'pending',
-            githubIssueNumber: null
-        },
-        {
-            id: `task-${Date.now()}-2`,
-            name: 'Update UI components',
-            objective: 'Align UI with new Project.md specifications',
-            acceptanceCriteria: [
-                'All UI components render correctly',
-                'Responsive design works on all devices',
-                'Accessibility standards are met'
-            ],
-            checkpoints: [],
-            status: 'pending',
-            githubIssueNumber: null
-        }
-    ];
+    // Use System Agent to generate tasks
+    const tasks = await generateTasksFromDraft(draftContent, draftData.description);
     
     // Create GitHub issues for each task
     for (const task of tasks) {
@@ -422,6 +415,424 @@ async function mergeDraft(req, res) {
         state: DRAFT_STATES.MERGED,
         message: 'Draft successfully merged to production Project.md'
     });
+}
+
+// Validation Helper: Check UX Consistency
+function validateUXConsistency(draftContent, interfaceContent) {
+    const issues = [];
+    
+    // Check if draft references UI components that don't exist in Interface.md
+    const uiComponents = ['Dashboard', 'Workspace', 'Panel', 'Button', 'Modal', 'Form'];
+    for (const component of uiComponents) {
+        if (draftContent.includes(component) && !interfaceContent.includes(component)) {
+            issues.push(`References ${component} but not defined in Interface.md`);
+        }
+    }
+    
+    // Check for screen structure consistency
+    if (draftContent.includes('Screen') || draftContent.includes('View')) {
+        const draftScreens = draftContent.match(/(\w+)\s+(Screen|View)/gi) || [];
+        const interfaceScreens = interfaceContent.match(/(\w+)\s+(Screen|View)/gi) || [];
+        
+        for (const screen of draftScreens) {
+            if (!interfaceScreens.some(s => s.toLowerCase() === screen.toLowerCase())) {
+                issues.push(`New screen "${screen}" not documented in Interface.md`);
+            }
+        }
+    }
+    
+    return {
+        passed: issues.length === 0,
+        message: issues.length === 0 ? 
+            'UX references are consistent with Interface.md' : 
+            `Found ${issues.length} UX inconsistencies`,
+        issues
+    };
+}
+
+// Validation Helper: Check Technical Coherence
+function validateTechnicalCoherence(draftContent, technicalContent) {
+    const issues = [];
+    
+    // Check API endpoint references
+    const apiPattern = /\/api\/[\w-]+/g;
+    const draftAPIs = draftContent.match(apiPattern) || [];
+    const techAPIs = technicalContent.match(apiPattern) || [];
+    
+    for (const api of draftAPIs) {
+        if (!techAPIs.includes(api) && !api.includes('new')) {
+            issues.push(`API endpoint ${api} not documented in Technical.md`);
+        }
+    }
+    
+    // Check agent references
+    const agentPattern = /(\w+)[-\s]?[Aa]gent/g;
+    const draftAgents = draftContent.match(agentPattern) || [];
+    
+    for (const agent of draftAgents) {
+        if (!technicalContent.includes(agent)) {
+            issues.push(`Agent "${agent}" not defined in Technical.md`);
+        }
+    }
+    
+    // Check infrastructure references
+    if (draftContent.includes('Fly.io') && !technicalContent.includes('Fly.io')) {
+        issues.push('References Fly.io but not in technical architecture');
+    }
+    if (draftContent.includes('Vercel') && !technicalContent.includes('Vercel')) {
+        issues.push('References Vercel but not in technical architecture');
+    }
+    
+    return {
+        passed: issues.length === 0,
+        message: issues.length === 0 ? 
+            'Technical references align with Technical.md' : 
+            `Found ${issues.length} technical inconsistencies`,
+        issues
+    };
+}
+
+// Validation Helper: Check Logical Consistency
+function validateLogicalConsistency(draftContent) {
+    const issues = [];
+    
+    // Check for contradictory statements
+    const contradictions = [
+        { terms: ['automated', 'manual'], context: 'same feature' },
+        { terms: ['synchronous', 'asynchronous'], context: 'same operation' },
+        { terms: ['required', 'optional'], context: 'same field' }
+    ];
+    
+    for (const contradiction of contradictions) {
+        const lines = draftContent.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].toLowerCase();
+            if (contradiction.terms.every(term => line.includes(term))) {
+                issues.push(`Line ${i + 1}: Contradictory terms "${contradiction.terms.join('" and "')}" in same context`);
+            }
+        }
+    }
+    
+    // Check for incomplete specifications
+    if (draftContent.includes('TODO') || draftContent.includes('TBD')) {
+        issues.push('Contains incomplete specifications (TODO/TBD)');
+    }
+    
+    // Check for vague requirements
+    const vagueTerms = ['maybe', 'possibly', 'might', 'could be', 'should probably'];
+    for (const term of vagueTerms) {
+        if (draftContent.toLowerCase().includes(term)) {
+            issues.push(`Contains vague requirement with "${term}" - be specific`);
+        }
+    }
+    
+    return {
+        passed: issues.length === 0,
+        message: issues.length === 0 ? 
+            'No logical contradictions found' : 
+            `Found ${issues.length} logical issues`,
+        issues
+    };
+}
+
+// Validation Helper: Check Dependencies
+function validateDependencies(draftContent, technicalContent) {
+    const issues = [];
+    
+    // Check for breaking changes
+    const breakingIndicators = [
+        'BREAKING:', 'Breaking Change', 'removes', 'deprecates', 'replaces'
+    ];
+    
+    for (const indicator of breakingIndicators) {
+        if (draftContent.includes(indicator)) {
+            const lines = draftContent.split('\n');
+            const breakingLines = lines.filter(l => l.includes(indicator));
+            for (const line of breakingLines) {
+                issues.push(`Breaking change detected: "${line.trim()}"`);
+            }
+        }
+    }
+    
+    // Check for new dependencies not in technical spec
+    const dependencyPattern = /requires?\s+(\w+)/gi;
+    const matches = draftContent.match(dependencyPattern) || [];
+    
+    for (const match of matches) {
+        const dep = match.replace(/requires?\s+/i, '');
+        if (!technicalContent.includes(dep)) {
+            issues.push(`New dependency "${dep}" not in technical architecture`);
+        }
+    }
+    
+    // Check task ordering requirements
+    if (draftContent.includes('must be done before') || draftContent.includes('depends on')) {
+        const lines = draftContent.split('\n').filter(l => 
+            l.includes('must be done before') || l.includes('depends on')
+        );
+        for (const line of lines) {
+            issues.push(`Dependency constraint: "${line.trim()}"`);
+        }
+    }
+    
+    return {
+        passed: issues.filter(i => i.startsWith('Breaking')).length === 0,
+        message: issues.length === 0 ? 
+            'No problematic dependencies detected' : 
+            `Found ${issues.length} dependency concerns`,
+        issues
+    };
+}
+
+// Generate tasks from draft using Claude
+async function generateTasksFromDraft(draftContent, description) {
+    console.log('[Draft Manager] Generating tasks from draft using Claude...');
+    
+    try {
+        // Call Claude executor to analyze draft and create tasks
+        const response = await fetch('https://uncle-frank-claude.fly.dev/api/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                taskTitle: `Generate Tasks from Draft: ${description}`,
+                taskDescription: `Analyze this Project.md draft and break it down into concrete implementation tasks:
+
+# Draft Description
+${description}
+
+# Draft Content
+${draftContent}
+
+# INSTRUCTIONS
+Analyze the draft changes and create 3-5 concrete implementation tasks.
+Each task should be:
+- Specific and actionable
+- Independently executable
+- Have clear acceptance criteria
+- Ordered by dependency
+
+Return tasks in this format:
+
+## Task 1: [Name]
+**Objective:** [Clear goal in one sentence]
+**Acceptance Criteria:**
+- [Specific criterion 1]
+- [Specific criterion 2]
+- [Specific criterion 3]
+**Priority:** [high/medium/low]
+**Dependencies:** [none or list task numbers]
+
+## Task 2: [Name]
+[same format]
+
+Focus on what needs to be BUILT or CHANGED, not documentation or planning.`
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to connect to Claude');
+        }
+
+        const session = await response.json();
+        console.log(`[Draft Manager] Claude session created: ${session.sessionId}`);
+
+        // Execute the task generation
+        const executeResponse = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${session.sessionId}/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: 'Generate the tasks based on the draft.'
+            })
+        });
+
+        if (!executeResponse.ok) {
+            throw new Error('Failed to execute task generation');
+        }
+
+        // Poll for completion
+        let tasks = [];
+        let pollAttempts = 0;
+        const maxPollAttempts = 30; // 60 seconds max
+        
+        while (pollAttempts < maxPollAttempts) {
+            pollAttempts++;
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+            
+            const statusResponse = await fetch(`https://uncle-frank-claude.fly.dev/api/sessions/${session.sessionId}/status`);
+            
+            if (statusResponse.ok) {
+                const statusData = await statusResponse.json();
+                
+                if (statusData.status === 'completed' && statusData.lastResponse) {
+                    const claudeResponse = typeof statusData.lastResponse === 'string' 
+                        ? statusData.lastResponse 
+                        : statusData.lastResponse.content;
+                    
+                    // Parse tasks from Claude's response
+                    tasks = parseTasksFromResponse(claudeResponse);
+                    console.log(`[Draft Manager] Generated ${tasks.length} tasks from Claude`);
+                    break;
+                }
+            }
+        }
+
+        // If Claude didn't generate tasks or timed out, use fallback
+        if (tasks.length === 0) {
+            console.warn('[Draft Manager] Using fallback task generation');
+            tasks = generateFallbackTasks(draftContent, description);
+        }
+
+        return tasks;
+    } catch (error) {
+        console.error('[Draft Manager] Error generating tasks with Claude:', error);
+        // Use fallback task generation
+        return generateFallbackTasks(draftContent, description);
+    }
+}
+
+// Parse tasks from Claude's response
+function parseTasksFromResponse(response) {
+    const tasks = [];
+    const sections = response.split(/##\s*Task\s*\d+:/i);
+    
+    for (let i = 1; i < sections.length; i++) {
+        const section = sections[i];
+        const lines = section.split('\n');
+        
+        const task = {
+            id: `task-${Date.now()}-${i}`,
+            name: lines[0].trim(),
+            objective: '',
+            acceptanceCriteria: [],
+            priority: 'medium',
+            dependencies: [],
+            status: 'pending'
+        };
+        
+        let currentField = null;
+        
+        for (const line of lines) {
+            if (line.match(/^\*?\*?Objective:/i)) {
+                task.objective = line.replace(/^\*?\*?Objective:\*?\*?\s*/i, '').trim();
+                currentField = 'objective';
+            } else if (line.match(/^\*?\*?Acceptance Criteria:/i)) {
+                currentField = 'criteria';
+            } else if (line.match(/^\*?\*?Priority:/i)) {
+                task.priority = line.replace(/^\*?\*?Priority:\*?\*?\s*/i, '').toLowerCase().trim();
+                currentField = 'priority';
+            } else if (line.match(/^\*?\*?Dependencies:/i)) {
+                const deps = line.replace(/^\*?\*?Dependencies:\*?\*?\s*/i, '').trim();
+                if (deps && deps.toLowerCase() !== 'none') {
+                    task.dependencies = deps.split(',').map(d => d.trim());
+                }
+                currentField = 'dependencies';
+            } else if (currentField === 'criteria' && line.trim().startsWith('-')) {
+                task.acceptanceCriteria.push(line.replace(/^-\s*/, '').trim());
+            }
+        }
+        
+        if (task.name && task.objective) {
+            tasks.push(task);
+        }
+    }
+    
+    return tasks;
+}
+
+// Generate fallback tasks when Claude is unavailable
+function generateFallbackTasks(draftContent, description) {
+    console.log('[Draft Manager] Using fallback task generation');
+    
+    // Analyze the draft to identify changes
+    const hasAPI = draftContent.includes('/api/') || draftContent.includes('endpoint');
+    const hasUI = draftContent.includes('interface') || draftContent.includes('component') || draftContent.includes('screen');
+    const hasData = draftContent.includes('database') || draftContent.includes('schema') || draftContent.includes('model');
+    
+    const tasks = [];
+    let taskIndex = 1;
+    
+    // Create tasks based on detected changes
+    if (hasData) {
+        tasks.push({
+            id: `task-${Date.now()}-${taskIndex++}`,
+            name: 'Database and Data Model Updates',
+            objective: 'Update database schema and data models based on draft requirements',
+            acceptanceCriteria: [
+                'Database schema updated',
+                'Models reflect new structure',
+                'Migrations created and tested'
+            ],
+            priority: 'high',
+            dependencies: [],
+            status: 'pending'
+        });
+    }
+    
+    if (hasAPI) {
+        tasks.push({
+            id: `task-${Date.now()}-${taskIndex++}`,
+            name: 'API Implementation',
+            objective: 'Implement API endpoints and business logic',
+            acceptanceCriteria: [
+                'API endpoints created and functional',
+                'Request validation implemented',
+                'Response formats match specification'
+            ],
+            priority: 'high',
+            dependencies: hasData ? ['Database and Data Model Updates'] : [],
+            status: 'pending'
+        });
+    }
+    
+    if (hasUI) {
+        tasks.push({
+            id: `task-${Date.now()}-${taskIndex++}`,
+            name: 'UI Component Development',
+            objective: 'Build user interface components and screens',
+            acceptanceCriteria: [
+                'UI components created and styled',
+                'User interactions functional',
+                'Responsive design implemented'
+            ],
+            priority: 'medium',
+            dependencies: hasAPI ? ['API Implementation'] : [],
+            status: 'pending'
+        });
+    }
+    
+    // Always add testing task
+    tasks.push({
+        id: `task-${Date.now()}-${taskIndex++}`,
+        name: 'Testing and Validation',
+        objective: 'Test all changes and ensure quality',
+        acceptanceCriteria: [
+            'Unit tests written and passing',
+            'Integration tests completed',
+            'Manual testing performed'
+        ],
+        priority: 'medium',
+        dependencies: tasks.map(t => t.name),
+        status: 'pending'
+    });
+    
+    // Add documentation task if significant changes
+    if (tasks.length > 2) {
+        tasks.push({
+            id: `task-${Date.now()}-${taskIndex++}`,
+            name: 'Documentation Updates',
+            objective: 'Update documentation to reflect changes',
+            acceptanceCriteria: [
+                'README updated',
+                'API documentation current',
+                'Code comments added'
+            ],
+            priority: 'low',
+            dependencies: ['Testing and Validation'],
+            status: 'pending'
+        });
+    }
+    
+    return tasks;
 }
 
 // Helper: Create GitHub issue

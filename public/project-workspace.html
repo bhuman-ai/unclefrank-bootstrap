@@ -572,16 +572,93 @@
             addUserMessage(message);
             input.value = '';
             
-            // Process with Frank's logic
-            if (message.toLowerCase().includes('create') && message.toLowerCase().includes('draft')) {
-                await createDraft(message);
-            } else if (message.toLowerCase().includes('validate')) {
-                await validateDraft();
-            } else if (message.toLowerCase().includes('task')) {
-                await breakdownToTasks();
-            } else {
-                // General Frank response
-                addFrankMessage("Be more specific. You want to create a draft, validate, or break down to tasks? I don't read minds.");
+            // Build context
+            const context = {
+                draftId: currentDraft?.id,
+                draftState: currentDraft?.state,
+                tasks: tasks,
+                validations: validationResults
+            };
+            
+            // Send to Frank API
+            addFrankMessage("Let me think about that...");
+            
+            try {
+                const response = await fetch('/api/frank-assistant', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: message,
+                        context: context
+                    })
+                });
+                
+                const result = await response.json();
+                
+                // Remove "thinking" message
+                const chat = document.getElementById('frankChat');
+                chat.removeChild(chat.lastChild);
+                
+                // Add Frank's response
+                addFrankMessage(result.response);
+                
+                // Handle specific actions
+                if (result.action === 'draft_created' && result.draftId) {
+                    currentDraft = {
+                        id: result.draftId,
+                        state: 'created',
+                        created: new Date().toISOString(),
+                        content: document.getElementById('documentContent').textContent,
+                        githubIssueNumber: result.githubIssue
+                    };
+                    document.getElementById('draftStatus').textContent = `Draft: ${result.draftId}`;
+                } else if (result.action === 'validation_passed' || result.action === 'validation_failed') {
+                    validationResults = result.validations;
+                    if (result.success) {
+                        currentDraft.state = 'validated';
+                    }
+                } else if (result.action === 'tasks_created') {
+                    tasks = result.tasks;
+                    currentDraft.state = 'task_breakdown';
+                } else if (result.action === 'task_executing') {
+                    // Update task status
+                    const taskIndex = tasks.findIndex(t => t.status === 'pending');
+                    if (taskIndex >= 0) {
+                        tasks[taskIndex].status = 'executing';
+                        tasks[taskIndex].threadId = result.threadId;
+                    }
+                } else if (result.action === 'merged') {
+                    currentDraft = null;
+                    validationResults = null;
+                    tasks = [];
+                    document.getElementById('draftStatus').textContent = 'No Active Draft';
+                    loadProjectMd();
+                }
+                
+                // Auto-switch tabs for certain actions
+                if (result.action === 'validation_passed' || result.action === 'validation_failed') {
+                    switchTabByName('validation');
+                } else if (result.action === 'tasks_created') {
+                    switchTabByName('tasks');
+                }
+                
+            } catch (error) {
+                // Remove "thinking" message
+                const chat = document.getElementById('frankChat');
+                chat.removeChild(chat.lastChild);
+                
+                addFrankMessage(`Error talking to the server: ${error.message}. Check if the API is running.`);
+            }
+        }
+        
+        // Helper to switch tabs programmatically
+        function switchTabByName(tabName) {
+            const tabButtons = document.querySelectorAll('.doc-tab');
+            for (const button of tabButtons) {
+                if (button.textContent.toLowerCase().includes(tabName.toLowerCase())) {
+                    button.click();
+                    break;
+                }
             }
         }
         
