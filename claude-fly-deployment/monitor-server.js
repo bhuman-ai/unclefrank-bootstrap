@@ -158,13 +158,24 @@ app.get('/monitor', (req, res) => {
     `);
 });
 
+// Serve the intelligent monitor page
+app.get('/intelligent', (req, res) => {
+    const intelligentMonitorPath = path.join(__dirname, 'intelligent-monitor.html');
+    if (fs.existsSync(intelligentMonitorPath)) {
+        res.sendFile(intelligentMonitorPath);
+    } else {
+        res.redirect('/monitor');
+    }
+});
+
 // API endpoints
 app.get('/api/monitor/status', async (req, res) => {
     try {
         const { stdout: processes } = await execAsync('ps aux | grep "node auto-improve" | grep -v grep || true');
         const isRunning = processes.trim().length > 0;
         
-        const { stdout: logs } = await execAsync('tail -n 100 /tmp/auto-improve-fixed.log 2>/dev/null || echo "No logs"');
+        // Check for intelligent auto-improve log first
+        const { stdout: logs } = await execAsync('tail -n 100 /app/auto-improve.log 2>/dev/null || tail -n 100 /tmp/auto-improve-fixed.log 2>/dev/null || echo "No logs"');
         const { stdout: gitChanges } = await execAsync('cd /tmp/unclefrank-bootstrap 2>/dev/null && git status --short || echo "No repo"');
         
         res.json({
@@ -172,6 +183,66 @@ app.get('/api/monitor/status', async (req, res) => {
             processes: processes.trim(),
             logs: logs,
             gitChanges: gitChanges.trim()
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Intelligent status endpoint
+app.get('/api/monitor/intelligent-status', async (req, res) => {
+    try {
+        const { stdout: processes } = await execAsync('ps aux | grep "auto-improve-intelligent" | grep -v grep || true');
+        const isRunning = processes.trim().length > 0;
+        
+        // Get intelligent auto-improve logs
+        const { stdout: logs } = await execAsync('tail -n 200 /app/auto-improve.log 2>/dev/null || echo ""');
+        
+        // Parse the logs to extract structured data
+        const lines = logs.split('\n');
+        let iteration = 0;
+        let gaps = [];
+        let tasks = [];
+        let currentTask = '';
+        let gapCount = 0;
+        let taskCount = 0;
+        
+        lines.forEach(line => {
+            // Parse iteration
+            const iterMatch = line.match(/ITERATION (\d+)/);
+            if (iterMatch) iteration = parseInt(iterMatch[1]);
+            
+            // Parse gap count
+            const gapMatch = line.match(/Found (\d+) gaps/);
+            if (gapMatch) gapCount = parseInt(gapMatch[1]);
+            
+            // Parse gaps
+            const gapTypeMatch = line.match(/- (missing_\w+): (.+)/);
+            if (gapTypeMatch && gaps.length < 10) {
+                gaps.push({
+                    type: gapTypeMatch[1],
+                    description: gapTypeMatch[2].substring(0, 100)
+                });
+            }
+            
+            // Parse task count
+            const taskMatch = line.match(/Generated (\d+) tasks/);
+            if (taskMatch) taskCount = parseInt(taskMatch[1]);
+            
+            // Parse current task
+            const executingMatch = line.match(/Executing top priority task: (.+)/);
+            if (executingMatch) currentTask = executingMatch[1];
+        });
+        
+        res.json({
+            running: isRunning,
+            iteration,
+            gapCount,
+            taskCount,
+            gaps,
+            tasks,
+            currentTask,
+            logs: lines.slice(-50)
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
