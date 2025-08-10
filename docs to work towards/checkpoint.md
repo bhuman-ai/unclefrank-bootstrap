@@ -29,14 +29,15 @@
 - Any insights derived can be converted into Project.md Draft proposals.
 - Brainstorm Mode does not directly alter production docs until validated and promoted to a Draft.
 
-## Terragon Instance Status Dashboard
-- A dedicated UI screen within the platform to monitor all active Terragon Instances.
-- Each instance represents a single Task in execution.
+## Task Instance Status Dashboard
+- A dedicated UI screen within the platform to monitor all active Task Instances on Fly.io.
+- Each instance represents a single Task in execution on uncle-frank-claude.fly.dev.
 - Displays:
   - Task Name
   - Current Active Agent (CheckpointAgent or TaskAgent)
   - Current Checkpoint in Progress
   - Instance Health: [Active | Paused | Errored]
+  - Fly.io Server Status
   - Progress Bar of Checkpoint Completion
   - Live Logs Preview (last 5 entries)
   - Retry Attempt Counter per Checkpoint
@@ -44,21 +45,19 @@
   - Pause/Resume Instance
   - Trigger Manual Rollback
   - Escalate to Human
-- This dashboard gives visibility into autonomous agent replies and task progression in real-time.
+  - View Fly.io Logs
+- This dashboard gives visibility into autonomous agent execution and task progression in real-time.
 
-## Terragon Instance Monitoring
+## Task Instance Monitoring on Fly.io
 - CheckpointAgents provide periodic status updates (heartbeat replies) for long-running checkpoints.
-- Each Task spawns a unique Terragon instance.
-- CheckpointAgents autonomously reply within Terragon while a checkpoint is In Progress.
-- Once a Checkpoint is completed and submitted, TaskAgent takes over replies.
-- Status Dashboard must show active agent replying (CheckpointAgent or TaskAgent) per instance.
-- Terragon instance health (active, paused, errored) must be monitored in real-time.
-- Partial progress of Checkpoints within a Task is visible in the Task Workspace, including which checkpoints are passed/failed in real-time.
-- Each Task spawns a unique Terragon instance.
-- CheckpointAgents autonomously reply within Terragon while a checkpoint is In Progress.
-- Once a Checkpoint is completed and submitted, TaskAgent takes over replies.
-- Status Dashboard must show active agent replying (CheckpointAgent or TaskAgent) per instance.
-- Terragon instance health (active, paused, errored) must be monitored in real-time.
+- Each Task spawns a unique task instance on the Fly.io server (uncle-frank-claude.fly.dev).
+- CheckpointAgents autonomously execute within the Fly.io environment while a checkpoint is In Progress.
+- Once a Checkpoint is completed and submitted, TaskAgent takes over execution.
+- Status Dashboard shows active agent (CheckpointAgent or TaskAgent) per instance.
+- Task instance health (active, paused, errored) is monitored in real-time via Fly.io metrics.
+- Partial progress of Checkpoints within a Task is visible in the Task Workspace.
+- Real-time logs are streamed from Fly.io to show checkpoint pass/fail status.
+- All execution happens on uncle-frank-claude.fly.dev with persistent sessions.
 
 ## Execution Status
 - Current Status: [Pending | In Progress | Pass | Fail]

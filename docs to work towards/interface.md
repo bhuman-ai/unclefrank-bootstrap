@@ -16,12 +16,13 @@ Defines the visual layout, user flows, and interface principles of the LLM-drive
   - Can be resized dynamically.
 
 ## Screen Structures
-11. **Terragon Instance Status Dashboard** — Monitor active Terragon instances per Task:
+11. **Task Instance Status Dashboard** — Monitor active task instances on Fly.io:
     - Shows current active agent (CheckpointAgent/TaskAgent)
     - Current Checkpoint in Progress
     - Instance Health (Active/Paused/Errored)
+    - Fly.io server status (uncle-frank-claude.fly.dev)
     - Live Logs Preview & Retry Counters
-    - Inline actions: Pause/Resume, Rollback, Escalate to Human
+    - Inline actions: Pause/Resume, Rollback, Escalate to Human, View Fly.io Logs
 
 12. **Global Logs Dashboard** — Centralized viewer for all Task/Checkpoint logs:
     - Searchable, filterable by Task, Agent, Status

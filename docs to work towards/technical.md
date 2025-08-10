@@ -5,12 +5,13 @@ Outlines the technical structure of the LLM Development Platform, including syst
 
 ## System Architecture
 - **Core Components:**
-  - LLM Orchestration Engine (Claude Code CLI)
-  - Task Queue & Execution Pipeline (Terragon)
-  - Validation API Service
+  - LLM Orchestration Engine (Claude Code CLI on Fly.io)
+  - Task Queue & Execution Pipeline (Fly.io Instance Manager)
+  - Validation API Service (Vercel Functions)
   - GitHub Integration Layer (Issues, Branches, PRs)
   - Dependency Graph Engine
   - Task Persistence Layer (GitHub Issues API)
+  - Fly.io Infrastructure (uncle-frank-claude.fly.dev)
 
 - **Data Flow Pipelines:**
   - User Request → GitHub Issue Creation → Claude Session Creation → Task Breakdown → Checkpoint Execution → Validation → Human Review → PR Creation → Merge
@@ -151,8 +152,9 @@ Subagents are specialized AI agents invoked for specific workflow stages. Each o
 
 ### 
 ### Subagent Invocation Flow
-- Claude Code CLI routes tasks to subagents based on workflow stage.
-- Agents operate within Terragon pipeline orchestrations.
+- Claude Code CLI on Fly.io routes tasks to subagents based on workflow stage.
+- Agents operate within the Fly.io task execution pipeline.
+- Sessions are managed via the uncle-frank-claude.fly.dev server.
 - Contextual Linking ensures each agent has reference to necessary sections of Project.md, Interface.md, Technical.md.
 
 ## Dynamic Agent Invocation Flow

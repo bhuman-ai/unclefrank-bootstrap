@@ -1,5 +1,5 @@
-// TERRAGON INSTANCE MANAGER - Uncle Frank's Task Execution Orchestrator
-// Manages Terragon instances that execute tasks autonomously
+// TASK INSTANCE MANAGER - Uncle Frank's Task Execution Orchestrator
+// Manages task instances that execute autonomously on Fly.io
 
 import fs from 'fs/promises';
 import path from 'path';
@@ -9,7 +9,7 @@ import https from 'https';
 
 const execAsync = promisify(exec);
 
-const INSTANCES_DIR = '/Users/don/UncleFrank/unclefrank-bootstrap/data/terragon-instances';
+const INSTANCES_DIR = '/Users/don/UncleFrank/unclefrank-bootstrap/data/task-instances';
 const CHECKPOINTS_DIR = '/Users/don/UncleFrank/unclefrank-bootstrap/data/checkpoints';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = 'bhuman-ai/unclefrank-bootstrap';
@@ -63,7 +63,7 @@ export default async function handler(req, res) {
                 return res.status(400).json({ error: 'Invalid action' });
         }
     } catch (error) {
-        console.error('Terragon Instance Manager error:', error);
+        console.error('Task Instance Manager error:', error);
         return res.status(500).json({ 
             error: 'Failed to process instance request',
             details: error.message 
@@ -71,7 +71,7 @@ export default async function handler(req, res) {
     }
 }
 
-// Spawn a new Terragon instance for a task
+// Spawn a new task instance on Fly.io
 async function spawnInstance(req, res) {
     const { taskId, taskName, checkpoints } = req.body;
     
@@ -82,7 +82,7 @@ async function spawnInstance(req, res) {
     }
     
     // Create instance ID
-    const instanceId = `terragon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const instanceId = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const instancePath = path.join(INSTANCES_DIR, instanceId);
     
     // Ensure directory exists
@@ -137,9 +137,9 @@ async function spawnInstance(req, res) {
     // Create GitHub issue for tracking
     try {
         const issue = await createGitHubIssue({
-            title: `Terragon Instance: ${taskName}`,
-            body: `## 🤖 Terragon Instance Active\n\n**Instance ID:** ${instanceId}\n**Task:** ${taskName} (${taskId})\n**Claude Session:** ${claudeSessionId || 'Not initialized'}\n\n### Checkpoints\n${checkpoints.map((cp, idx) => `${idx + 1}. [ ] ${cp.name}`).join('\n')}\n\n### Status\n**State:** ${instanceData.state}\n**Current Checkpoint:** ${instanceData.currentCheckpoint?.name || 'None'}\n**Active Agent:** ${instanceData.activeAgent}\n\n### Real-time Monitoring\nView live status in the Terragon Dashboard`,
-            labels: ['terragon', 'task-execution', 'uncle-frank']
+            title: `Task Instance: ${taskName}`,
+            body: `## 🤖 Task Instance Active on Fly.io\n\n**Instance ID:** ${instanceId}\n**Task:** ${taskName} (${taskId})\n**Claude Session:** ${claudeSessionId || 'Not initialized'}\n**Fly.io Server:** uncle-frank-claude.fly.dev\n\n### Checkpoints\n${checkpoints.map((cp, idx) => `${idx + 1}. [ ] ${cp.name}`).join('\n')}\n\n### Status\n**State:** ${instanceData.state}\n**Current Checkpoint:** ${instanceData.currentCheckpoint?.name || 'None'}\n**Active Agent:** ${instanceData.activeAgent}\n\n### Real-time Monitoring\nView live status in the Task Dashboard`,
+            labels: ['task-instance', 'fly-io', 'uncle-frank']
         });
         
         instanceData.githubIssueNumber = issue.number;
@@ -148,7 +148,7 @@ async function spawnInstance(req, res) {
             JSON.stringify(instanceData, null, 2)
         );
     } catch (error) {
-        console.error('Failed to create GitHub issue for Terragon instance:', error);
+        console.error('Failed to create GitHub issue for task instance:', error);
     }
     
     // Start executing the first checkpoint
@@ -162,7 +162,7 @@ async function spawnInstance(req, res) {
         state: INSTANCE_STATES.ACTIVE,
         claudeSession: claudeSessionId,
         githubIssue: instanceData.githubIssueNumber,
-        message: `Terragon instance ${instanceId} spawned successfully`
+        message: `Task instance ${instanceId} spawned successfully on Fly.io`
     });
 }
 
@@ -592,7 +592,7 @@ async function escalateInstance(req, res) {
     // Update GitHub issue
     if (instance.githubIssueNumber) {
         await updateGitHubIssue(instance.githubIssueNumber, {
-            labels: ['terragon', 'needs-human-review', 'escalated'],
+            labels: ['task-instance', 'needs-human-review', 'escalated'],
             body: `## ⚠️ HUMAN INTERVENTION REQUIRED\n\n**Reason:** ${reason || 'Manual escalation'}\n**Instance ID:** ${instanceId}\n**Current Checkpoint:** ${instance.currentCheckpoint?.name || 'None'}\n\nPlease review the logs and take appropriate action.`
         });
     }
@@ -735,7 +735,7 @@ async function createGitHubIssue({ title, body, labels }) {
             headers: {
                 'Authorization': `token ${GITHUB_TOKEN}`,
                 'Accept': 'application/vnd.github.v3+json',
-                'User-Agent': 'Terragon-Instance-Manager',
+                'User-Agent': 'Task-Instance-Manager',
                 'Content-Type': 'application/json',
                 'Content-Length': data.length
             }
@@ -776,7 +776,7 @@ async function updateGitHubIssue(issueNumber, updates) {
             headers: {
                 'Authorization': `token ${GITHUB_TOKEN}`,
                 'Accept': 'application/vnd.github.v3+json',
-                'User-Agent': 'Terragon-Instance-Manager',
+                'User-Agent': 'Task-Instance-Manager',
                 'Content-Type': 'application/json',
                 'Content-Length': data.length
             }
