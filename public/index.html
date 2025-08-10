@@ -4662,6 +4662,25 @@ Claude Session ID: ${task.threadId}
                                             </div>
                                         )}
                                         
+                                        {/* Vercel Preview URL - PROMINENT DISPLAY */}
+                                        {workspaceTask.vercelPreviewUrl && (
+                                            <div className="mb-4 p-3 bg-gradient-to-r from-purple-900/50 to-blue-900/50 rounded-lg border border-purple-500/50">
+                                                <label className="text-xs text-purple-300 font-semibold uppercase">🚀 Test on Vercel Preview</label>
+                                                <a 
+                                                    href={workspaceTask.vercelPreviewUrl}
+                                                    target="_blank"
+                                                    className="mt-2 block"
+                                                >
+                                                    <button className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-all hover:scale-105">
+                                                        Open Vercel Preview →
+                                                    </button>
+                                                </a>
+                                                <p className="text-xs text-gray-400 mt-2">
+                                                    Test the feature before approving to production
+                                                </p>
+                                            </div>
+                                        )}
+                                        
                                         {/* GitHub Links */}
                                         <div className="mb-4">
                                             <label className="text-xs text-gray-400">GitHub Integration</label>

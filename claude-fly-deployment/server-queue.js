@@ -714,7 +714,10 @@ app.get('/api/sessions/:sessionId/status', (req, res) => {
         lastResponse: session.status === 'completed' || session.status === 'ready_for_review' ? lastMessage : null,
         error: session.error || null,
         humanReviewRequired: humanReviewRequired,
-        testingInstructions: testingInstructions
+        testingInstructions: testingInstructions,
+        vercelPreviewUrl: session.vercelPreviewUrl || null,
+        prUrl: session.prUrl || null,
+        branch: session.branch || null
     });
 });
 
