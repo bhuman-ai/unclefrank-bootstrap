@@ -264,6 +264,23 @@ async function processClaudeExecution(session, message) {
                 console.log(`[Session ${session.id}] ⏰ 1 hour elapsed - Very complex task, continuing...`);
             }
             
+            // Check if task is marked as ready for human review
+            if (currentOutput.includes('🎯 TASK COMPLETE - READY FOR HUMAN REVIEW')) {
+                console.log(`[Session ${session.id}] Task ready for human review`);
+                clearInterval(checkInterval);
+                session.status = 'ready_for_review';
+                session.humanReviewRequired = true;
+                
+                // Extract human testing instructions if present
+                const reviewMatch = currentOutput.match(/HUMAN TESTING INSTRUCTIONS:([\s\S]*?)========================================/);
+                if (reviewMatch) {
+                    session.testingInstructions = reviewMatch[1].trim();
+                }
+                
+                await saveSessions();
+                return;
+            }
+            
             if (!stillProcessing) {
                 // Wait for output to stabilize (no more changes)
                 if (currentOutput === lastOutput) {
@@ -586,7 +603,9 @@ app.get('/api/sessions/:sessionId/status', (req, res) => {
         status: session.status,
         messageCount: session.messages.length,
         lastResponse: session.status === 'completed' ? lastMessage : null,
-        error: session.error || null
+        error: session.error || null,
+        humanReviewRequired: session.humanReviewRequired || false,
+        testingInstructions: session.testingInstructions || null
     });
 });
 

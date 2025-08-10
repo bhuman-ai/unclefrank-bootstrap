@@ -4756,7 +4756,38 @@ ERROR HANDLING:
 - Focus on creating the files and code, not on process management
 - Test what you can, document what you cannot test
 
-${instructions}`;
+${instructions}
+
+## FINAL STEP - MARK AS READY FOR HUMAN REVIEW:
+After completing ALL checkpoints successfully:
+
+1. Create a file called HUMAN_REVIEW.md with:
+   - Summary of what was implemented
+   - List of all files created/modified
+   - Testing instructions for humans
+   - Any known issues or limitations
+   - Suggested verification steps
+
+2. Output this exact message at the end:
+========================================
+🎯 TASK COMPLETE - READY FOR HUMAN REVIEW
+========================================
+
+Task: ${workspaceTask.name || state.request.substring(0, 100)}
+Session: ${workspaceTask.sessionId}
+GitHub Issue: #${workspaceTask.issueNumber || 'N/A'}
+
+HUMAN TESTING INSTRUCTIONS:
+1. Review the HUMAN_REVIEW.md file in the session directory
+2. Check all ${checkpoints.length} checkpoints were completed
+3. Run any test commands specified in the review file
+4. Verify the implementation meets requirements
+
+Files to review:
+- /app/sessions/${workspaceTask.sessionId}/repo/HUMAN_REVIEW.md
+- All implementation files listed in the review document
+
+========================================`;
                                                             
                                                             console.log('Sending task to Claude:', fullTask);
                                                             
