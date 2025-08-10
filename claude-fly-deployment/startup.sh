@@ -139,6 +139,12 @@ nohup ./tmux-injector.sh > /app/tmux-injector.log 2>&1 &
 INJECTOR_PID=$!
 echo "Tmux injector started with PID: $INJECTOR_PID"
 
+# Start the monitor server
+echo "Starting monitor server..."
+nohup node monitor-server.js > /app/monitor.log 2>&1 &
+MONITOR_PID=$!
+echo "Monitor server started with PID: $MONITOR_PID on port 8081"
+
 # Copy PM2 ecosystem config
 if [ -f "ecosystem.config.js" ]; then
     cp ecosystem.config.js /app/

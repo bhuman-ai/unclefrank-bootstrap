@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uncle Frank Auto-Improve Monitor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #00ff00;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #ff6b6b;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px #ff6b6b;
+            font-size: 28px;
+        }
+        
+        .status-bar {
+            background: #1a1a1a;
+            border: 2px solid #00ff00;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .status-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.running {
+            background: #00ff00;
+            box-shadow: 0 0 10px #00ff00;
+        }
+        
+        .status-dot.stopped {
+            background: #ff4444;
+            box-shadow: 0 0 10px #ff4444;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+        
+        button {
+            background: #1a1a1a;
+            color: #00ff00;
+            border: 2px solid #00ff00;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        button:hover {
+            background: #00ff00;
+            color: #0a0a0a;
+            box-shadow: 0 0 15px #00ff00;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .panels {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .panel {
+            background: #1a1a1a;
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 15px;
+            min-height: 400px;
+        }
+        
+        .panel h2 {
+            color: #00ff00;
+            margin-bottom: 15px;
+            font-size: 18px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+        
+        .log-viewer {
+            background: #0a0a0a;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            line-height: 1.5;
+            max-height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .log-viewer::-webkit-scrollbar {
+            width: 10px;
+        }
+        
+        .log-viewer::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+        
+        .log-viewer::-webkit-scrollbar-thumb {
+            background: #00ff00;
+            border-radius: 5px;
+        }
+        
+        .timestamp {
+            color: #666;
+            font-size: 12px;
+        }
+        
+        .error {
+            color: #ff4444;
+        }
+        
+        .success {
+            color: #00ff00;
+        }
+        
+        .warning {
+            color: #ffaa00;
+        }
+        
+        .info {
+            color: #00aaff;
+        }
+        
+        .git-changes {
+            margin-top: 10px;
+        }
+        
+        .git-changes .added {
+            color: #00ff00;
+        }
+        
+        .git-changes .modified {
+            color: #ffaa00;
+        }
+        
+        .git-changes .deleted {
+            color: #ff4444;
+        }
+        
+        .auto-scroll-toggle {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Uncle Frank Auto-Improve Monitor</h1>
+        
+        <div class="status-bar">
+            <div class="status-indicator">
+                <div class="status-dot stopped" id="statusDot"></div>
+                <span id="statusText">Checking status...</span>
+                <span class="timestamp" id="lastUpdate"></span>
+            </div>
+            
+            <div class="controls">
+                <button id="startBtn" onclick="startSystem()">🚀 Start System</button>
+                <button id="stopBtn" onclick="stopSystem()">⏹️ Stop System</button>
+                <button onclick="refreshStatus()">🔄 Refresh</button>
+                <button onclick="clearLogs()">🗑️ Clear Display</button>
+            </div>
+        </div>
+        
+        <div class="panels">
+            <div class="panel">
+                <h2>📋 System Logs (Live Stream)</h2>
+                <div class="log-viewer" id="logsViewer">
+                    Waiting for logs...
+                </div>
+                <div class="auto-scroll-toggle">
+                    <input type="checkbox" id="autoScroll" checked>
+                    <label for="autoScroll">Auto-scroll to bottom</label>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <h2>📁 Git Changes</h2>
+                <div class="log-viewer git-changes" id="gitChanges">
+                    No changes detected yet...
+                </div>
+                
+                <h2 style="margin-top: 20px;">🖥️ Process Info</h2>
+                <div class="log-viewer" id="processInfo">
+                    No processes running...
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let autoRefresh = null;
+        let isRunning = false;
+        
+        async function refreshStatus() {
+            try {
+                const response = await fetch('/api/auto-improve/status');
+                const data = await response.json();
+                
+                // Update status indicator
+                isRunning = data.running;
+                const statusDot = document.getElementById('statusDot');
+                const statusText = document.getElementById('statusText');
+                
+                if (isRunning) {
+                    statusDot.className = 'status-dot running';
+                    statusText.textContent = '✅ System Running';
+                    statusText.className = 'success';
+                } else {
+                    statusDot.className = 'status-dot stopped';
+                    statusText.textContent = '❌ System Stopped';
+                    statusText.className = 'error';
+                }
+                
+                // Update last update time
+                document.getElementById('lastUpdate').textContent = 
+                    'Last checked: ' + new Date().toLocaleTimeString();
+                
+                // Update logs with syntax highlighting
+                const logsViewer = document.getElementById('logsViewer');
+                const currentScrollPos = logsViewer.scrollTop;
+                const wasAtBottom = logsViewer.scrollHeight - logsViewer.scrollTop === logsViewer.clientHeight;
+                
+                let formattedLogs = (data.logs || 'No logs available')
+                    .replace(/\[(\d{4}-\d{2}-\d{2}T[\d:\.Z]+)\]/g, '<span class="timestamp">[$1]</span>')
+                    .replace(/🚀/g, '<span class="success">🚀</span>')
+                    .replace(/✅/g, '<span class="success">✅</span>')
+                    .replace(/❌/g, '<span class="error">❌</span>')
+                    .replace(/⚠️/g, '<span class="warning">⚠️</span>')
+                    .replace(/📥/g, '<span class="info">📥</span>')
+                    .replace(/📋/g, '<span class="info">📋</span>')
+                    .replace(/🔍/g, '<span class="info">🔍</span>')
+                    .replace(/🤖/g, '<span class="info">🤖</span>')
+                    .replace(/ERROR/gi, '<span class="error">ERROR</span>')
+                    .replace(/SUCCESS/gi, '<span class="success">SUCCESS</span>')
+                    .replace(/ITERATION \d+/g, '<span class="warning">$&</span>');
+                
+                logsViewer.innerHTML = formattedLogs;
+                
+                // Auto-scroll if checkbox is checked and was at bottom
+                if (document.getElementById('autoScroll').checked && wasAtBottom) {
+                    logsViewer.scrollTop = logsViewer.scrollHeight;
+                } else {
+                    logsViewer.scrollTop = currentScrollPos;
+                }
+                
+                // Update git changes
+                const gitChanges = document.getElementById('gitChanges');
+                if (data.gitChanges && data.gitChanges !== 'Repo not found') {
+                    const changes = data.gitChanges.split('\n').map(line => {
+                        if (line.startsWith('A ') || line.startsWith('?? ')) {
+                            return `<span class="added">+ ${line}</span>`;
+                        } else if (line.startsWith('M ')) {
+                            return `<span class="modified">~ ${line}</span>`;
+                        } else if (line.startsWith('D ')) {
+                            return `<span class="deleted">- ${line}</span>`;
+                        }
+                        return line;
+                    }).join('\n');
+                    gitChanges.innerHTML = changes || 'No changes in repository';
+                } else {
+                    gitChanges.textContent = 'No repository found or no changes';
+                }
+                
+                // Update process info
+                const processInfo = document.getElementById('processInfo');
+                processInfo.textContent = data.processes || 'No auto-improve processes running';
+                
+                // Update button states
+                document.getElementById('startBtn').disabled = isRunning;
+                document.getElementById('stopBtn').disabled = !isRunning;
+                
+            } catch (error) {
+                console.error('Error fetching status:', error);
+                document.getElementById('statusText').textContent = '⚠️ Error fetching status';
+                document.getElementById('statusText').className = 'error';
+            }
+        }
+        
+        async function startSystem() {
+            if (confirm('Start the auto-improve system?')) {
+                try {
+                    const response = await fetch('/api/auto-improve/start', {
+                        method: 'POST'
+                    });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        alert(`✅ System started! PID: ${data.pid}`);
+                        refreshStatus();
+                    } else {
+                        alert(`❌ Failed to start: ${data.error}`);
+                    }
+                } catch (error) {
+                    alert(`❌ Error: ${error.message}`);
+                }
+            }
+        }
+        
+        async function stopSystem() {
+            if (confirm('Stop the auto-improve system?')) {
+                try {
+                    const response = await fetch('/api/auto-improve/stop', {
+                        method: 'POST'
+                    });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        alert('✅ System stopped!');
+                        refreshStatus();
+                    } else {
+                        alert(`❌ Failed to stop: ${data.error}`);
+                    }
+                } catch (error) {
+                    alert(`❌ Error: ${error.message}`);
+                }
+            }
+        }
+        
+        function clearLogs() {
+            document.getElementById('logsViewer').innerHTML = 'Display cleared. Logs still exist on server.';
+            document.getElementById('gitChanges').innerHTML = 'Display cleared.';
+            document.getElementById('processInfo').innerHTML = 'Display cleared.';
+        }
+        
+        // Start auto-refresh
+        refreshStatus();
+        autoRefresh = setInterval(refreshStatus, 3000); // Refresh every 3 seconds
+        
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (autoRefresh) {
+                clearInterval(autoRefresh);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -52,6 +52,14 @@ kill_timeout = 5
   source = "claude_auth"
   destination = "/persistent"
 
+[[services]]
+  internal_port = 8081
+  protocol = "tcp"
+  
+  [[services.ports]]
+    handlers = ["http"]
+    port = 8081
+
 [metrics]
   port = 9091
   path = "/metrics"

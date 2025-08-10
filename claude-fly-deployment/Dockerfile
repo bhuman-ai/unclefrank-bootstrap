@@ -67,5 +67,14 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 COPY startup.sh ./
 RUN chmod +x startup.sh
 
+# Copy auto-improvement scripts
+COPY auto-improve-flyio.sh ./
+COPY auto-improve-supervisor.js ./
+COPY auto-improve-claude-cli.js ./
+RUN chmod +x auto-improve-flyio.sh
+
+# Copy monitor server
+COPY monitor-server.js ./
+
 # Run startup script which handles persistent storage and starts server
 CMD ["/bin/bash", "-c", "./startup.sh"]
