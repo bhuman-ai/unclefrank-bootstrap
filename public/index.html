@@ -5321,10 +5321,51 @@ This task was restarted and is being tracked.
                                                 </div>
                                                 <button 
                                                     className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded transition font-bold"
-                                                    onClick={() => {
-                                                        if (confirm('Are you a HUMAN approving this task as complete?')) {
-                                                            console.log('Human approved task:', workspaceTask.id);
-                                                            // Update task status to Human Approved
+                                                    onClick={async () => {
+                                                        if (confirm('Are you a HUMAN approving this task as complete?\n\nThis will:\n1. Merge the PR to master\n2. Deploy to production via Vercel\n3. Close the GitHub issue')) {
+                                                            try {
+                                                                addLog('🚀 Approving task and merging to production...', 'info');
+                                                                
+                                                                const response = await fetch('/api/approve-task', {
+                                                                    method: 'POST',
+                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                    body: JSON.stringify({
+                                                                        taskId: workspaceTask.id,
+                                                                        issueNumber: workspaceTask.issueNumber,
+                                                                        sessionId: workspaceTask.sessionId || workspaceTask.threadId,
+                                                                        prNumber: workspaceTask.prNumber,
+                                                                        branchName: workspaceTask.branch
+                                                                    })
+                                                                });
+                                                                
+                                                                const result = await response.json();
+                                                                
+                                                                if (result.success) {
+                                                                    addLog('✅ Task approved and merged to production!', 'success');
+                                                                    addLog(`🚀 Vercel is deploying to production`, 'success');
+                                                                    
+                                                                    // Update task status locally
+                                                                    setState(prev => ({
+                                                                        ...prev,
+                                                                        reviewTasks: prev.reviewTasks.map(t => 
+                                                                            t.id === workspaceTask.id 
+                                                                                ? { ...t, status: 'Human Approved' }
+                                                                                : t
+                                                                        )
+                                                                    }));
+                                                                    
+                                                                    // Close the workspace modal
+                                                                    setTimeout(() => {
+                                                                        setTaskWorkspaceOpen(false);
+                                                                        // Refresh tasks from GitHub
+                                                                        loadTasksFromGitHub();
+                                                                    }, 2000);
+                                                                } else {
+                                                                    addLog(`❌ Approval failed: ${result.error}`, 'error');
+                                                                }
+                                                            } catch (error) {
+                                                                addLog(`❌ Failed to approve: ${error.message}`, 'error');
+                                                            }
                                                         }
                                                     }}
                                                 >
