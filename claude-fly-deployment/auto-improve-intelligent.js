@@ -395,25 +395,12 @@ class IntelligentAutoImprove {
     async createTaskInSystem(task) {
         this.log(`🔨 Creating task in Uncle Frank system: ${task.title}`);
         
-        // Use Claude to create the actual task with all details
-        const prompt = `
-Create a new task in the Uncle Frank task management system:
+        // Simpler, more direct prompt for Claude
+        const prompt = `Create API endpoint: ${task.endpoint || task.title}
 
-Title: ${task.title}
-Description: ${task.description}
-Acceptance Criteria:
-${task.acceptanceCriteria.map(ac => `- ${ac}`).join('\n')}
+Requirements: ${task.description}
 
-Checkpoints:
-${task.checkpoints.map(cp => `- ${cp.id}: ${cp.description} (Test: ${cp.test})`).join('\n')}
-
-Create the necessary files:
-1. Create task file at pages/api/tasks/create.js if it doesn't exist
-2. Add this task to the task queue
-3. Set up checkpoint definitions
-4. Make it ready for execution
-
-Actually create the working implementation.`;
+Just create the file and implement a working handler. Keep it simple and production-ready.`;
 
         await this.makeRequest(`/api/sessions/${this.sessionId}/execute`, 'POST', {
             message: prompt
@@ -440,21 +427,25 @@ Actually create the working implementation.`;
         this.log('⏳ Waiting for task completion...');
         
         let attempts = 0;
-        const maxAttempts = 120; // 10 minutes
+        const maxAttempts = 60; // 5 minutes max
         
         while (attempts < maxAttempts) {
             await new Promise(r => setTimeout(r, 5000));
             
-            const status = await this.makeRequest(`/api/sessions/${this.sessionId}/status`);
-            
-            if (status.status !== 'processing') {
-                if (status.status === 'completed') {
-                    this.log('✅ Task completed!');
-                    return true;
-                } else if (status.status === 'error') {
-                    this.log(`❌ Task failed: ${status.error}`);
-                    return false;
+            try {
+                const status = await this.makeRequest(`/api/sessions/${this.sessionId}/status`);
+                
+                if (status.status !== 'processing') {
+                    if (status.status === 'completed') {
+                        this.log('✅ Task completed!');
+                        return true;
+                    } else if (status.status === 'error') {
+                        this.log(`❌ Task failed: ${status.error}`);
+                        return false;
+                    }
                 }
+            } catch (error) {
+                this.log(`⚠️ Status check error: ${error.message}`);
             }
             
             attempts++;
@@ -463,7 +454,7 @@ Actually create the working implementation.`;
             }
         }
         
-        this.log('⏰ Task timed out');
+        this.log('⏰ Task timed out - moving on');
         return false;
     }
 
@@ -473,6 +464,12 @@ Actually create the working implementation.`;
         try {
             const repoPath = '/tmp/unclefrank-bootstrap';
             
+            // Ensure we're on master branch
+            await execAsync(`cd ${repoPath} && git checkout master 2>/dev/null || true`);
+            
+            // Pull latest to avoid conflicts
+            await execAsync(`cd ${repoPath} && git pull origin master 2>/dev/null || true`);
+            
             // Check for changes
             const { stdout: status } = await execAsync(`cd ${repoPath} && git status --porcelain`);
             
@@ -481,29 +478,44 @@ Actually create the working implementation.`;
                 return false;
             }
             
+            this.log(`📝 Changes detected: ${status.split('\n').length} files`);
+            
+            // Configure git
+            await execAsync(`cd ${repoPath} && git config user.name "Uncle Frank Bot"`);
+            await execAsync(`cd ${repoPath} && git config user.email "frank@unclefrank.ai"`);
+            
             // Commit
             await execAsync(`cd ${repoPath} && git add -A`);
-            await execAsync(`cd ${repoPath} && git commit -m "Intelligent auto-improve: ${this.tasks[0]?.title || 'Gap fixes'}
+            await execAsync(`cd ${repoPath} && git commit -m "Auto-improve: ${this.tasks[0]?.title || 'Gap fixes'}
 
-Automated gap analysis and implementation.
-- Analyzed target docs vs current implementation
+Intelligent system found and fixed gaps:
+- Analyzed target docs vs implementation
 - Found ${this.gaps.length} gaps
-- Implemented top priority items
+- Working on top priority items
 
 Iteration: ${this.iteration}
 Bot: Uncle Frank Intelligent Auto-Improve"`);
             
-            // Push
-            if (GITHUB_TOKEN) {
-                await execAsync(`cd ${repoPath} && git push https://${GITHUB_TOKEN}@github.com/bhuman-ai/unclefrank-bootstrap.git master`);
-                this.log('✅ Pushed to GitHub!');
+            // Push with token
+            const token = GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+            if (token) {
+                this.log('🔑 Using GitHub token to push...');
+                await execAsync(`cd ${repoPath} && git push https://${token}@github.com/bhuman-ai/unclefrank-bootstrap.git master`);
+                this.log('✅ Successfully pushed to GitHub! Check Vercel for deployment.');
                 return true;
             } else {
-                this.log('⚠️ No GITHUB_TOKEN - cannot push');
+                this.log('❌ No GITHUB_TOKEN found - cannot push to GitHub');
+                this.log('Set GITHUB_TOKEN environment variable on Fly.io');
                 return false;
             }
         } catch (error) {
-            this.log(`❌ Git error: ${error.message}`);
+            this.log(`❌ Git operation failed: ${error.message}`);
+            // Try to provide more specific error info
+            if (error.message.includes('rejected')) {
+                this.log('Push was rejected - may need to pull first');
+            } else if (error.message.includes('authentication')) {
+                this.log('Authentication failed - check GITHUB_TOKEN');
+            }
             return false;
         }
     }

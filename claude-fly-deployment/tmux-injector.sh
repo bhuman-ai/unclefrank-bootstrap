@@ -10,6 +10,20 @@ mkdir -p "$QUEUE_DIR"
 mkdir -p "$PROCESSED_DIR"
 
 echo "[TMUX-INJECTOR] Starting command queue processor..."
+echo "[TMUX-INJECTOR] Using C-c to cancel, C-u to clear, C-m for Enter"
+
+# Function to check if Claude is ready
+check_claude_ready() {
+    # Capture current pane content
+    local pane_content=$(/usr/bin/tmux capture-pane -t "$CLAUDE_SESSION" -p | tail -5)
+    
+    # Check if Claude prompt is visible (ends with > or similar)
+    if echo "$pane_content" | grep -q ">" || echo "$pane_content" | grep -q "Human:"; then
+        return 0
+    else
+        return 1
+    fi
+}
 
 while true; do
     # Check for command files in queue
@@ -24,7 +38,11 @@ while true; do
         echo "[TMUX-INJECTOR] Processing command for session $SESSION_ID"
         echo "[TMUX-INJECTOR] Command: $COMMAND"
         
-        # Clear input
+        # First, cancel any existing prompt with C-c
+        /usr/bin/tmux send-keys -t "$CLAUDE_SESSION" C-c
+        sleep 0.3
+        
+        # Clear input with C-u
         /usr/bin/tmux send-keys -t "$CLAUDE_SESSION" C-u
         sleep 0.2
         
@@ -37,7 +55,7 @@ while true; do
         /usr/bin/tmux paste-buffer -t "$CLAUDE_SESSION"
         sleep 0.5
         
-        # Press Enter
+        # Press Enter with C-m (this is the correct way)
         /usr/bin/tmux send-keys -t "$CLAUDE_SESSION" C-m
         
         echo "[TMUX-INJECTOR] Command injected successfully"
