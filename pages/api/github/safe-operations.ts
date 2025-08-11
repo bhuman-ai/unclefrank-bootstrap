@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { githubErrorHandler } from '../../../src/api/github-error-handler';
+import { githubErrorHandler } from '../../../cli/src/api/github-error-handler';
 
 /**
  * Safe GitHub Operations API

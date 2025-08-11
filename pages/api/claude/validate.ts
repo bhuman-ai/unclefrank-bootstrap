@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { claudeHealthChecker } from '../../../src/api/claude-health-checker';
+import { claudeHealthChecker } from '../../../cli/src/api/claude-health-checker';
 
 /**
  * REAL Claude validation endpoint

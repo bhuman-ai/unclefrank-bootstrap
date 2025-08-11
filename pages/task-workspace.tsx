@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { RestartTaskButton } from '../src/components/RestartTaskButton';
+import { RestartTaskButton } from '../cli/src/components/RestartTaskButton';
 
 interface TaskData {
   description: string;

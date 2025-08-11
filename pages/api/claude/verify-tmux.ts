@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { tmuxVerifier } from '../../../src/api/tmux-command-verifier';
+import { tmuxVerifier } from '../../../cli/src/api/tmux-command-verifier';
 
 /**
  * API endpoint to verify tmux commands actually executed

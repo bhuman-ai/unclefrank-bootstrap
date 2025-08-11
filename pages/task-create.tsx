@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DecomposeTaskButton } from '../src/components/DecomposeTaskButton';
+import { DecomposeTaskButton } from '../cli/src/components/DecomposeTaskButton';
 
 export default function TaskCreate() {
   const [request, setRequest] = useState('');

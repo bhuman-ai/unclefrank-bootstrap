@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { githubDraftStorage } from '../../../src/api/github-draft-storage';
+import { githubDraftStorage } from '../../../cli/src/api/github-draft-storage';
 
 /**
  * GitHub Draft API - The REAL draft storage

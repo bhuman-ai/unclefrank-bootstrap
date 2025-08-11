@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TaskCardWithTerminal } from '../src/components/TaskCardWithTerminal';
+import { TaskCardWithTerminal } from '../cli/src/components/TaskCardWithTerminal';
 
 export default function TasksDashboard() {
   const [tasks, setTasks] = useState([

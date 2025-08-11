@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { executionVerifier, CommandExpectation } from '../../../src/api/claude-execution-verifier';
+import { executionVerifier, CommandExpectation } from '../../../cli/src/api/claude-execution-verifier';
 
 /**
  * API endpoint to verify Claude actually executed commands

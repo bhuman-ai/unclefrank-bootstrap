@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ExecuteButton } from '../src/components/ExecuteButton';
+import { ExecuteButton } from '../cli/src/components/ExecuteButton';
 
 export default function ExecuteDemo() {
   const [task, setTask] = useState('');

@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { taskDecomposer } from '../../../src/api/task-decomposer';
+import { taskDecomposer } from '../../../cli/src/api/task-decomposer';
 
 export default async function handler(
   req: NextApiRequest,

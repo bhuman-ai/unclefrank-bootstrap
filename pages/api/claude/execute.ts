@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { claudeExecutor } from '../../../src/api/claude-executor';
-import { githubIntegration } from '../../../src/api/github-integration';
+import { claudeExecutor } from '../../../cli/src/api/claude-executor';
+import { githubIntegration } from '../../../cli/src/api/github-integration';
 
 export default async function handler(
   req: NextApiRequest,

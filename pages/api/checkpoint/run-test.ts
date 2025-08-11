@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { testRunner, CheckpointTest } from '../../../src/api/checkpoint-test-runner';
+import { testRunner, CheckpointTest } from '../../../cli/src/api/checkpoint-test-runner';
 
 /**
  * API endpoint to run ACTUAL checkpoint tests
