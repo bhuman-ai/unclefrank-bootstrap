@@ -32,27 +32,31 @@ export default function UnifiedDashboard() {
           setTasks(data.tasks || []);
         }
 
-        // Fetch auto-improve status from Fly.io
-        const autoRes = await fetch('https://uncle-frank-claude.fly.dev:8081/logs');
-        if (autoRes.ok) {
-          const data = await autoRes.json();
-          setAutoImprove({
-            iteration: data.iteration || 0,
-            status: data.status || 'RUNNING',
-            currentTask: data.currentTask || '-',
-            gapsFound: data.gapsFound || 0,
-            tasksCreated: data.totalLines ? Math.floor(data.totalLines / 100) : 0,
-            progress: 0
-          });
-          
-          // Parse logs
-          if (data.logs) {
-            const logLines = data.logs.split('\n').slice(-20).map(line => ({
-              time: line.match(/\[([\d-T:.Z]+)\]/)?.[1] || '',
-              message: line.replace(/\[[\d-T:.Z]+\]\s*/, '')
-            }));
-            setLogs(logLines);
+        // Fetch auto-improve status from Fly.io monitor
+        try {
+          const autoRes = await fetch('https://uncle-frank-claude.fly.dev:8081/logs');
+          if (autoRes.ok) {
+            const data = await autoRes.json();
+            setAutoImprove({
+              iteration: data.iteration || 0,
+              status: data.status || 'RUNNING',
+              currentTask: data.currentTask || '-',
+              gapsFound: data.gapsFound || 0,
+              tasksCreated: data.totalLines ? Math.floor(data.totalLines / 100) : 0,
+              progress: 0
+            });
+            
+            // Parse logs
+            if (data.logs) {
+              const logLines = data.logs.split('\n').slice(-20).map(line => ({
+                time: line.match(/\[([\d-T:.Z]+)\]/)?.[1] || '',
+                message: line.replace(/\[[\d-T:.Z]+\]\s*/, '')
+              }));
+              setLogs(logLines);
+            }
           }
+        } catch (err) {
+          console.log('Monitor not available');
         }
 
         // Update system status
@@ -102,7 +106,7 @@ export default function UnifiedDashboard() {
   return (
     <>
       <Head>
-        <title>Uncle Frank Development Platform</title>
+        <title>Uncle Frank Unified Dashboard</title>
       </Head>
       
       <div className="dashboard">
