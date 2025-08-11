@@ -1,11 +1,9 @@
 {
   "name": "Uncle Frank Auto-Improve",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
   
   "features": {
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "20"
-    }
+    "ghcr.io/devcontainers/features/github-cli:1": {}
   },
 
   "postCreateCommand": "bash .devcontainer/setup.sh",
@@ -13,12 +11,32 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "ms-vscode.js-debug-terminal"
-      ]
+        "ms-vscode.js-debug-terminal",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
     }
   },
 
-  "forwardPorts": [3000, 8080],
+  "forwardPorts": [3000, 3001, 8080, 8081],
+  "portsAttributes": {
+    "3000": {
+      "label": "Next.js Dashboard",
+      "onAutoForward": "notify"
+    },
+    "8080": {
+      "label": "Auto-Improve Monitor",
+      "onAutoForward": "notify"
+    }
+  },
   
-  "remoteUser": "vscode"
+  "remoteUser": "node",
+  
+  "mounts": [
+    "source=${localEnv:HOME}/.config/claude,target=/home/node/.config/claude,type=bind,consistency=cached"
+  ],
+  
+  "postAttachCommand": "echo '🚀 Uncle Frank System Ready! Run: npm run dev'"
 }

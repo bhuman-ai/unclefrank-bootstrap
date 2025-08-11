@@ -1,80 +1,165 @@
 #!/bin/bash
 
-echo "🚀 Setting up Uncle Frank's Auto-Improve System"
+echo "🚀 Setting up Uncle Frank's System in Codespaces"
 
-# Install Claude CLI
-echo "📦 Installing Claude Code CLI..."
-npm install -g @anthropic-ai/claude-cli
+# Install dependencies
+echo "📦 Installing dependencies..."
+npm install
 
-# Create initial files
-cat > target.md << 'EOF'
-# Target: FrankForge Platform
+# Install additional packages if needed
+npm install -g nodemon
 
-Build a system that:
-1. Has a web dashboard showing progress
-2. Can execute tasks automatically
-3. Finds gaps between target and current
-4. Builds solutions incrementally
-5. Actually fucking works
+# Copy Claude deployment files to root for easier access
+echo "📂 Setting up Claude integration..."
+cp -r claude-fly-deployment/* . 2>/dev/null || true
 
-Start simple. One file at a time.
-EOF
-
-cat > current.md << 'EOF'
-# Current State
-
-Nothing built yet.
-EOF
-
-# Create the actual simple loop
-cat > simple-loop.sh << 'EOF'
+# Create startup script
+cat > start.sh << 'EOF'
 #!/bin/bash
 
-ITERATION=0
+echo "🚀 Starting Uncle Frank System"
+echo "================================"
+echo ""
+echo "Choose what to start:"
+echo "1) Web Dashboard (Next.js)"
+echo "2) Auto-Improve Direct"
+echo "3) Task Server"
+echo "4) Monitor Server"
+echo ""
+read -p "Enter choice (1-4): " choice
 
-while true; do
-    ITERATION=$((ITERATION + 1))
-    echo "========================================"
-    echo "ITERATION $ITERATION"
-    echo "========================================"
-    
-    # Read state
-    TARGET=$(cat target.md)
-    CURRENT=$(cat current.md)
-    
-    # Find gap
-    echo "🤔 Finding next step..."
-    NEXT_STEP=$(claude --print "Target: $TARGET\n\nCurrent: $CURRENT\n\nWhat's ONE specific file to create next? Just name the file and its purpose.")
-    
-    echo "📋 Next: $NEXT_STEP"
-    
-    # Build it
-    echo "🔨 Building..."
-    claude --print "Build this completely: $NEXT_STEP\n\nMake it work. No placeholders." > output.tmp
-    
-    # Parse and save
-    FILENAME=$(echo "$NEXT_STEP" | grep -oE '[a-z-]+\.(html|js|css|md)' | head -1)
-    if [ ! -z "$FILENAME" ]; then
-        mv output.tmp "$FILENAME"
-        echo "💾 Created $FILENAME"
-        
-        # Update current.md
-        echo "" >> current.md
-        echo "## Iteration $ITERATION" >> current.md
-        echo "Created: $FILENAME" >> current.md
-    fi
-    
-    echo "✅ Done. Waiting 10 seconds..."
-    sleep 10
-done
+case $choice in
+    1)
+        echo "Starting Next.js dashboard..."
+        npm run dev
+        ;;
+    2)
+        echo "Starting Auto-Improve Direct..."
+        node auto-improve-direct.js
+        ;;
+    3)
+        echo "Starting Task Server..."
+        node server-direct.js
+        ;;
+    4)
+        echo "Starting Monitor Server..."
+        node monitor-server.js
+        ;;
+    *)
+        echo "Invalid choice. Starting Next.js by default..."
+        npm run dev
+        ;;
+esac
 EOF
 
-chmod +x simple-loop.sh
+chmod +x start.sh
+
+# Create a combined server that runs everything
+cat > codespace-server.js << 'EOF'
+const express = require('express');
+const { exec, spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+app.use(express.json());
+app.use(express.static('public'));
+
+// State
+let autoImproveProcess = null;
+let isRunning = false;
+let logs = [];
+
+// Start auto-improve
+app.post('/api/auto-improve/start', (req, res) => {
+    if (isRunning) {
+        return res.json({ error: 'Already running' });
+    }
+
+    logs = ['Starting auto-improve...'];
+    isRunning = true;
+
+    // Run the auto-improve script
+    autoImproveProcess = spawn('node', ['auto-improve-direct.js']);
+    
+    autoImproveProcess.stdout.on('data', (data) => {
+        const log = data.toString();
+        logs.push(log);
+        console.log('Auto-improve:', log);
+    });
+
+    autoImproveProcess.stderr.on('data', (data) => {
+        const log = `ERROR: ${data.toString()}`;
+        logs.push(log);
+        console.error('Auto-improve error:', log);
+    });
+
+    autoImproveProcess.on('close', (code) => {
+        isRunning = false;
+        logs.push(`Process exited with code ${code}`);
+    });
+
+    res.json({ status: 'started' });
+});
+
+// Stop auto-improve
+app.post('/api/auto-improve/stop', (req, res) => {
+    if (autoImproveProcess) {
+        autoImproveProcess.kill();
+        isRunning = false;
+        logs.push('Stopped by user');
+    }
+    res.json({ status: 'stopped' });
+});
+
+// Get status
+app.get('/api/auto-improve/status', (req, res) => {
+    res.json({
+        running: isRunning,
+        logs: logs.slice(-50) // Last 50 logs
+    });
+});
+
+// Execute Claude command directly
+app.post('/api/claude/execute', async (req, res) => {
+    const { prompt } = req.body;
+    
+    exec(`claude --print "${prompt}"`, (error, stdout, stderr) => {
+        if (error) {
+            return res.json({ error: stderr || error.message });
+        }
+        res.json({ output: stdout });
+    });
+});
+
+// Serve the main page
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`
+🚀 Uncle Frank's System Running!
+================================
+Web UI: http://localhost:${PORT}
+Auto-Improve API: http://localhost:${PORT}/api/auto-improve/status
+
+Available endpoints:
+- GET  /api/auto-improve/status
+- POST /api/auto-improve/start
+- POST /api/auto-improve/stop
+- POST /api/claude/execute
+    `);
+});
+EOF
 
 echo "✅ Setup complete!"
 echo ""
-echo "To start the auto-improve loop:"
-echo "  ./simple-loop.sh"
+echo "To start the system, run:"
+echo "  ./start.sh"
 echo ""
-echo "To run one step at a time:"
-echo "  claude --print 'Create a simple task tracker HTML file' > task.html"
+echo "Or run individual components:"
+echo "  npm run dev           # Next.js dashboard"
+echo "  node codespace-server.js  # Combined API server"
+echo "  node auto-improve-direct.js  # Auto-improve loop"
