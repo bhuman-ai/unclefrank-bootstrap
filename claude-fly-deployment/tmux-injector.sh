@@ -36,26 +36,46 @@ while true; do
         SESSION_ID=$(basename "$cmd_file" .cmd)
         
         echo "[TMUX-INJECTOR] Processing command for session $SESSION_ID"
-        echo "[TMUX-INJECTOR] Command: $COMMAND"
+        echo "[TMUX-INJECTOR] Command preview: ${COMMAND:0:100}..."
         
-        # First, cancel any existing prompt with C-c
+        # First, make sure we're at a Claude prompt
+        # Send C-c twice to really cancel any existing state
+        echo "[TMUX-INJECTOR] Sending C-c to cancel any existing prompt..."
         /usr/bin/tmux send-keys -t "$CLAUDE_SESSION" C-c
+        sleep 0.5
+        /usr/bin/tmux send-keys -t "$CLAUDE_SESSION" C-c
+        sleep 0.5
+        
+        # Clear any existing input with C-u
+        echo "[TMUX-INJECTOR] Sending C-u to clear input..."
+        /usr/bin/tmux send-keys -t "$CLAUDE_SESSION" C-u
         sleep 0.3
         
-        # Clear input with C-u
-        /usr/bin/tmux send-keys -t "$CLAUDE_SESSION" C-u
-        sleep 0.2
-        
-        # Send the command in chunks to handle long commands
-        # tmux send-keys has a buffer limit, so we need to chunk it
+        # Send the command
         echo "[TMUX-INJECTOR] Command length: ${#COMMAND} characters"
         
-        # Method 1: Try to paste from buffer (works for long text)
-        echo "$COMMAND" | /usr/bin/tmux load-buffer -
-        /usr/bin/tmux paste-buffer -t "$CLAUDE_SESSION"
+        # For short commands, send directly
+        if [ ${#COMMAND} -lt 500 ]; then
+            echo "[TMUX-INJECTOR] Sending command directly..."
+            /usr/bin/tmux send-keys -t "$CLAUDE_SESSION" "$COMMAND"
+        else
+            # For long commands, use paste buffer
+            echo "[TMUX-INJECTOR] Using paste buffer for long command..."
+            echo "$COMMAND" | /usr/bin/tmux load-buffer -
+            /usr/bin/tmux paste-buffer -t "$CLAUDE_SESSION"
+        fi
+        
         sleep 0.5
         
         # Press Enter with C-m (this is the correct way)
+        echo "[TMUX-INJECTOR] Sending C-m to submit..."
+        /usr/bin/tmux send-keys -t "$CLAUDE_SESSION" C-m
+        
+        # Give Claude time to process
+        sleep 2
+        
+        # Try sending C-m again in case the first one didn't register
+        echo "[TMUX-INJECTOR] Sending second C-m to ensure submission..."
         /usr/bin/tmux send-keys -t "$CLAUDE_SESSION" C-m
         
         echo "[TMUX-INJECTOR] Command injected successfully"

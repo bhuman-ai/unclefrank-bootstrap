@@ -95,49 +95,27 @@ EOF
     # Claude Code CLI uses OAuth, not API keys!
     unset ANTHROPIC_API_KEY
     
-    # Auto-start tmux session with Claude if credentials exist
-    echo "Starting Claude in tmux session..."
-    # Start tmux session first
-    tmux -f /etc/tmux.conf new-session -d -s claude-manual -c /app
-    
-    # Then send the claude command to it
-    sleep 2
-    tmux -f /etc/tmux.conf send-keys -t claude-manual "claude --dangerously-skip-permissions" Enter
-    
-    # Wait a bit for Claude to start
-    sleep 5
-    
-    # Auto-accept dangerous permissions if prompted
-    if tmux -f /etc/tmux.conf capture-pane -t claude-manual -p | grep -q "Yes, I accept"; then
-        echo "Auto-accepting dangerous permissions..."
-        tmux -f /etc/tmux.conf send-keys -t claude-manual '2' Enter
-        sleep 3
-    fi
-    
-    # Check if Claude started properly
-    if tmux -f /etc/tmux.conf list-sessions 2>/dev/null | grep -q claude-manual; then
-        echo "✅ Claude tmux session started and ready!"
-    else
-        echo "❌ Failed to start Claude tmux session"
-    fi
+    # NO LONGER STARTING TMUX SESSION - Using direct execution
+    echo "✅ Claude authenticated! Using --print flag for direct execution"
+    echo "📦 No tmux session needed - commands execute directly"
 else
     echo "⚠️  Claude not authenticated yet. Starting Claude for manual setup..."
     # Create tmux session and start Claude for manual auth
     tmux -f /etc/tmux.conf new-session -d -s claude-manual -c /app
     sleep 2
-    tmux -f /etc/tmux.conf send-keys -t claude-manual "claude" Enter
+    tmux -f /etc/tmux.conf send-keys -t claude-manual "claude --dangerously-skip-permissions" C-m
     echo "Claude started in tmux session for manual authentication"
 fi
 
 # Run the auth setup script
 ./setup-claude-auth.sh
 
-# Start the tmux injector in background
-echo "Starting tmux injector..."
-chmod +x tmux-injector.sh
-nohup ./tmux-injector.sh > /app/tmux-injector.log 2>&1 &
-INJECTOR_PID=$!
-echo "Tmux injector started with PID: $INJECTOR_PID"
+# NO LONGER NEEDED - Using direct claude --print execution
+# echo "Starting tmux injector..."
+# chmod +x tmux-injector.sh
+# nohup ./tmux-injector.sh > /app/tmux-injector.log 2>&1 &
+# INJECTOR_PID=$!
+# echo "Tmux injector NO LONGER NEEDED - using direct execution"
 
 # Start the monitor server
 echo "Starting monitor server..."
@@ -145,31 +123,35 @@ nohup node monitor-server.js > /app/monitor.log 2>&1 &
 MONITOR_PID=$!
 echo "Monitor server started with PID: $MONITOR_PID on port 8081"
 
-# Start the INTELLIGENT AUTO-IMPROVE SYSTEM
-echo "🧠 Starting INTELLIGENT AUTO-IMPROVE..."
-nohup node auto-improve-intelligent.js > /app/auto-improve.log 2>&1 &
-AUTO_PID=$!
-echo "✅ Intelligent auto-improve started with PID: $AUTO_PID"
-echo "Will:"
-echo "  1. Read 'docs to work towards' files"
-echo "  2. Analyze current implementation"
-echo "  3. Find gaps automatically"
-echo "  4. Generate tasks with checkpoints"
-echo "  5. Execute via Claude queue system"
-echo "  6. Push to GitHub → Vercel"
+# Start the TASK-CREATING AUTO-IMPROVE SYSTEM
+echo "🧠 Starting UNCLE FRANK AUTO-IMPROVE (Task Creator Mode)..."
+if [ -f "auto-improve-task-creator.js" ]; then
+    nohup node auto-improve-task-creator.js > /app/auto-improve.log 2>&1 &
+    AUTO_PID=$!
+    echo "✅ Auto-improve task creator started with PID: $AUTO_PID"
+    echo "✨ Using Uncle Frank task management system!"
+    echo "Will:"
+    echo "  1. Read docs-future/ specifications"
+    echo "  2. Compare with docs-current/ and actual code"
+    echo "  3. Find gaps automatically"
+    echo "  4. CREATE TASKS in Uncle Frank system"
+    echo "  5. Tasks execute through proper flow"
+    echo "  6. Push to GitHub → Vercel"
+else
+    echo "⚠️  auto-improve-task-creator.js not found, skipping auto-improve"
+fi
 
 # Copy PM2 ecosystem config
 if [ -f "ecosystem.config.js" ]; then
     cp ecosystem.config.js /app/
 fi
 
-# Start the server with PM2 for better process management
-echo "Starting Uncle Frank's Claude Executor with PM2..."
-if command -v pm2 &> /dev/null; then
-    # Use PM2 if available
-    pm2 start ecosystem.config.js --no-daemon
+# Start the FIXED server with direct execution
+echo "Starting Uncle Frank's FIXED Claude Executor..."
+if [ -f "server-direct.js" ]; then
+    echo "✅ Using server-direct.js with claude --print execution"
+    node server-direct.js
 else
-    # Fallback to direct node execution
-    echo "PM2 not found, starting with node directly..."
+    echo "⚠️  server-direct.js not found, falling back to server-queue.js"
     node server-queue.js
 fi

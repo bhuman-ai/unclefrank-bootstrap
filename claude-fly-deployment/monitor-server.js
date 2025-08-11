@@ -11,7 +11,77 @@ const PORT = 8081; // Different port from main server
 
 app.use(express.json());
 
-// Serve the monitor page
+// Serve the NEW monitor HTML if it exists
+app.get('/', async (req, res) => {
+    const htmlPath = path.join(__dirname, 'monitor.html');
+    if (fs.existsSync(htmlPath)) {
+        res.sendFile(htmlPath);
+    } else {
+        res.redirect('/monitor');
+    }
+});
+
+// Get logs endpoint for the new monitor
+app.get('/logs', async (req, res) => {
+    try {
+        const logPath = '/app/auto-improve.log';
+        let logs = '';
+        
+        if (fs.existsSync(logPath)) {
+            logs = fs.readFileSync(logPath, 'utf8');
+        }
+        
+        // Parse logs for status info
+        const lines = logs.split('\n');
+        const lastLines = lines.slice(-200).join('\n');
+        
+        // Extract status from logs
+        let status = 'RUNNING';
+        let currentTask = '-';
+        let gapsFound = '0';
+        let iteration = '0';
+        
+        // Look for patterns in recent logs
+        const recentLogs = lines.slice(-50).join('\n');
+        
+        if (recentLogs.includes('🤖 Executing with Claude')) {
+            status = 'CLAUDE WORKING (NO TIMEOUT!)';
+            currentTask = 'Claude is reading, thinking, and coding...';
+        } else if (recentLogs.includes('⏸️ Waiting')) {
+            status = 'WAITING';
+            currentTask = 'Waiting for next iteration';
+        } else if (recentLogs.includes('📤 Committing')) {
+            status = 'PUSHING TO GITHUB';
+            currentTask = 'Pushing changes to trigger Vercel';
+        }
+        
+        // Extract gaps count
+        const gapsMatch = recentLogs.match(/Found (\d+) gaps/);
+        if (gapsMatch) gapsFound = gapsMatch[1];
+        
+        // Extract iteration
+        const iterMatch = recentLogs.match(/ITERATION (\d+)/);
+        if (iterMatch) iteration = iterMatch[1];
+        
+        // Extract current task
+        const taskMatch = recentLogs.match(/🚀 Executing task: (.+)/);
+        if (taskMatch) currentTask = taskMatch[1];
+        
+        res.json({
+            logs: lastLines,
+            status,
+            currentTask,
+            gapsFound,
+            iteration,
+            totalLines: lines.length,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Serve the OLD monitor page
 app.get('/monitor', (req, res) => {
     res.send(`
 <!DOCTYPE html>

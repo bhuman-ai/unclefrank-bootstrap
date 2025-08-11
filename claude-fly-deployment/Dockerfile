@@ -82,5 +82,9 @@ COPY auto-improve-via-queue.js ./
 # Copy the INTELLIGENT auto-improve system
 COPY auto-improve-intelligent.js ./
 
+# Copy the FIXED versions
+COPY server-direct.js ./
+COPY auto-improve-task-creator.js ./
+
 # Run startup script which handles persistent storage and starts server
 CMD ["/bin/bash", "-c", "./startup.sh"]

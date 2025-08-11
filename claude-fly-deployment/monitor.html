@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Uncle Frank Auto-Improve Monitor</title>
+    <style>
+        body {
+            background: #000;
+            color: #0f0;
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+            margin: 0;
+        }
+        h1 {
+            color: #0f0;
+            text-shadow: 0 0 10px #0f0;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        #status {
+            background: #111;
+            border: 1px solid #0f0;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            min-height: 100px;
+        }
+        #logs {
+            background: #111;
+            border: 1px solid #0f0;
+            padding: 15px;
+            height: 500px;
+            overflow-y: auto;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .timestamp {
+            color: #666;
+        }
+        .success {
+            color: #0f0;
+        }
+        .error {
+            color: #f00;
+        }
+        .info {
+            color: #0ff;
+        }
+        .working {
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        #lastUpdate {
+            color: #666;
+            font-size: 10px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🤖 UNCLE FRANK AUTO-IMPROVE MONITOR</h1>
+    
+    <div id="status">
+        <div>Status: <span id="statusText" class="working">INITIALIZING...</span></div>
+        <div>Current Task: <span id="currentTask">-</span></div>
+        <div>Gaps Found: <span id="gapsFound">-</span></div>
+        <div>Iteration: <span id="iteration">-</span></div>
+        <div id="lastUpdate">Last update: Never</div>
+    </div>
+
+    <h2>📜 LIVE LOGS</h2>
+    <div id="logs">Connecting to Uncle Frank's Auto-Improve System...</div>
+
+    <script>
+        // Use relative URL - will work on same server
+        const API_URL = '';
+        
+        let lastLogTime = null;
+        
+        async function fetchLogs() {
+            try {
+                const response = await fetch(`${API_URL}/logs`);
+                const data = await response.json();
+                
+                // Update status
+                document.getElementById('statusText').textContent = data.status || 'RUNNING';
+                document.getElementById('statusText').className = data.status === 'WORKING' ? 'success working' : 'success';
+                document.getElementById('currentTask').textContent = data.currentTask || 'Analyzing...';
+                document.getElementById('gapsFound').textContent = data.gapsFound || '0';
+                document.getElementById('iteration').textContent = data.iteration || '0';
+                
+                // Update logs
+                const logsDiv = document.getElementById('logs');
+                if (data.logs && data.logs !== logsDiv.textContent) {
+                    logsDiv.innerHTML = colorizeLog(data.logs);
+                    logsDiv.scrollTop = logsDiv.scrollHeight;
+                }
+                
+                // Update timestamp
+                document.getElementById('lastUpdate').textContent = 
+                    `Last update: ${new Date().toLocaleTimeString()}`;
+                
+            } catch (error) {
+                console.error('Failed to fetch logs:', error);
+                document.getElementById('statusText').textContent = 'CONNECTION ERROR';
+                document.getElementById('statusText').className = 'error';
+            }
+        }
+        
+        function colorizeLog(text) {
+            return text
+                .replace(/\[[\d-T:.Z]+\]/g, '<span class="timestamp">$&</span>')
+                .replace(/✅[^\n]*/g, '<span class="success">$&</span>')
+                .replace(/❌[^\n]*/g, '<span class="error">$&</span>')
+                .replace(/🚀[^\n]*/g, '<span class="info">$&</span>')
+                .replace(/🧠[^\n]*/g, '<span class="info">$&</span>')
+                .replace(/📊[^\n]*/g, '<span class="info">$&</span>');
+        }
+        
+        // Fetch logs every 2 seconds
+        setInterval(fetchLogs, 2000);
+        fetchLogs(); // Initial fetch
+    </script>
+</body>
+</html>
