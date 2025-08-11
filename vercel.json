@@ -1,14 +1,5 @@
 {
-  "buildCommand": "echo 'No build required'",
-  "outputDirectory": "public",
-  "framework": null,
-  "installCommand": "npm install",
-  "functions": {
-    "api/flyio-manager.js": {
-      "maxDuration": 30
-    },
-    "api/claude-health-monitor.js": {
-      "maxDuration": 10
-    }
-  }
+  "framework": "nextjs",
+  "buildCommand": "npm install && npm run build",
+  "outputDirectory": ".next"
 }
