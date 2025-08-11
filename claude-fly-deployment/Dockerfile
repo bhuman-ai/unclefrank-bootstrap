@@ -67,19 +67,11 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 COPY startup.sh ./
 RUN chmod +x startup.sh
 
-# Copy auto-improvement scripts
-COPY auto-improve-flyio.sh ./
-COPY auto-improve-supervisor.js ./
-COPY auto-improve-claude-cli.js ./
-RUN chmod +x auto-improve-flyio.sh
-
-# Copy monitor server
+# Copy monitor server and HTML
 COPY monitor-server.js ./
+COPY monitor.html ./
 
-# Copy the WORKING auto-improve that uses queue
-COPY auto-improve-via-queue.js ./
-
-# Copy the INTELLIGENT auto-improve system
+# Copy the INTELLIGENT auto-improve system (keep for backward compat)
 COPY auto-improve-intelligent.js ./
 
 # Copy the FIXED versions
