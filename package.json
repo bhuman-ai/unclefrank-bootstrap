@@ -6,13 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "cli:dev": "tsx watch src/index.ts",
-    "cli:run": "tsx src/index.ts",
-    "cli:build": "tsc -p tsconfig.build.json",
+    "cli:dev": "tsx watch cli/src/index.ts",
+    "cli:run": "tsx cli/src/index.ts",
+    "cli:build": "tsc -p cli/tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "validate": "tsx src/validation/cli.ts validate",
-    "validate:watch": "tsx src/validation/cli.ts watch",
-    "validate:test": "tsx src/validation/cli.ts test"
+    "validate": "tsx cli/src/validation/cli.ts validate",
+    "validate:watch": "tsx cli/src/validation/cli.ts watch",
+    "validate:test": "tsx cli/src/validation/cli.ts test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
