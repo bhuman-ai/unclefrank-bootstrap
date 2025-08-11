@@ -153,6 +153,18 @@ async function checkForChanges(session) {
     }
 }
 
+// Proxy monitor logs from port 8081
+app.get('/api/monitor/logs', async (req, res) => {
+    try {
+        const fetch = require('node-fetch');
+        const response = await fetch('http://localhost:8081/logs');
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        res.status(503).json({ error: 'Monitor service unavailable' });
+    }
+});
+
 // Get session status
 app.get('/api/sessions/:sessionId/status', (req, res) => {
     const { sessionId } = req.params;

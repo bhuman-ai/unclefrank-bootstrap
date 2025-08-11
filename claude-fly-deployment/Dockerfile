@@ -53,11 +53,12 @@ RUN mkdir -p /workspace
 # Set up git safe directory
 RUN git config --global --add safe.directory '*'
 
-# Fly.io uses PORT 8080
+# Fly.io uses PORT 8080 for main server, 8081 for monitor
 ENV PORT=8080
 # Enable sandbox mode to allow --dangerously-skip-permissions as root
 ENV IS_SANDBOX=1
 EXPOSE 8080
+EXPOSE 8081
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

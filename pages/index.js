@@ -34,7 +34,8 @@ export default function UnifiedDashboard() {
 
         // Fetch auto-improve status from Fly.io monitor
         try {
-          const autoRes = await fetch('https://uncle-frank-claude.fly.dev:8081/logs');
+          // Note: Using main port with /monitor path since 8081 may be blocked
+          const autoRes = await fetch('https://uncle-frank-claude.fly.dev/api/monitor/logs');
           if (autoRes.ok) {
             const data = await autoRes.json();
             setAutoImprove({
