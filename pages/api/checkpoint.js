@@ -1,9 +1,9 @@
-// Simple checkpoint API
-let checkpoints = [];
+const db = require('../../lib/database');
 
 export default function handler(req, res) {
   switch (req.method) {
     case 'GET':
+      const checkpoints = db.getCheckpoints();
       res.status(200).json({ checkpoints });
       break;
       
@@ -18,8 +18,8 @@ export default function handler(req, res) {
         created: new Date().toISOString()
       };
       
-      checkpoints.push(checkpoint);
-      res.status(201).json(checkpoint);
+      const created = db.createCheckpoint(checkpoint);
+      res.status(201).json(created);
       break;
       
     default:

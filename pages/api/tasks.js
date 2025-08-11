@@ -1,10 +1,10 @@
-// In-memory task storage (replace with database in production)
-let tasks = [];
+const db = require('../../lib/database');
 
 export default function handler(req, res) {
   switch (req.method) {
     case 'GET':
       // Return all tasks
+      const tasks = db.getTasks();
       res.status(200).json({ 
         tasks: tasks,
         count: tasks.length 
@@ -26,9 +26,8 @@ export default function handler(req, res) {
         updated: new Date().toISOString()
       };
       
-      tasks.push(newTask);
-      
-      res.status(201).json(newTask);
+      const created = db.createTask(newTask);
+      res.status(201).json(created);
       break;
       
     default:
